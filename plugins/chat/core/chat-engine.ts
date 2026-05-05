@@ -466,7 +466,10 @@ function isPlainAssistantMessage(message: any): boolean {
  * Note: ALL markers are preserved here - they'll be parsed by parseLineMarkers in index.ts
  */
 function cleanMarkers(text: string): string {
-  return text.trim();
+  return text
+    .replace(/<Ai>\s*<think>[\s\S]*?<\/Ai>/gi, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .trim();
 }
 
 function isToolErrorResult(result: any): boolean {
