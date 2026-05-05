@@ -331,11 +331,18 @@ const chatPlugin = definePlugin({
     // 初始化组件
     const db = await initDatabase();
     const sessionManager = new SessionManager(db, config.maxSessions);
+    const queueManager = new MessageQueueManager();
     const rateLimiter = new RateLimiter({
       dynamicDelay: config.dynamicDelay,
       aiRequestLimits: config.aiRequestLimits,
     });
     const skillManager = new SkillSessionManager();
+
+    // 注入队列长度获取函数到 rateLimiter
+    rateLimiter.setQueueLengthGetter((groupId: number) => {
+      const sessionId = `group:${groupId}`;
+      return queueManager.getQueueLength(sessionId);
+    });
 
     if (!aiService) {
       ctx.logger.error("聊天插件需要 AI 服务，但 AI 服务不可用");
@@ -359,7 +366,6 @@ const chatPlugin = definePlugin({
     const RATE_LIMIT_MAX_RETRIES = 2;
     let rateLimitBlockedUntil = 0;
     const processingSet = new Set<string>();
-    const queueManager = new MessageQueueManager();
     const groupStructuredHistory = new GroupStructuredHistoryManager();
     const groupLastActivityTime = new Map<string, number>();
     const groupMessageCount = new Map<string, number>();
@@ -1866,6 +1872,15 @@ Suggestion:
           return;
         }
 
+        // 检查是否处于冷却期，如果是则让冷却计时器处理这批消息
+        const cooldownUntil = groupCooldownUntil.get(groupSessionId) ?? 0;
+        if (Date.now() < cooldownUntil) {
+          ctx.logger.info(
+            `[Queue] group ${groupSessionId} is in cooldown, queue deferred to cooldown handler`,
+          );
+          return;
+        }
+
         ctx.logger.info(
           `[Queue] group ${groupSessionId} batch queue, queue length: ${queue.length}`,
         );
@@ -2791,6 +2806,7 @@ Suggestion:
           // 群正在处理中，只有 @bot 或提到昵称的消息才加入队列
           if ((atBot || mentionedNickname) && !isRateLimitBlocked()) {
             queueManager.enqueue(groupSessionId, e, cfg);
+            rateLimiter.recordInteraction(groupId, userId);
             ctx.logger.info(
               `[Queue] group ${groupId} is being processed, valid messages are added to the queue, current queue length: ${queueManager.getQueueLength(groupSessionId)}`,
             );

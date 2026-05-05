@@ -19,6 +19,15 @@ export class RateLimiter {
   private readonly cleanupTimer: ReturnType<typeof setInterval>;
   private readonly dynamicDelayConfig: DynamicDelayConfig;
   private readonly aiRequestLimitConfig: AIRequestLimitConfig;
+  // 外部注入的队列长度获取函数
+  private getQueueLengthFn: ((groupId: number) => number) | null = null;
+
+  /**
+   * 设置队列长度获取函数
+   */
+  setQueueLengthGetter(fn: (groupId: number) => number): void {
+    this.getQueueLengthFn = fn;
+  }
 
   constructor(options?: {
     maxTriggersPerWindow?: number;
@@ -168,6 +177,15 @@ export class RateLimiter {
     const now = Date.now();
     const windowMs = this.dynamicDelayConfig.interactionWindowMs;
 
+    // 优先使用队列长度作为互动人数计算
+    if (this.getQueueLengthFn) {
+      const queueLength = this.getQueueLengthFn(groupId);
+      if (queueLength > 0) {
+        return queueLength;
+      }
+    }
+
+    // 回退到 groupInteractions 统计
     const groupUsers = this.groupInteractions.get(groupId);
     if (!groupUsers) return 0;
 
@@ -241,7 +259,9 @@ export class RateLimiter {
 
     const aiWindowMs = this.aiRequestLimitConfig.windowMs;
     for (const [userId, requests] of this.userAiRequests) {
-      const valid = requests.filter((timestamp) => now - timestamp < aiWindowMs);
+      const valid = requests.filter(
+        (timestamp) => now - timestamp < aiWindowMs,
+      );
       if (valid.length === 0) {
         this.userAiRequests.delete(userId);
       } else {
@@ -250,7 +270,9 @@ export class RateLimiter {
     }
 
     for (const [groupId, requests] of this.groupAiRequests) {
-      const valid = requests.filter((timestamp) => now - timestamp < aiWindowMs);
+      const valid = requests.filter(
+        (timestamp) => now - timestamp < aiWindowMs,
+      );
       if (valid.length === 0) {
         this.groupAiRequests.delete(groupId);
       } else {
