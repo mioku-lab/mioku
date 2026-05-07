@@ -142,7 +142,7 @@ export class CooldownManager {
       config: this.cfg, aiService: this.aiService, db: this.db, botRole, humanize: this.humanize, targetMessage, selfId,
     });
 
-    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, mergedContent, targetMessage.userName, history, targetMessage.userId);
+    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, targetMessage.userName, history, targetMessage.userId);
 
     const result = await this.runWithRateLimitGuard(
       () => this.runChat(this.aiInstance, toolCtx, history, targetMessage, {
@@ -162,7 +162,7 @@ export class CooldownManager {
     await this.sendEmoji(this.ctx, groupId, result.emojiPath, selfId);
 
     const now = Date.now();
-    this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, new Map(), new Map(), selfId);
+    this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, selfId);
     this.idleCheckManager.recordBotMessages(groupSessionId, result.messages.length, selfId);
     this.sessionManager.touch(groupSessionId);
     this.startCooldownTimer(groupSessionId, groupId, selfId);
@@ -193,7 +193,7 @@ export class CooldownManager {
       config: this.cfg, aiService: this.aiService, db: this.db, botRole, humanize: this.humanize, targetMessage, selfId,
     });
     const { groupName, memberCount } = await this.getGroupInfoData(this.ctx, groupId, selfId);
-    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, mergedContent, targetMessage.userName, history, targetMessage.userId);
+    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, targetMessage.userName, history, targetMessage.userId);
     const plannerThoughts = `After you spoke, the following messages were sent in the group. Use this context to respond naturally.\nPlanned reason: ${planResult.reason}`;
 
     const result = await this.runWithRateLimitGuard(
@@ -217,7 +217,7 @@ export class CooldownManager {
     await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
     await this.sendEmoji(this.ctx, groupId, result.emojiPath, selfId);
     const now = Date.now();
-    this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, new Map(), new Map(), selfId);
+    this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, selfId);
     this.idleCheckManager.recordBotMessages(groupSessionId, result.messages.length, selfId);
     this.sessionManager.touch(groupSessionId);
     this.startCooldownTimer(groupSessionId, groupId, selfId);

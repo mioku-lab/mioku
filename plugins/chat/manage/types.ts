@@ -44,7 +44,6 @@ export type GetGroupInfoData = (
 export type GetHumanizeContexts = (
   humanize: HumanizeEngine,
   groupSessionId: string,
-  content: string,
   userName: string,
   history: ChatMessage[],
   triggerUserId?: number,
@@ -60,8 +59,6 @@ export type SaveBotMessages = (
   config: ChatConfig,
   db: ChatDatabase,
   ctx: MiokiContext,
-  groupLastBotMessageTime: Map<string, number>,
-  groupMessageCountAfterBot: Map<string, number>,
   selfId: number,
 ) => void;
 

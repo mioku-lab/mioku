@@ -170,7 +170,9 @@ export class IdleCheckManager {
           }
 
           await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
-          this.saveBotMessages(groupId, groupSessionId, result.messages, now, cfg, this.db, this.ctx, this.groupLastBotMessageTime, this.groupMessageCountAfterBot, selfId);
+          this.saveBotMessages(groupId, groupSessionId, result.messages, now, cfg, this.db, this.ctx, selfId);
+          this.groupLastBotMessageTime.set(groupSessionId, now);
+          this.groupMessageCountAfterBot.set(groupSessionId, 0);
           this.startCooldownTimer(groupSessionId, groupId, selfId);
           this.ctx.logger.info(`[IdleCheck] group ${groupId} idle reply completed`);
         } catch (err) {

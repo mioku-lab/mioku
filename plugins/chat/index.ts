@@ -49,17 +49,12 @@ import type {
   RunRateLimitGuard,
   HistoryMediaOptions,
   GetGroupHistoryMessages,
-  GetGroupInfoData,
-  GetHumanizeContexts,
   SendAIResponse,
-  SendMessage,
   SaveBotMessages,
-  SendEmoji,
   RunChat,
   BuildToolContext,
-  BuildStructuredUserInputFromTarget,
-  IsRateLimitBlocked,
 } from "./manage/types";
+import type { ChatPluginContext, ChatRuntime } from "./context";
 
 function buildStructuredUserInputFromEvent(
   event: any,
@@ -393,10 +388,6 @@ const chatPlugin = definePlugin({
         cooldownManager.startCooldownTimer(groupSessionId, groupId, selfId);
       };
 
-    const clearActiveTarget = (groupSessionId: string) => {
-      queueManager.clearActiveTarget(groupSessionId);
-    };
-
     idleCheckManager = new IdleCheckManager(
       ctx,
       config,
@@ -474,6 +465,41 @@ const chatPlugin = definePlugin({
       10 * 60_000,
     );
     idleCheckManager.start();
+
+    // Create plugin context for passing to functions
+    const pluginCtx: ChatPluginContext = {
+      ctx,
+      config,
+      db,
+      aiInstance,
+      aiService,
+      humanize,
+      sessionManager,
+      skillManager,
+      rateLimiter,
+      queueManager,
+      groupStructuredHistory,
+      cooldownManager,
+      idleCheckManager,
+      queueProcessor,
+      runWithRateLimitGuard,
+      buildHistoryMediaOptions,
+      getGroupHistoryMessages,
+      getGroupInfoData,
+      getHumanizeContexts,
+      sendAIResponse,
+      sendMessage,
+      saveBotMessages,
+      sendEmoji,
+      buildToolContext,
+      buildStructuredUserInputFromTarget,
+      runChat,
+    };
+
+    const runtime: ChatRuntime = {
+      isRateLimitBlocked,
+      processingSet,
+    };
 
     // ==================== 消息处理 ====================
     ctx.handle("message", async (e: any) => {
@@ -639,7 +665,7 @@ const chatPlugin = definePlugin({
       const quotedBot = isGroup ? await isQuotingBot(e, ctx) : null;
       const mentionedNickname =
         cfg.nicknames.length > 0 &&
-        text.toLowerCase().includes(cfg.nicknames[0].toLowerCase());
+        cfg.nicknames.some((n) => text.toLowerCase().includes(n.toLowerCase()));
 
       const groupSessionId = groupId ? `group:${groupId}` : undefined;
 
@@ -713,39 +739,7 @@ const chatPlugin = definePlugin({
           }
 
           rateLimiter.record(userId, groupId, text);
-          await processChat(
-            e,
-            cfg,
-            ctx,
-            aiInstance,
-            aiService!,
-            db,
-            humanize,
-            sessionManager,
-            skillManager,
-            groupStructuredHistory,
-            rateLimiter,
-            queueManager,
-            cooldownManager,
-            idleCheckManager,
-            queueProcessor,
-            runWithRateLimitGuard,
-            buildHistoryMediaOptions,
-            getGroupHistoryMessages,
-            getGroupInfoData,
-            getHumanizeContexts,
-            sendAIResponse,
-            sendMessage,
-            saveBotMessages,
-            sendEmoji,
-            runChat,
-            buildToolContext,
-            buildStructuredUserInputFromTarget,
-            isRateLimitBlocked,
-            processingSet,
-            groupSessionId!,
-            e.self_id,
-          );
+          await processChat(e, pluginCtx, runtime);
           return;
         }
 
@@ -757,7 +751,7 @@ const chatPlugin = definePlugin({
             cfg.historyCount,
             db,
             e.self_id,
-            buildHistoryMediaOptions(aiInstance, cfg),
+            pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
           );
           const botNickname =
             cfg.nicknames[0] || ctx.pickBot(e.self_id).nickname || "Bot";
@@ -770,39 +764,7 @@ const chatPlugin = definePlugin({
           if (planResult.action !== "reply") return;
           if (!rateLimiter.canProcess(userId, groupId, text)) return;
           rateLimiter.record(userId, groupId, text);
-          await processChat(
-            e,
-            cfg,
-            ctx,
-            aiInstance,
-            aiService!,
-            db,
-            humanize,
-            sessionManager,
-            skillManager,
-            groupStructuredHistory,
-            rateLimiter,
-            queueManager,
-            cooldownManager,
-            idleCheckManager,
-            queueProcessor,
-            runWithRateLimitGuard,
-            buildHistoryMediaOptions,
-            getGroupHistoryMessages,
-            getGroupInfoData,
-            getHumanizeContexts,
-            sendAIResponse,
-            sendMessage,
-            saveBotMessages,
-            sendEmoji,
-            runChat,
-            buildToolContext,
-            buildStructuredUserInputFromTarget,
-            isRateLimitBlocked,
-            processingSet,
-            groupSessionId!,
-            e.self_id,
-          );
+          await processChat(e, pluginCtx, runtime);
           return;
         }
       } finally {
@@ -870,7 +832,7 @@ const chatPlugin = definePlugin({
           cfg.historyCount,
           db,
           e.self_id,
-          buildHistoryMediaOptions(aiInstance, cfg),
+          pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
         );
         const { groupName, memberCount } = await getGroupInfoData(
           ctx,
@@ -949,8 +911,6 @@ const chatPlugin = definePlugin({
           cfg,
           db,
           ctx,
-          new Map(),
-          new Map(),
           e.self_id,
         );
         idleCheckManager.recordBotMessages(
@@ -1116,8 +1076,6 @@ async function handleIdleCheckDebug(
       cfg,
       db,
       ctx,
-      new Map(),
-      new Map(),
       e.self_id,
     );
     await e.reply(
@@ -1131,59 +1089,35 @@ async function handleIdleCheckDebug(
 
 async function processChat(
   e: any,
-  cfg: ChatConfig,
-  ctx: MiokiContext,
-  aiInstance: AIInstance,
-  aiService: AIService,
-  db: import("./db").ChatDatabase,
-  humanize: HumanizeEngine,
-  sessionManager: SessionManager,
-  skillManager: SkillSessionManager,
-  groupStructuredHistory: GroupStructuredHistoryManager,
-  rateLimiter: RateLimiter,
-  queueManager: MessageQueueManager,
-  cooldownManager: CooldownManager,
-  idleCheckManager: IdleCheckManager,
-  queueProcessor: QueueProcessor,
-  runWithRateLimitGuard: RunRateLimitGuard,
-  buildHistoryMediaOptions: (
-    ai: AIInstance,
-    cfg: ChatConfig,
-  ) => HistoryMediaOptions,
-  getGroupHistoryMessages: GetGroupHistoryMessages,
-  getGroupInfoData: GetGroupInfoData,
-  getHumanizeContexts: GetHumanizeContexts,
-  sendAIResponse: SendAIResponse,
-  sendMessage: SendMessage,
-  saveBotMessages: SaveBotMessages,
-  sendEmoji: SendEmoji,
-  runChat: RunChat,
-  buildToolContext: BuildToolContext,
-  buildStructuredUserInputFromTarget: BuildStructuredUserInputFromTarget,
-  isRateLimitBlocked: IsRateLimitBlocked,
-  processingSet: Set<string>,
-  groupSessionId: string,
-  selfId: number,
+  pluginCtx: ChatPluginContext,
+  runtime: ChatRuntime,
 ) {
+  const { ctx, config: cfg } = pluginCtx;
   const isGroup = e.message_type === "group";
   const groupId: number | undefined = isGroup ? e.group_id : undefined;
   const userId: number = e.user_id || e.sender?.user_id;
+  const selfId = e.self_id;
 
   const personalSessionId = `personal:${userId}`;
+  const groupSessionId = groupId ? `group:${groupId}` : personalSessionId;
 
-  if (isRateLimitBlocked()) {
-    if (groupId) queueManager.clearActiveTarget(groupSessionId);
+  if (runtime.isRateLimitBlocked()) {
+    if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
     return;
   }
 
   try {
-    sessionManager.getOrCreate(
+    pluginCtx.sessionManager.getOrCreate(
       groupSessionId,
       groupId ? "group" : "personal",
       groupId ?? userId,
     );
     if (groupId)
-      sessionManager.getOrCreate(personalSessionId, "personal", userId);
+      pluginCtx.sessionManager.getOrCreate(
+        personalSessionId,
+        "personal",
+        userId,
+      );
 
     const quotedInfo = await getQuotedContent(e, ctx);
     const imageUrls: string[] = [];
@@ -1220,10 +1154,10 @@ async function processChat(
       timestamp: Date.now(),
       messageId: e.message_id,
     };
-    db.saveMessage(userMsg);
+    pluginCtx.db.saveMessage(userMsg);
 
-    humanize.expressionLearner.onMessage(groupSessionId, userMsg).then();
-    humanize.topicTracker.onMessage(groupSessionId).then();
+    pluginCtx.humanize.expressionLearner.onMessage(userMsg).then();
+    pluginCtx.humanize.topicTracker.onMessage(groupSessionId).then();
 
     const rawHistory = groupId
       ? await getGroupHistory(
@@ -1231,8 +1165,8 @@ async function processChat(
           ctx,
           cfg.historyCount,
           e.self_id,
-          db,
-          buildHistoryMediaOptions(aiInstance, cfg),
+          pluginCtx.db,
+          pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
         )
       : [];
     const history: ChatMessage[] = rawHistory.map((msg: any) => ({
@@ -1249,7 +1183,7 @@ async function processChat(
 
     const botNickname =
       cfg.nicknames[0] || ctx.pickBot(e.self_id).nickname || "Bot";
-    const planResult = await humanize.actionPlanner.plan(
+    const planResult = await pluginCtx.humanize.actionPlanner.plan(
       groupSessionId,
       botNickname,
       history,
@@ -1260,7 +1194,7 @@ async function processChat(
       ctx.logger.info(
         `[Action Planning] Session ${groupSessionId} ${planResult.action}: ${planResult.reason}`,
       );
-      if (groupId) queueManager.clearActiveTarget(groupSessionId);
+      if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
       return;
     }
 
@@ -1270,7 +1204,7 @@ async function processChat(
     let groupName: string | undefined;
     let memberCount: number | undefined;
     if (groupId) {
-      const groupInfo = await getGroupInfoData(
+      const groupInfo = await pluginCtx.getGroupInfoData(
         ctx,
         groupId,
         e.self_id,
@@ -1281,10 +1215,9 @@ async function processChat(
     }
 
     const senderName = e.sender?.card || e.sender?.nickname || String(userId);
-    const contexts = await getHumanizeContexts(
-      humanize,
+    const contexts = await pluginCtx.getHumanizeContexts(
+      pluginCtx.humanize,
       groupSessionId,
-      ctx.text(e) || "",
       senderName,
       history,
       userId,
@@ -1300,28 +1233,29 @@ async function processChat(
       timestamp: Date.now(),
     };
 
-    if (groupId) queueManager.setActiveTarget(groupSessionId, targetMessage);
+    if (groupId)
+      pluginCtx.queueManager.setActiveTarget(groupSessionId, targetMessage);
 
-    const toolCtx = buildToolContext({
+    const toolCtx = pluginCtx.buildToolContext({
       ctx,
       event: e,
       groupSessionId,
       groupId,
       userId,
       config: cfg,
-      aiService,
-      db,
+      aiService: pluginCtx.aiService,
+      db: pluginCtx.db,
       botRole,
       pendingImageUrls: imageUrls,
-      humanize,
+      humanize: pluginCtx.humanize,
       targetMessage,
       selfId: e.self_id,
     });
 
-    const result = await runWithRateLimitGuard(
+    const result = await pluginCtx.runWithRateLimitGuard(
       () =>
-        runChat(
-          aiInstance,
+        pluginCtx.runChat(
+          pluginCtx.aiInstance,
           toolCtx,
           history,
           targetMessage,
@@ -1331,7 +1265,7 @@ async function processChat(
             memberCount,
             botNickname,
             botRole,
-            aiService,
+            aiService: pluginCtx.aiService,
             isGroup,
             memoryContext: contexts.memoryContext,
             topicContext: contexts.topicContext,
@@ -1342,14 +1276,14 @@ async function processChat(
               targetMessage: targetMessage.content,
             },
           },
-          humanize,
-          skillManager,
+          pluginCtx.humanize,
+          pluginCtx.skillManager,
           groupId
             ? {
-                manager: groupStructuredHistory,
+                manager: pluginCtx.groupStructuredHistory,
                 ttlMs: cfg.groupStructuredHistoryTtlMs,
                 currentUserInputs: [
-                  buildStructuredUserInputFromTarget(targetMessage),
+                  pluginCtx.buildStructuredUserInputFromTarget(targetMessage),
                 ],
               }
             : undefined,
@@ -1358,55 +1292,57 @@ async function processChat(
     );
 
     if (!result) {
-      if (groupId) queueManager.clearActiveTarget(groupSessionId);
+      if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
       return;
     }
 
     if (groupId) {
-      await sendAIResponse(
+      await pluginCtx.sendAIResponse(
         {
           ctx,
           groupId,
           messages: result.messages,
           config: cfg,
           sentIndices: toolCtx.sentMessageIndices,
-          typoGenerator: humanize.typoGenerator,
+          typoGenerator: pluginCtx.humanize.typoGenerator,
         },
         e.self_id,
       );
-      await sendEmoji(ctx, groupId, result.emojiPath, e.self_id);
+      await pluginCtx.sendEmoji(ctx, groupId, result.emojiPath, e.self_id);
 
       const now = Date.now();
-      saveBotMessages(
+      pluginCtx.saveBotMessages(
         groupId,
         groupSessionId,
         result.messages,
         now,
         cfg,
-        db,
+        pluginCtx.db,
         ctx,
-        new Map(),
-        new Map(),
         e.self_id,
       );
-      idleCheckManager.recordBotMessages(
+      pluginCtx.idleCheckManager.recordBotMessages(
         groupSessionId,
         result.messages.length,
         e.self_id,
       );
 
-      cooldownManager.startCooldownTimer(groupSessionId, groupId, e.self_id);
+      pluginCtx.cooldownManager.startCooldownTimer(
+        groupSessionId,
+        groupId,
+        e.self_id,
+      );
     } else {
       const sentIndices = toolCtx.sentMessageIndices;
       for (let i = 0; i < result.messages.length; i++) {
         if (sentIndices?.has(i)) continue;
-        await sendMessage(
+        await pluginCtx.sendMessage(
           ctx,
           undefined,
           userId,
           result.messages[i],
           cfg,
-          humanize.typoGenerator,
+          pluginCtx.humanize.typoGenerator,
           e.self_id,
         );
       }
@@ -1420,10 +1356,10 @@ async function processChat(
       }
     }
 
-    sessionManager.touch(groupSessionId);
+    pluginCtx.sessionManager.touch(groupSessionId);
   } catch (err) {
     ctx.logger.error(`Chat processing failed: ${err}`);
-    if (groupId) queueManager.clearActiveTarget(groupSessionId);
+    if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
   }
 }
 

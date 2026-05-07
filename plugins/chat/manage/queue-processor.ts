@@ -132,7 +132,7 @@ export class QueueProcessor {
     });
 
     this.sessionManager.getOrCreate(groupSessionId, "group", groupId);
-    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, mergedContent, targetMessage.userName, history, targetMessage.userId);
+    const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, targetMessage.userName, history, targetMessage.userId);
 
     const result = await this.runWithRateLimitGuard(
       () => this.runChat(this.aiInstance, toolCtx, history, targetMessage, {
@@ -200,7 +200,7 @@ export class QueueProcessor {
       });
 
       const { history } = await this.getGroupHistoryMessages(groupId, groupSessionId, this.ctx, this.cfg.historyCount, this.db, selfId, this.buildHistoryMediaOptions(this.aiInstance, this.cfg));
-      const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, targetMessage.content, targetMessage.userName, history, targetMessage.userId);
+      const contexts = await this.getHumanizeContexts(this.humanize, groupSessionId, targetMessage.userName, history, targetMessage.userId);
       const { groupName, memberCount } = await this.getGroupInfoData(this.ctx, groupId, selfId);
 
       const result = await this.runWithRateLimitGuard(
@@ -218,7 +218,7 @@ export class QueueProcessor {
       await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
       await this.sendEmoji(this.ctx, groupId, result.emojiPath, selfId);
       const now = Date.now();
-      this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, new Map(), new Map(), selfId);
+      this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, selfId);
       this.sessionManager.touch(groupSessionId);
       this.ctx.logger.info(`[Queue] group ${groupSessionId} done`);
     } catch (err) {
