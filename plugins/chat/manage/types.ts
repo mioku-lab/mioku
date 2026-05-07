@@ -96,8 +96,6 @@ export type BuildStructuredUserInput = (event: any, content: string, fallbackTim
 
 export type BuildStructuredUserInputFromTarget = (targetMessage: TargetMessage) => StructuredUserInput;
 
-export type IsRateLimitBlocked = () => boolean;
-
 export type PromptCtxForRunChat = {
   config: ChatConfig;
   groupName?: string;
