@@ -26,6 +26,7 @@ import {
 import type {
   AIUsageCompletionMeta,
   AIUsageContext,
+  AIUsageFinalization,
   AIUsageMeasuredTokens,
   AIUsageStore,
 } from "./usage/types";
@@ -133,6 +134,7 @@ class AIInstanceImpl implements AIInstance {
       initialMessages: options.messages,
       initialTools: options.tools,
       explicitContextTokens: options.usageContextTokens,
+      explicitBreakdown: options.usageBreakdown,
       usageStore: this.usageStore,
     });
 
@@ -785,6 +787,10 @@ class AIServiceImpl implements AIService {
     return this.usageStore.cleanup(retentionMs);
   }
 
+  finalizeUsage(usageId: string, finalization: AIUsageFinalization): boolean {
+    return this.usageStore.updateFinalization(usageId, finalization);
+  }
+
   dispose(): void {
     this.usageStore.close();
   }
@@ -815,6 +821,7 @@ function createUsageTracker(options: {
   initialMessages: ChatCompletionMessageParam[];
   initialTools?: ChatCompletionTool[];
   explicitContextTokens?: number;
+  explicitBreakdown?: AIUsageFinalization["breakdown"];
   usageStore: AIUsageStore;
 }): UsageTracker {
   const messages: AIUsageCompletionMeta["messages"] = [];
@@ -866,6 +873,7 @@ function createUsageTracker(options: {
         Number.isFinite(options.explicitContextTokens)
           ? Math.max(0, Math.floor(options.explicitContextTokens))
           : 0;
+      const explicitBreakdown = options.explicitBreakdown;
       const outputTokens = messages
         .filter((message) => message.role === "assistant")
         .reduce((sum, message) => sum + message.contentTokens, 0);
@@ -874,12 +882,28 @@ function createUsageTracker(options: {
         .reduce((sum, message) => sum + message.contentTokens, 0);
       const finalInputTokens = measuredTokens?.inputTokens ?? inputTokens;
       const finalOutputTokens = measuredTokens?.outputTokens ?? outputTokens;
-      const otherContextTokens = Math.max(
-        0,
-        finalInputTokens -
-          Math.max(0, systemPromptTokens - explicitContextTokens) -
-          toolUseTokens,
-      );
+      const finalSystemPromptTokens =
+        normalizeUsageBreakdownValue(explicitBreakdown?.systemPromptTokens) ??
+        Math.max(0, systemPromptTokens - explicitContextTokens);
+      const finalChatHistoryTokens =
+        normalizeUsageBreakdownValue(explicitBreakdown?.chatHistoryTokens) ??
+        explicitContextTokens;
+      const finalToolDefinitionTokens =
+        normalizeUsageBreakdownValue(explicitBreakdown?.toolDefinitionTokens) ??
+        toolDefinitionTokens;
+      const finalToolUseTokens =
+        normalizeUsageBreakdownValue(explicitBreakdown?.toolUseTokens) ??
+        toolUseTokens;
+      const otherContextTokens =
+        normalizeUsageBreakdownValue(explicitBreakdown?.otherContextTokens) ??
+        Math.max(
+          0,
+          finalInputTokens -
+            finalSystemPromptTokens -
+            finalChatHistoryTokens -
+            finalToolDefinitionTokens -
+            finalToolUseTokens,
+        );
       const adjustedMessages =
         explicitContextTokens > 0
           ? splitExplicitContextTokens(messages, explicitContextTokens)
@@ -897,8 +921,12 @@ function createUsageTracker(options: {
         outputTokens: finalOutputTokens,
         cacheWriteTokens: measuredTokens?.cacheWriteTokens ?? 0,
         cacheReadTokens: measuredTokens?.cacheReadTokens ?? 0,
-        toolDefinitionTokens,
-        toolUseTokens,
+        sentUserMessages: 0,
+        sentAssistantMessages: 0,
+        systemPromptTokens: finalSystemPromptTokens,
+        toolDefinitionTokens: finalToolDefinitionTokens,
+        toolUseTokens: finalToolUseTokens,
+        chatHistoryTokens: finalChatHistoryTokens,
         otherContextTokens,
         toolCalls,
         context: options.context,
@@ -926,6 +954,11 @@ function mergeMeasuredTokens(
 function sumOptional(a: number | undefined, b: number | undefined): number | undefined {
   if (a == null && b == null) return undefined;
   return (a ?? 0) + (b ?? 0);
+}
+
+function normalizeUsageBreakdownValue(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.max(0, Math.floor(value));
 }
 
 function splitExplicitContextTokens(

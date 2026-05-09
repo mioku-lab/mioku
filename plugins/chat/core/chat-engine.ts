@@ -106,7 +106,22 @@ export async function runChat(
   const directImageUrls = toolCtx.config.isMultimodal
     ? toolCtx.pendingImageUrls
     : undefined;
+  const usageId = `chat:${toolCtx.sessionId}:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+  const systemPromptTokens = estimateTextTokens(prompt);
+  const chatHistoryTokens = estimateChatHistoryTokens(history);
+  const currentUserTokens = estimateMessageContentTokens(
+    buildCurrentMessages(
+      "",
+      targetMessage,
+      [],
+      currentUserMessages,
+      directImageUrls,
+    ).filter((message) => message.role !== "system"),
+  );
   const usageContext = {
+    usageId,
     source: "chat",
     botId: getEventNumber(toolCtx.event, "self_id"),
     groupId: toolCtx.groupId,
@@ -182,7 +197,12 @@ export async function runChat(
         directImageUrls,
       ),
       usageContext,
-      usageContextTokens: estimateChatHistoryTokens(history),
+      usageContextTokens: chatHistoryTokens,
+      usageBreakdown: {
+        systemPromptTokens,
+        chatHistoryTokens,
+        otherContextTokens: currentUserTokens,
+      },
       executableToolsProvider: () =>
         buildSessionTools(
           chatTools,
@@ -241,6 +261,10 @@ export async function runChat(
       [],
     );
     logger.info(`[chat-engine] Session ${toolCtx.sessionId} ended by tool`);
+    toolCtx.aiService.finalizeUsage?.(usageId, {
+      sentUserMessages: 0,
+      sentAssistantMessages: 0,
+    });
     return {
       messages: [],
       pendingAt: [],
@@ -286,6 +310,13 @@ export async function runChat(
   const finalMessages = splitOutgoingUnits(finalText).filter(
     (unit) => unit.trim() && unit.trim() !== "---",
   );
+  const sentAssistantMessages = streamEnabled
+    ? streamedMessages.length
+    : finalMessages.length;
+  toolCtx.aiService.finalizeUsage?.(usageId, {
+    sentUserMessages: 1,
+    sentAssistantMessages,
+  });
 
   logger.info(
     `[chat-engine] Session ${toolCtx.sessionId} done | ${finalMessages.length} msg(s), ${allToolCalls.length} tool call(s)`,
@@ -332,6 +363,33 @@ function estimateChatHistoryTokens(history: ChatMessage[]): number {
       )
       .join("\n"),
   );
+}
+
+function estimateMessageContentTokens(messages: Array<{ content?: unknown }>): number {
+  return messages.reduce(
+    (sum, message) => sum + estimateContentTokens(message.content),
+    0,
+  );
+}
+
+function estimateContentTokens(content: unknown): number {
+  if (typeof content === "string") {
+    return estimateTextTokens(content);
+  }
+  if (!Array.isArray(content)) {
+    return 0;
+  }
+  return content.reduce((sum, item) => {
+    if (!item || typeof item !== "object") return sum;
+    const record = item as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return sum + estimateTextTokens(record.text);
+    }
+    if (record.type === "image_url") {
+      return sum + 85;
+    }
+    return sum + estimateTextTokens(JSON.stringify(record));
+  }, 0);
 }
 
 function estimateTextTokens(text: string): number {

@@ -5,6 +5,7 @@ import type {
 } from "openai/resources/chat/completions";
 import type {
   AIUsageContext,
+  AIUsageFinalization,
   AIUsageRange,
   AIUsageSummary,
 } from "./usage/types";
@@ -83,6 +84,7 @@ export interface CompleteOptions {
   usageContext?: AIUsageContext;
   // 使用统计中从系统消息扣出、计入上下文的 token 数
   usageContextTokens?: number;
+  usageBreakdown?: AIUsageFinalization["breakdown"];
 }
 
 /**
@@ -283,6 +285,7 @@ export interface AIService {
     botId?: number;
   }): AIUsageSummary;
   cleanupUsageStats(retentionMs?: number): number;
+  finalizeUsage(usageId: string, finalization: AIUsageFinalization): boolean;
 }
 
 // 单次请求的原始响应

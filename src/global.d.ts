@@ -143,6 +143,17 @@ declare global {
     // 工具查询
     getTool(toolName: string): import("./core/types").AITool | undefined;
     getAllTools(): Map<string, import("./core/types").AITool>;
+
+    // 使用统计
+    getUsageSummary(options: {
+      range: import("./services/ai/usage/types").AIUsageRange;
+      botId?: number;
+    }): import("./services/ai/usage/types").AIUsageSummary;
+    cleanupUsageStats(retentionMs?: number): number;
+    finalizeUsage(
+      usageId: string,
+      finalization: import("./services/ai/usage/types").AIUsageFinalization,
+    ): boolean;
   }
 }
 
