@@ -8,16 +8,27 @@ import type {
 } from "openai/resources/chat/completions";
 import { BASE_CONFIG as CHAT_BASE_CONFIG } from "../../../plugins/chat/configs/base";
 import type { AITool, AISkill, MiokuService } from "../../core/types";
+import { createAIUsageStore } from "./usage/store";
 import {
   AssistantMessageResult,
+  AIInstance,
+  AIService,
   ChatRuntime,
   CompleteOptions,
   CompleteResponse,
+  MultimodalMessage,
   SessionToolDefinition,
+  TextMessage,
   ToolCallRecord,
   TOOL_RESULT_FOLLOWUP_KEY,
   type ToolResultFollowup,
 } from "./types";
+import type {
+  AIUsageCompletionMeta,
+  AIUsageContext,
+  AIUsageMeasuredTokens,
+  AIUsageStore,
+} from "./usage/types";
 
 /**
  * AI 实例实现
@@ -26,18 +37,22 @@ class AIInstanceImpl implements AIInstance {
   private client: OpenAI;
   private prompts: Map<string, string> = new Map();
   private readonly globalSkills: Map<string, AISkill>;
+  private readonly usageStore: AIUsageStore;
+  private usageContext: AIUsageContext | undefined;
 
   constructor(
     apiUrl: string,
     apiKey: string,
     _modelType: "text" | "multimodal",
     globalSkills: Map<string, AISkill>,
+    usageStore: AIUsageStore,
   ) {
     this.client = new OpenAI({
       baseURL: apiUrl,
       apiKey: apiKey,
     });
     this.globalSkills = globalSkills;
+    this.usageStore = usageStore;
   }
 
   async generateText(options: {
@@ -52,16 +67,14 @@ class AIInstanceImpl implements AIInstance {
       ? [{ role: "system", content: options.prompt }, ...options.messages]
       : [...options.messages];
 
-    const response = await this.client.chat.completions.create({
+    const response = await this.complete({
       model,
       messages,
-      temperature: options.temperature ?? 0.7,
-      ...(options.max_tokens != null && {
-        max_completion_tokens: options.max_tokens,
-      }),
+      temperature: options.temperature,
+      max_tokens: options.max_tokens,
     });
 
-    return response.choices[0]?.message?.content || "";
+    return response.content || "";
   }
 
   async generateMultimodal(options: {
@@ -100,27 +113,65 @@ class AIInstanceImpl implements AIInstance {
       ? [{ role: "system", content: options.prompt }, ...convertedMessages]
       : convertedMessages;
 
-    const response = await this.client.chat.completions.create({
+    const response = await this.complete({
       model,
       messages,
-      temperature: options.temperature ?? 0.7,
-      ...(options.max_tokens != null && {
-        max_completion_tokens: options.max_tokens,
-      }),
+      temperature: options.temperature,
+      max_tokens: options.max_tokens,
     });
 
-    return response.choices[0]?.message?.content || "";
+    return response.content || "";
   }
 
   async complete(options: CompleteOptions): Promise<CompleteResponse> {
-    if (
-      (options.executableTools && options.executableTools.length > 0) ||
-      options.executableToolsProvider
-    ) {
-      return this.completeWithExecutableTools(options);
-    }
-
     const model = await this.resolveModel(options.model);
+    const tracker = createUsageTracker({
+      model,
+      stream: Boolean(options.stream),
+      context: options.usageContext ?? this.usageContext,
+      startedAt: Date.now(),
+      initialMessages: options.messages,
+      initialTools: options.tools,
+      explicitContextTokens: options.usageContextTokens,
+      usageStore: this.usageStore,
+    });
+
+    try {
+      const response =
+        (options.executableTools && options.executableTools.length > 0) ||
+        options.executableToolsProvider
+          ? await this.completeWithExecutableTools(options, model, tracker)
+          : await this.completeOnce(options, model, tracker);
+      tracker.finish(true);
+      return response;
+    } catch (error) {
+      tracker.finish(false, String(error));
+      throw error;
+    }
+  }
+
+  setUsageContext(context: AIUsageContext | undefined): void {
+    this.usageContext = context;
+  }
+
+  async withUsageContext<T>(
+    context: AIUsageContext | undefined,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.usageContext;
+    this.usageContext = context;
+    try {
+      return await fn();
+    } finally {
+      this.usageContext = previous;
+    }
+  }
+
+  private async completeOnce(
+    options: CompleteOptions,
+    model: string,
+    tracker: UsageTracker,
+  ): Promise<CompleteResponse> {
     const assistant = await this.requestAssistantMessage({
       model,
       messages: options.messages,
@@ -130,6 +181,10 @@ class AIInstanceImpl implements AIInstance {
       stream: options.stream,
       onTextDelta: options.onTextDelta,
     });
+    tracker.recordAssistant(assistant);
+    if (assistant.usage) {
+      tracker.recordMeasuredTokens(assistant.usage);
+    }
 
     return {
       content: assistant.content || null,
@@ -142,8 +197,9 @@ class AIInstanceImpl implements AIInstance {
 
   private async completeWithExecutableTools(
     options: CompleteOptions,
+    model: string,
+    tracker: UsageTracker,
   ): Promise<CompleteResponse> {
-    const model = await this.resolveModel(options.model);
     const maxIterations = options.maxIterations ?? 40;
     const allToolCalls: ToolCallRecord[] = [];
     const failedToolCallKeys = new Set<string>();
@@ -174,6 +230,7 @@ class AIInstanceImpl implements AIInstance {
           },
         });
       }
+      tracker.recordToolDefinitions(tools);
 
       const assistant = await this.requestAssistantMessage({
         model,
@@ -184,6 +241,10 @@ class AIInstanceImpl implements AIInstance {
         stream: options.stream,
         onTextDelta: options.onTextDelta,
       });
+      tracker.recordAssistant(assistant);
+      if (assistant.usage) {
+        tracker.recordMeasuredTokens(assistant.usage);
+      }
 
       content = assistant.content;
       reasoning = assistant.reasoning;
@@ -241,6 +302,7 @@ class AIInstanceImpl implements AIInstance {
           arguments: args,
           result: normalizedResult.visibleResult,
         });
+        tracker.recordToolCall(toolName);
 
         const toolMessage = {
           role: "tool",
@@ -250,12 +312,16 @@ class AIInstanceImpl implements AIInstance {
 
         sessionMessages.push(toolMessage);
         turnMessages.push(toolMessage);
+        tracker.recordMessage(toolMessage);
         followupMessages.push(...normalizedResult.followupMessages);
       }
 
       if (followupMessages.length > 0) {
         sessionMessages.push(...followupMessages);
         turnMessages.push(...followupMessages);
+        for (const followupMessage of followupMessages) {
+          tracker.recordMessage(followupMessage);
+        }
       }
     }
 
@@ -312,6 +378,7 @@ class AIInstanceImpl implements AIInstance {
         reasoning: null,
         toolCalls: [],
         raw: { role: "assistant", content: "" },
+        usage: extractUsageTokens(response),
       };
     }
 
@@ -330,6 +397,7 @@ class AIInstanceImpl implements AIInstance {
       reasoning,
       toolCalls,
       raw: message as ChatCompletionMessageParam,
+      usage: extractUsageTokens(response),
     };
   }
 
@@ -354,6 +422,7 @@ class AIInstanceImpl implements AIInstance {
 
     let content = "";
     let reasoning = "";
+    let streamUsage: AIUsageMeasuredTokens | undefined;
     const toolCallsByIndex = new Map<
       number,
       { id: string; name: string; arguments: string }
@@ -361,6 +430,10 @@ class AIInstanceImpl implements AIInstance {
 
     for await (const chunk of stream as AsyncIterable<any>) {
       const choice = chunk?.choices?.[0];
+      const chunkUsage = extractUsageTokens(chunk);
+      if (chunkUsage) {
+        streamUsage = mergeMeasuredTokens(streamUsage, chunkUsage);
+      }
       const delta = choice?.delta;
       if (!delta) continue;
 
@@ -421,6 +494,7 @@ class AIInstanceImpl implements AIInstance {
       reasoning: reasoning || null,
       toolCalls,
       raw: buildAssistantRawMessage(content, toolCalls),
+      usage: streamUsage,
     };
   }
 
@@ -564,8 +638,11 @@ class AIServiceImpl implements AIService {
   private globalSkills: Map<string, AISkill> = new Map();
   private defaultInstanceName: string | null = null;
   private chatRuntime: ChatRuntime | null = null;
+  private readonly usageStore: AIUsageStore;
 
-  constructor() {}
+  constructor(usageStore: AIUsageStore) {
+    this.usageStore = usageStore;
+  }
 
   async create(options: {
     name: string;
@@ -582,6 +659,7 @@ class AIServiceImpl implements AIService {
       options.apiKey,
       options.modelType,
       this.globalSkills,
+      this.usageStore,
     );
 
     this.instances.set(options.name, instance);
@@ -698,6 +776,18 @@ class AIServiceImpl implements AIService {
     }
     return allTools;
   }
+
+  getUsageSummary(options: Parameters<AIService["getUsageSummary"]>[0]) {
+    return this.usageStore.getSummary(options);
+  }
+
+  cleanupUsageStats(retentionMs?: number): number {
+    return this.usageStore.cleanup(retentionMs);
+  }
+
+  dispose(): void {
+    this.usageStore.close();
+  }
 }
 
 function parseToolArguments(raw: string): any {
@@ -706,6 +796,290 @@ function parseToolArguments(raw: string): any {
   } catch {
     return {};
   }
+}
+
+interface UsageTracker {
+  recordMessage(message: ChatCompletionMessageParam): void;
+  recordAssistant(assistant: AssistantMessageResult): void;
+  recordMeasuredTokens(tokens: AIUsageMeasuredTokens): void;
+  recordToolDefinitions(tools: ChatCompletionTool[]): void;
+  recordToolCall(name: string): void;
+  finish(success: boolean, errorMessage?: string): void;
+}
+
+function createUsageTracker(options: {
+  model: string;
+  stream: boolean;
+  context?: AIUsageContext;
+  startedAt: number;
+  initialMessages: ChatCompletionMessageParam[];
+  initialTools?: ChatCompletionTool[];
+  explicitContextTokens?: number;
+  usageStore: AIUsageStore;
+}): UsageTracker {
+  const messages: AIUsageCompletionMeta["messages"] = [];
+  const toolCalls: string[] = [];
+  let toolDefinitionTokens = 0;
+  let toolUseTokens = 0;
+  let measuredTokens: AIUsageMeasuredTokens | undefined;
+  let finished = false;
+
+  const recordMessage = (message: ChatCompletionMessageParam): void => {
+    const role = normalizeUsageRole(message.role);
+    const contentTokens = estimateMessageContentTokens(message);
+    messages.push({ role, contentTokens });
+    if (role === "tool") {
+      toolUseTokens += contentTokens;
+    }
+  };
+
+  for (const message of options.initialMessages) {
+    recordMessage(message);
+  }
+  if (options.initialTools) {
+    toolDefinitionTokens += estimateJsonTokens(options.initialTools);
+  }
+
+  return {
+    recordMessage,
+    recordAssistant(assistant): void {
+      recordMessage(assistant.raw);
+    },
+    recordMeasuredTokens(tokens): void {
+      measuredTokens = mergeMeasuredTokens(measuredTokens, tokens);
+    },
+    recordToolDefinitions(tools): void {
+      toolDefinitionTokens += estimateJsonTokens(tools);
+    },
+    recordToolCall(name): void {
+      toolCalls.push(name);
+    },
+    finish(success, errorMessage): void {
+      if (finished) return;
+      finished = true;
+
+      const systemPromptTokens = messages
+        .filter((message) => message.role === "system")
+        .reduce((sum, message) => sum + message.contentTokens, 0);
+      const explicitContextTokens =
+        typeof options.explicitContextTokens === "number" &&
+        Number.isFinite(options.explicitContextTokens)
+          ? Math.max(0, Math.floor(options.explicitContextTokens))
+          : 0;
+      const outputTokens = messages
+        .filter((message) => message.role === "assistant")
+        .reduce((sum, message) => sum + message.contentTokens, 0);
+      const inputTokens = messages
+        .filter((message) => message.role !== "assistant")
+        .reduce((sum, message) => sum + message.contentTokens, 0);
+      const finalInputTokens = measuredTokens?.inputTokens ?? inputTokens;
+      const finalOutputTokens = measuredTokens?.outputTokens ?? outputTokens;
+      const otherContextTokens = Math.max(
+        0,
+        finalInputTokens -
+          Math.max(0, systemPromptTokens - explicitContextTokens) -
+          toolUseTokens,
+      );
+      const adjustedMessages =
+        explicitContextTokens > 0
+          ? splitExplicitContextTokens(messages, explicitContextTokens)
+          : messages;
+
+      options.usageStore.record({
+        model: options.model,
+        stream: options.stream,
+        success,
+        errorMessage,
+        startedAt: options.startedAt,
+        endedAt: Date.now(),
+        messages: adjustedMessages,
+        inputTokens: finalInputTokens,
+        outputTokens: finalOutputTokens,
+        cacheWriteTokens: measuredTokens?.cacheWriteTokens ?? 0,
+        cacheReadTokens: measuredTokens?.cacheReadTokens ?? 0,
+        toolDefinitionTokens,
+        toolUseTokens,
+        otherContextTokens,
+        toolCalls,
+        context: options.context,
+      });
+    },
+  };
+}
+
+function mergeMeasuredTokens(
+  current: AIUsageMeasuredTokens | undefined,
+  next: AIUsageMeasuredTokens,
+): AIUsageMeasuredTokens {
+  return {
+    inputTokens: sumOptional(current?.inputTokens, next.inputTokens),
+    outputTokens: sumOptional(current?.outputTokens, next.outputTokens),
+    totalTokens: sumOptional(current?.totalTokens, next.totalTokens),
+    cacheWriteTokens: sumOptional(
+      current?.cacheWriteTokens,
+      next.cacheWriteTokens,
+    ),
+    cacheReadTokens: sumOptional(current?.cacheReadTokens, next.cacheReadTokens),
+  };
+}
+
+function sumOptional(a: number | undefined, b: number | undefined): number | undefined {
+  if (a == null && b == null) return undefined;
+  return (a ?? 0) + (b ?? 0);
+}
+
+function splitExplicitContextTokens(
+  messages: AIUsageCompletionMeta["messages"],
+  contextTokens: number,
+): AIUsageCompletionMeta["messages"] {
+  let remaining = contextTokens;
+  return messages.map((message) => {
+    if (message.role !== "system" || remaining <= 0) {
+      return message;
+    }
+
+    const moved = Math.min(message.contentTokens, remaining);
+    remaining -= moved;
+    return {
+      ...message,
+      contentTokens: Math.max(0, message.contentTokens - moved),
+    };
+  });
+}
+
+function extractUsageTokens(payload: unknown): AIUsageMeasuredTokens | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const usage = (payload as Record<string, unknown>).usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  const usageRecord = usage as Record<string, unknown>;
+  const promptDetails = firstObject(
+    usageRecord.prompt_tokens_details,
+    usageRecord.promptTokensDetails,
+    usageRecord.input_tokens_details,
+    usageRecord.inputTokensDetails,
+  );
+  const completionDetails = firstObject(
+    usageRecord.completion_tokens_details,
+    usageRecord.completionTokensDetails,
+    usageRecord.output_tokens_details,
+    usageRecord.outputTokensDetails,
+  );
+
+  const inputTokens = firstNumber(
+    usageRecord.prompt_tokens,
+    usageRecord.promptTokens,
+    usageRecord.input_tokens,
+    usageRecord.inputTokens,
+  );
+  const outputTokens = firstNumber(
+    usageRecord.completion_tokens,
+    usageRecord.completionTokens,
+    usageRecord.output_tokens,
+    usageRecord.outputTokens,
+  );
+  const cacheReadTokens = firstNumber(
+    promptDetails?.cached_tokens,
+    promptDetails?.cachedTokens,
+    promptDetails?.cache_read_input_tokens,
+    promptDetails?.cacheReadInputTokens,
+    usageRecord.cache_read_input_tokens,
+    usageRecord.cacheReadInputTokens,
+    usageRecord.cached_tokens,
+    usageRecord.cachedTokens,
+  );
+  const cacheWriteTokens = firstNumber(
+    promptDetails?.cache_creation_input_tokens,
+    promptDetails?.cacheCreationInputTokens,
+    promptDetails?.cache_write_input_tokens,
+    promptDetails?.cacheWriteInputTokens,
+    usageRecord.cache_creation_input_tokens,
+    usageRecord.cacheCreationInputTokens,
+    usageRecord.cache_write_input_tokens,
+    usageRecord.cacheWriteInputTokens,
+  );
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: firstNumber(
+      usageRecord.total_tokens,
+      usageRecord.totalTokens,
+      usageRecord.total,
+    ),
+    cacheWriteTokens,
+    cacheReadTokens,
+  };
+}
+
+function firstObject(...values: unknown[]): Record<string, unknown> | undefined {
+  return values.find(
+    (value): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === "object" && !Array.isArray(value),
+  );
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const numberValue = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(numberValue) && numberValue >= 0) {
+      return Math.floor(numberValue);
+    }
+  }
+  return undefined;
+}
+
+function normalizeUsageRole(role: string): "system" | "user" | "assistant" | "tool" {
+  if (
+    role === "system" ||
+    role === "user" ||
+    role === "assistant" ||
+    role === "tool"
+  ) {
+    return role;
+  }
+  return "user";
+}
+
+function estimateMessageContentTokens(message: ChatCompletionMessageParam): number {
+  return estimateContentTokens((message as { content?: unknown }).content);
+}
+
+function estimateContentTokens(content: unknown): number {
+  if (typeof content === "string") {
+    return estimateTextTokens(content);
+  }
+  if (!Array.isArray(content)) {
+    return 0;
+  }
+
+  return content.reduce((sum, item) => {
+    if (!item || typeof item !== "object") return sum;
+    const record = item as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return sum + estimateTextTokens(record.text);
+    }
+    if (record.type === "image_url") {
+      return sum + 85;
+    }
+    return sum + estimateJsonTokens(record);
+  }, 0);
+}
+
+function estimateJsonTokens(value: unknown): number {
+  try {
+    return estimateTextTokens(JSON.stringify(value));
+  } catch {
+    return 0;
+  }
+}
+
+function estimateTextTokens(text: string): number {
+  const normalized = text.trim();
+  if (!normalized) return 0;
+  const cjkChars = normalized.match(/[\u3400-\u9fff\u3040-\u30ff]/g)?.length || 0;
+  const latinWords = normalized.match(/[A-Za-z0-9_]+/g)?.length || 0;
+  const symbols = Math.max(0, normalized.length - cjkChars);
+  return Math.max(1, Math.ceil(cjkChars * 0.6 + latinWords * 1.3 + symbols / 6));
 }
 
 function isToolErrorResult(result: any): boolean {
@@ -844,11 +1218,13 @@ const aiService: MiokuService = {
   api: {} as AIService,
 
   async init() {
-    this.api = new AIServiceImpl();
+    this.api = new AIServiceImpl(createAIUsageStore());
     logger.info("ai-service 服务已就绪");
   },
 
   async dispose() {
+    const api = this.api as AIService & { dispose?: () => void };
+    api.dispose?.();
     logger.info("ai-service 已卸载");
   },
 };

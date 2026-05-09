@@ -3,6 +3,11 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
+import type {
+  AIUsageContext,
+  AIUsageRange,
+  AIUsageSummary,
+} from "./usage/types";
 
 /**
  * 文本消息
@@ -74,6 +79,10 @@ export interface CompleteOptions {
   stream?: boolean;
   // 流式文本回调函数
   onTextDelta?: (delta: string) => void | Promise<void>;
+  // 使用统计上下文
+  usageContext?: AIUsageContext;
+  // 使用统计中从系统消息扣出、计入上下文的 token 数
+  usageContextTokens?: number;
 }
 
 /**
@@ -218,6 +227,11 @@ export interface AIInstance {
    * 当传入 executableTools 时，会在当前请求内执行标准 tool loop
    */
   complete(options: CompleteOptions): Promise<CompleteResponse>;
+  setUsageContext?(context: AIUsageContext | undefined): void;
+  withUsageContext?<T>(
+    context: AIUsageContext | undefined,
+    fn: () => Promise<T>,
+  ): Promise<T>;
 
   // 注册提示词
   registerPrompt(name: string, prompt: string): boolean;
@@ -262,6 +276,13 @@ export interface AIService {
   // 工具查询
   getTool(toolName: string): AITool | undefined;
   getAllTools(): Map<string, AITool>;
+
+  // 使用统计
+  getUsageSummary(options: {
+    range: AIUsageRange;
+    botId?: number;
+  }): AIUsageSummary;
+  cleanupUsageStats(retentionMs?: number): number;
 }
 
 // 单次请求的原始响应
@@ -274,4 +295,5 @@ export interface AssistantMessageResult {
     arguments: string;
   }>;
   raw: ChatCompletionMessageParam;
+  usage?: import("./usage/types").AIUsageMeasuredTokens;
 }

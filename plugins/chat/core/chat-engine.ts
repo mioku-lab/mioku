@@ -106,6 +106,15 @@ export async function runChat(
   const directImageUrls = toolCtx.config.isMultimodal
     ? toolCtx.pendingImageUrls
     : undefined;
+  const usageContext = {
+    source: "chat",
+    botId: getEventNumber(toolCtx.event, "self_id"),
+    groupId: toolCtx.groupId,
+    groupName: getEventString(toolCtx.event, "group_name"),
+    userId: toolCtx.userId,
+    userName: targetMessage.userName,
+    sessionId: toolCtx.sessionId,
+  };
 
   if (hasStructuredHistory) {
     structuredHistory!.manager.touch(
@@ -162,32 +171,38 @@ export async function runChat(
     }
   };
 
-  const response = await ai.complete({
-    model: toolCtx.config.model,
-    messages: buildCurrentMessages(
-      prompt,
-      targetMessage,
-      cachedHistory,
-      currentUserMessages,
-      directImageUrls,
-    ),
-    executableToolsProvider: () =>
-      buildSessionTools(
-        chatTools,
-        skillManager.getTools(toolCtx.sessionId),
-        toolCtx,
-        runtimeOptions?.extraTools,
+  const runComplete = () =>
+    ai.complete({
+      model: toolCtx.config.model,
+      messages: buildCurrentMessages(
+        prompt,
+        targetMessage,
+        cachedHistory,
+        currentUserMessages,
+        directImageUrls,
       ),
-    temperature: toolCtx.config.temperature,
-    maxIterations: toolCtx.config.maxIterations,
-    stream: streamEnabled,
-    onTextDelta: streamEnabled
-      ? async (delta) => {
-          streamBuffer += delta;
-          await flushStreamBuffer(false);
-        }
-      : undefined,
-  });
+      usageContext,
+      usageContextTokens: estimateChatHistoryTokens(history),
+      executableToolsProvider: () =>
+        buildSessionTools(
+          chatTools,
+          skillManager.getTools(toolCtx.sessionId),
+          toolCtx,
+          runtimeOptions?.extraTools,
+        ),
+      temperature: toolCtx.config.temperature,
+      maxIterations: toolCtx.config.maxIterations,
+      stream: streamEnabled,
+      onTextDelta: streamEnabled
+        ? async (delta) => {
+            streamBuffer += delta;
+            await flushStreamBuffer(false);
+          }
+        : undefined,
+    });
+  const response = ai.withUsageContext
+    ? await ai.withUsageContext(usageContext, runComplete)
+    : await runComplete();
 
   if (streamEnabled) {
     await flushStreamBuffer(true);
@@ -297,6 +312,39 @@ export async function runChat(
     emojiPath,
     protocolMessages: response.turnMessages,
   };
+}
+
+function estimateChatHistoryTokens(history: ChatMessage[]): number {
+  if (history.length === 0) return 0;
+  return estimateTextTokens(
+    history
+      .map((message) =>
+        [
+          message.userName,
+          message.userId,
+          message.userRole,
+          message.userTitle,
+          message.messageId,
+          message.content,
+        ]
+          .filter((value) => value !== undefined && value !== null)
+          .join(" "),
+      )
+      .join("\n"),
+  );
+}
+
+function estimateTextTokens(text: string): number {
+  const normalized = text.trim();
+  if (!normalized) return 0;
+  const cjkChars =
+    normalized.match(/[\u3400-\u9fff\u3040-\u30ff]/g)?.length || 0;
+  const latinWords = normalized.match(/[A-Za-z0-9_]+/g)?.length || 0;
+  const symbols = Math.max(0, normalized.length - cjkChars);
+  return Math.max(
+    1,
+    Math.ceil(cjkChars * 0.6 + latinWords * 1.3 + symbols / 6),
+  );
 }
 
 function buildCurrentMessages(
@@ -512,6 +560,15 @@ ${failedSummary}
         { role: "system", content: chatSystemPrompt },
         { role: "user", content: userPrompt },
       ],
+      usageContext: {
+        source: "chat.tool-failure",
+        botId: getEventNumber(toolCtx.event, "self_id"),
+        groupId: toolCtx.groupId,
+        groupName: getEventString(toolCtx.event, "group_name"),
+        userId: toolCtx.userId,
+        userName: targetMessage.userName,
+        sessionId: toolCtx.sessionId,
+      },
       temperature: Math.max(0.2, Math.min(0.8, toolCtx.config.temperature)),
       max_tokens: 120,
     });
@@ -527,4 +584,18 @@ ${failedSummary}
   }
 
   return "我刚刚查这条信息时出了点问题，你可以换个关键词再试试，或者给我更具体一点的线索。";
+}
+
+function getEventNumber(event: unknown, key: string): number | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const value = (event as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function getEventString(event: unknown, key: string): string | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const value = (event as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
