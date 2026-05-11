@@ -12,7 +12,7 @@
     "src/services/*"
   ],
   "dependencies": {
-    "mioki": "^0.16.1",
+    "mioki": "^0.16.2",
     "puppeteer": "^24.37.5"
   },
   "devDependencies": {
