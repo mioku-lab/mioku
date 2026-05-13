@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "mioku-developer": {
+      "source": "mioku-lab/mioku-skill",
+      "sourceType": "github",
+      "computedHash": "4e7fa041243cad3890646a9ac54e4b6db74d7710084919102611418993fb2183"
+    }
+  }
+}
