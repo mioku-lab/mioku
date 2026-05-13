@@ -575,6 +575,9 @@ function cleanMarkers(text: string): string {
   return text
     .replace(/<Ai>\s*<think>[\s\S]*?<\/Ai>/gi, "")
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/gi, "")
+    .replace(/<｜｜DSML｜｜invoke[^>]*>[\s\S]*?<\/｜｜DSML｜｜invoke>/gi, "")
+    .replace(/<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi, "")
     .trim();
 }
 

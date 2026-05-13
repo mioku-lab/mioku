@@ -619,6 +619,12 @@ ${markdownModeLine}
 - Use tools only when strictly necessary.`);
   }
 
+  lines.push(`
+### Tool Calling Format
+- When you decide to use a tool, you MUST use the structured tool_calls mechanism provided by the API
+- Do NOT output tool calls, tool names, or tool arguments in your reply text under any circumstances
+- Do NOT use XML, JSON, or any text format to describe tool calls — only use the API's tool_calls field`);
+
   if (ctx.config.memory?.enabled) {
     lines.push(`
 ### Memory Recall Tools
