@@ -1181,23 +1181,31 @@ async function processChat(
       messageId: msg.messageId,
     }));
 
-    const botNickname =
-      cfg.nicknames[0] || ctx.pickBot(e.self_id).nickname || "Bot";
-    const planResult = await pluginCtx.humanize.actionPlanner.plan(
-      groupSessionId,
-      botNickname,
-      history,
-      ctx.text(e) || "",
-    );
+    // Check if message @s the bot - @bot triggers go direct, no planner
+    const atSeg = e.message?.find((seg: any) => seg.type === "at");
+    const isAtBot = !!(atSeg && String(atSeg.qq) === String(e.self_id));
 
-    if (planResult.action === "complete" || planResult.action === "wait") {
-      ctx.logger.info(
-        `[Action Planning] Session ${groupSessionId} ${planResult.action}: ${planResult.reason}`,
+    if (!isAtBot) {
+      const botNickname =
+        cfg.nicknames[0] || ctx.pickBot(e.self_id).nickname || "Bot";
+      const planResult = await pluginCtx.humanize.actionPlanner.plan(
+        groupSessionId,
+        botNickname,
+        history,
+        ctx.text(e) || "",
       );
-      if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
-      return;
+
+      if (planResult.action === "complete" || planResult.action === "wait") {
+        ctx.logger.info(
+          `[Action Planning] Session ${groupSessionId} ${planResult.action}: ${planResult.reason}`,
+        );
+        if (groupId) pluginCtx.queueManager.clearActiveTarget(groupSessionId);
+        return;
+      }
     }
 
+    const botNickname =
+      cfg.nicknames[0] || ctx.pickBot(e.self_id).nickname || "Bot";
     const botRole = groupId
       ? await getBotRole(groupId, ctx, e.self_id)
       : "member";
