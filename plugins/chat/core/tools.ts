@@ -20,9 +20,25 @@ import {
   getFeatureMeta,
   type FeatureName,
 } from "./feature-prompts";
+import {
+  buildAudioFeatureSection,
+  buildMarkdownFeatureSection,
+  buildWebSearchFeatureSection,
+  buildWebReadFeatureSection,
+  buildRecallMemoryFeatureSection,
+} from "./prompt";
 
 const DEFAULT_GROUP_RECALL_LIMIT = 300;
 const DEFAULT_USER_HISTORY_LIMIT = 100;
+
+type ConstraintStrength = "low" | "medium" | "high";
+
+function normalizeConstraintStrength(value: unknown): ConstraintStrength {
+  if (value === "low" || value === "high" || value === "medium") {
+    return value;
+  }
+  return "medium";
+}
 
 interface CreateToolsResult {
   tools: AITool[];
@@ -557,6 +573,38 @@ function createLoadSkillTool(
           skillManager.loadFeature(toolCtx.sessionId, skillName, 60 * 60 * 1000);
         }
 
+        // Build usage instructions for all builtin features
+        const toolStrength = normalizeConstraintStrength(
+          toolCtx.config.toolCallConstraintStrength,
+        );
+        const audioStrength = normalizeConstraintStrength(
+          toolCtx.config.audioUsageConstraintStrength,
+        );
+        const markdownStrength = normalizeConstraintStrength(
+          toolCtx.config.markdownUsageConstraintStrength,
+        );
+
+        const sections: string[] = [];
+
+        if (skillName === "markdown") {
+          const s = buildMarkdownFeatureSection(toolCtx.config, markdownStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "audio") {
+          const s = buildAudioFeatureSection(toolCtx.config, audioStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "web_search") {
+          const s = buildWebSearchFeatureSection(toolCtx.config, toolStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "web_read_page") {
+          const s = buildWebReadFeatureSection(toolCtx.config, toolStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "recall_memory") {
+          const s = buildRecallMemoryFeatureSection(toolCtx.config);
+          if (s) sections.push(s);
+        }
+
+        const usageHint = sections.length > 0 ? sections.join("\n") : "";
+
         return {
           success: true,
           skill_name: skillName,
@@ -567,6 +615,7 @@ function createLoadSkillTool(
             description: t.description,
             parameters: t.parameters,
           })),
+          ...(usageHint ? { usage: usageHint } : {}),
         };
       }
 
