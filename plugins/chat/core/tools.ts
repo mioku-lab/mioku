@@ -1,6 +1,7 @@
 import { logger } from "mioki";
 import type { AITool } from "../../../src";
-import type { ChatMessage, SkillSession, ToolContext } from "../types";
+import type { ChatMessage, ToolContext } from "../types";
+import type { SkillSessionManager } from "../manage/skill-session";
 import type { MemoryUserHistoryChunk } from "../humanize/memory";
 import { MemoryRetrieval } from "../humanize";
 import { searchWebWithSearxng } from "./web/searxng";
@@ -12,9 +13,32 @@ import {
   isExternalSkillAllowed,
   hasSkillPermission,
 } from "./external-skills";
+import {
+  FEATURE_METAS,
+  isFeatureEnabled,
+  isBuiltinFeature,
+  getFeatureMeta,
+  type FeatureName,
+} from "./feature-prompts";
+import {
+  buildAudioFeatureSection,
+  buildMarkdownFeatureSection,
+  buildWebSearchFeatureSection,
+  buildWebReadFeatureSection,
+  buildRecallMemoryFeatureSection,
+} from "./prompt";
 
 const DEFAULT_GROUP_RECALL_LIMIT = 300;
 const DEFAULT_USER_HISTORY_LIMIT = 100;
+
+type ConstraintStrength = "low" | "medium" | "high";
+
+function normalizeConstraintStrength(value: unknown): ConstraintStrength {
+  if (value === "low" || value === "high" || value === "medium") {
+    return value;
+  }
+  return "medium";
+}
 
 interface CreateToolsResult {
   tools: AITool[];
@@ -57,21 +81,6 @@ async function createImageFollowupResult(
   };
 }
 
-export interface SkillSessionManager {
-  getTools(sessionId: string): Map<string, AITool>;
-  loadSkill(
-    sessionId: string,
-    skillName: string,
-    tools: AITool[],
-  ): SkillSession;
-  unloadSkill(sessionId: string, skillName: string): boolean;
-  getActiveSkillsInfo(
-    sessionId: string,
-    isSkillVisible?: (skillName: string) => boolean,
-  ): string;
-  cleanup(): void;
-}
-
 /**
  * Create all tools
  */
@@ -85,6 +94,7 @@ export function createTools(
   tools.push(...createInfoTools(toolCtx));
 
   // === Meta tools (conditional) ===
+  // load_skill tool is always available when external skills are enabled
   if (toolCtx.config.enableExternalSkills) {
     const allSkills = toolCtx.aiService.getAllSkills?.();
     const allowedSkills = allSkills
@@ -98,6 +108,19 @@ export function createTools(
     if (allowedSkills.length > 0) {
       tools.push(createLoadSkillTool(toolCtx, skillManager));
     }
+  }
+
+  // === Optional feature tools (dynamically registered based on loaded features) ===
+  const activeFeatureTools = skillManager.getActiveFeatureTools(toolCtx.sessionId);
+
+  if (activeFeatureTools.includes("web_search")) {
+    tools.push(createWebSearchTool(toolCtx));
+  }
+  if (activeFeatureTools.includes("web_read_page")) {
+    tools.push(createWebReadPageTool(toolCtx));
+  }
+  if (activeFeatureTools.includes("recall_memory")) {
+    tools.push(createRecallMemoryTool(toolCtx));
   }
 
   return { tools };
@@ -164,186 +187,6 @@ function createInfoTools(toolCtx: ToolContext): AITool[] {
           return { members: members.slice(0, 50), total: members.length };
         } catch (err) {
           return { error: `Failed to get member list: ${err}` };
-        }
-      },
-    });
-  }
-
-  if (toolCtx.config.memory?.enabled) {
-    tools.push({
-      name: "recall_memory",
-      description:
-        "Ask the memory worker model to retrieve historical chat context for a recall question. Use only when recall is explicitly needed and the answer is not already in current context.",
-      parameters: {
-        type: "object",
-        properties: {
-          question: {
-            type: "string",
-            description:
-              "The recall question to investigate, e.g. 'What did user 123 mention about travel plans before?'",
-          },
-        },
-        required: ["question"],
-      },
-      handler: async (args) => {
-        const question = String(args?.question || "").trim();
-        if (!question) {
-          return {
-            success: false,
-            error: "question is required",
-          };
-        }
-
-        const ai = toolCtx.aiService.getDefault();
-        if (!ai) {
-          return { success: false, error: "AI instance not available" };
-        }
-
-        const groupHistoryLimit = resolveGroupRecallLimit(
-          toolCtx.config.memory?.groupHistoryLimit,
-        );
-        const userHistoryLimit = resolveUserHistoryLimit(
-          toolCtx.config.memory?.userHistoryLimit,
-        );
-        const groupHistoryMessages = await fetchGroupHistoryByMessageIdPaging(
-          toolCtx,
-          groupHistoryLimit,
-        );
-        const targetUserIds = extractTargetUserIdsFromQuestion(
-          question,
-          toolCtx.userId,
-        );
-        const userHistories: MemoryUserHistoryChunk[] = targetUserIds.map(
-          (userId) => ({
-            userId,
-            messages: toolCtx.db.getMessagesByUser(
-              userId,
-              toolCtx.sessionId,
-              userHistoryLimit,
-            ),
-          }),
-        );
-
-        const retriever = new MemoryRetrieval(ai, toolCtx.config, toolCtx.db);
-        const answer = await retriever.retrieveByQuestion({
-          sessionId: toolCtx.sessionId,
-          question,
-          nowTimestamp: Date.now(),
-          groupHistoryMessages,
-          userHistories,
-        });
-        const queriedAt = new Date().toLocaleString("zh-CN", {
-          hour12: false,
-        });
-        return {
-          success: true,
-          queried_at: queriedAt,
-          question,
-          found: Boolean(answer),
-          answer: answer || "",
-          group_history_count: groupHistoryMessages.length,
-          group_history_limit: groupHistoryLimit,
-          user_history_limit: userHistoryLimit,
-          user_history_targets: targetUserIds,
-          note: answer
-            ? "Memory worker retrieved historical context."
-            : "Memory worker did not find useful historical context.",
-        };
-      },
-    });
-  }
-
-  if (toolCtx.config.searxng?.enabled) {
-    tools.push({
-      name: "web_search",
-      description:
-        "Search the web using SearXNG. Use this for current events, external facts, documentation, or anything not in chat history.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query",
-          },
-          queries: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              "Alternative input. Multiple search queries; only the first non-empty query will be used.",
-          },
-          limit: {
-            type: "number",
-            description:
-              "Max number of results to return. Will be clamped by config maxLimit.",
-          },
-          time_range: {
-            type: "string",
-            enum: ["day", "month", "year"],
-            description: "Optional time filter for recent results",
-          },
-          categories: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              'Optional categories, e.g. ["general"], ["news"], ["science"]',
-          },
-          engines: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              'Optional engines, e.g. ["google"], ["bing"], ["duckduckgo"]',
-          },
-        },
-        required: [],
-      },
-      handler: async (args) => {
-        return searchWebWithSearxng(toolCtx.config.searxng, args || {});
-      },
-    });
-  }
-
-  if (toolCtx.config.webReader?.enabled) {
-    tools.push({
-      name: "web_read_page",
-      description:
-        "Read a webpage by URL, extract its main content, and compress the content into a short, information-dense passage. Use this directly when the user already provides a URL, or combine with web_search when you need to discover relevant pages first.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description: "The http/https URL of the webpage to read",
-          },
-          render_js: {
-            type: "boolean",
-            description:
-              "Set true only if the page likely requires JavaScript rendering. This uses much more CPU and memory.",
-          },
-          question: {
-            type: "string",
-            description:
-              "Optional question or focus. The tool will prioritize webpage details relevant to this question.",
-          },
-        },
-        required: ["url"],
-      },
-      handler: async (args) => {
-        try {
-          const ai = toolCtx.config.webReader.useWorkingModel
-            ? toolCtx.aiService.getDefault()
-            : undefined;
-          if (toolCtx.config.webReader.useWorkingModel && !ai) {
-            return { success: false, error: "AI instance not available" };
-          }
-
-          return await readWebPage(
-            ai,
-            toolCtx.config.workingModel || toolCtx.config.model,
-            toolCtx.config.webReader,
-            args || {},
-          );
-        } catch (err) {
-          return { success: false, error: `Failed to read webpage: ${err}` };
         }
       },
     });
@@ -707,7 +550,77 @@ function createLoadSkillTool(
       required: ["skill_name"],
     },
     handler: async (args) => {
-      if (!isExternalSkillAllowed(toolCtx.config, args.skill_name)) {
+      const skillName = String(args?.skill_name || "").trim();
+
+      // Handle builtin features (markdown, audio, web_search, web_read_page, recall_memory)
+      if (isBuiltinFeature(skillName)) {
+        const feature = getFeatureMeta(skillName);
+        if (!feature) {
+          return { error: `Feature "${skillName}" not found` };
+        }
+        if (!isFeatureEnabled(toolCtx.config, feature)) {
+          return { error: `Feature "${skillName}" is not enabled in config` };
+        }
+
+        // For features with tools, delegate to createFeatureTools
+        const featureTools: AITool[] = feature.hasTools
+          ? createFeatureTools(toolCtx, skillName)
+          : [];
+        if (featureTools.length > 0) {
+          skillManager.loadSkill(toolCtx.sessionId, skillName, featureTools);
+        } else {
+          // For features without tools (markdown, audio), just record the feature state
+          skillManager.loadFeature(toolCtx.sessionId, skillName, 60 * 60 * 1000);
+        }
+
+        // Build usage instructions for all builtin features
+        const toolStrength = normalizeConstraintStrength(
+          toolCtx.config.toolCallConstraintStrength,
+        );
+        const audioStrength = normalizeConstraintStrength(
+          toolCtx.config.audioUsageConstraintStrength,
+        );
+        const markdownStrength = normalizeConstraintStrength(
+          toolCtx.config.markdownUsageConstraintStrength,
+        );
+
+        const sections: string[] = [];
+
+        if (skillName === "markdown") {
+          const s = buildMarkdownFeatureSection(toolCtx.config, markdownStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "audio") {
+          const s = buildAudioFeatureSection(toolCtx.config, audioStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "web_search") {
+          const s = buildWebSearchFeatureSection(toolCtx.config, toolStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "web_read_page") {
+          const s = buildWebReadFeatureSection(toolCtx.config, toolStrength);
+          if (s) sections.push(s);
+        } else if (skillName === "recall_memory") {
+          const s = buildRecallMemoryFeatureSection(toolCtx.config);
+          if (s) sections.push(s);
+        }
+
+        const usageHint = sections.length > 0 ? sections.join("\n") : "";
+
+        return {
+          success: true,
+          skill_name: skillName,
+          feature: true,
+          expires_in: "1 hour",
+          tools: featureTools.map((t) => ({
+            name: `${skillName}.${t.name}`,
+            description: t.description,
+            parameters: t.parameters,
+          })),
+          ...(usageHint ? { usage: usageHint } : {}),
+        };
+      }
+
+      // External skill loading (original logic)
+      if (!isExternalSkillAllowed(toolCtx.config, skillName)) {
         const allSkills = toolCtx.aiService.getAllSkills?.();
         const allowedSkills = allSkills
           ? filterAllowedExternalSkills(
@@ -721,14 +634,14 @@ function createLoadSkillTool(
         return {
           error:
             allowedNames.length > 0
-              ? `Skill "${args.skill_name}" is not allowed. Allowed skills: ${allowedNames.join(", ")}`
+              ? `Skill "${skillName}" is not allowed. Allowed skills: ${allowedNames.join(", ")}`
               : "No external skills are allowed in current config",
         };
       }
 
-      const skill = toolCtx.aiService.getSkill(args.skill_name);
+      const skill = toolCtx.aiService.getSkill(skillName);
       if (!skill) {
-        return { error: `Skill "${args.skill_name}" does not exist` };
+        return { error: `Skill "${skillName}" does not exist` };
       }
       const requiredRole = getSkillRequiredPermissionRole(skill);
       if (!hasSkillPermission(toolCtx.triggerSkillRole, requiredRole)) {
@@ -750,6 +663,202 @@ function createLoadSkillTool(
         skill_name: skill.name,
         expires_in: "1 hour",
         tools: loadedTools,
+      };
+    },
+  };
+}
+
+function createFeatureTools(
+  toolCtx: ToolContext,
+  featureName: FeatureName,
+): AITool[] {
+  switch (featureName) {
+    case "web_search":
+      return [createWebSearchTool(toolCtx)];
+    case "web_read_page":
+      return [createWebReadPageTool(toolCtx)];
+    case "recall_memory":
+      return [createRecallMemoryTool(toolCtx)];
+    default:
+      return [];
+  }
+}
+
+function createWebSearchTool(toolCtx: ToolContext): AITool {
+  return {
+    name: "web_search",
+    description:
+      "Search the web using SearXNG. Use this for current events, external facts, documentation, or anything not in chat history.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query",
+        },
+        queries: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Alternative input. Multiple search queries; only the first non-empty query will be used.",
+        },
+        limit: {
+          type: "number",
+          description:
+            "Max number of results to return. Will be clamped by config maxLimit.",
+        },
+        time_range: {
+          type: "string",
+          enum: ["day", "month", "year"],
+          description: "Optional time filter for recent results",
+        },
+        categories: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            'Optional categories, e.g. ["general"], ["news"], ["science"]',
+        },
+        engines: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            'Optional engines, e.g. ["google"], ["bing"], ["duckduckgo"]',
+        },
+      },
+      required: [],
+    },
+    handler: async (args) => {
+      return searchWebWithSearxng(toolCtx.config.searxng, args || {});
+    },
+  };
+}
+
+function createWebReadPageTool(toolCtx: ToolContext): AITool {
+  return {
+    name: "web_read_page",
+    description:
+      "Read a webpage by URL, extract its main content, and compress the content into a short, information-dense passage. Use this directly when the user already provides a URL, or combine with web_search when you need to discover relevant pages first.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The http/https URL of the webpage to read",
+        },
+        render_js: {
+          type: "boolean",
+          description:
+            "Set true only if the page likely requires JavaScript rendering. This uses much more CPU and memory.",
+        },
+        question: {
+          type: "string",
+          description:
+            "Optional question or focus. The tool will prioritize webpage details relevant to this question.",
+        },
+      },
+      required: ["url"],
+    },
+    handler: async (args) => {
+      try {
+        const ai = toolCtx.config.webReader.useWorkingModel
+          ? toolCtx.aiService.getDefault()
+          : undefined;
+        if (toolCtx.config.webReader.useWorkingModel && !ai) {
+          return { success: false, error: "AI instance not available" };
+        }
+
+        return await readWebPage(
+          ai,
+          toolCtx.config.workingModel || toolCtx.config.model,
+          toolCtx.config.webReader,
+          args || {},
+        );
+      } catch (err) {
+        return { success: false, error: `Failed to read webpage: ${err}` };
+      }
+    },
+  };
+}
+
+function createRecallMemoryTool(toolCtx: ToolContext): AITool {
+  return {
+    name: "recall_memory",
+    description:
+      "Ask the memory worker model to retrieve historical chat context for a recall question. Use only when recall is explicitly needed and the answer is not already in current context.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description:
+            "The recall question to investigate, e.g. 'What did user 123 mention about travel plans before?'",
+        },
+      },
+      required: ["question"],
+    },
+    handler: async (args) => {
+      const question = String(args?.question || "").trim();
+      if (!question) {
+        return {
+          success: false,
+          error: "question is required",
+        };
+      }
+
+      const ai = toolCtx.aiService.getDefault();
+      if (!ai) {
+        return { success: false, error: "AI instance not available" };
+      }
+
+      const groupHistoryLimit = resolveGroupRecallLimit(
+        toolCtx.config.memory?.groupHistoryLimit,
+      );
+      const userHistoryLimit = resolveUserHistoryLimit(
+        toolCtx.config.memory?.userHistoryLimit,
+      );
+      const groupHistoryMessages = await fetchGroupHistoryByMessageIdPaging(
+        toolCtx,
+        groupHistoryLimit,
+      );
+      const targetUserIds = extractTargetUserIdsFromQuestion(
+        question,
+        toolCtx.userId,
+      );
+      const userHistories: MemoryUserHistoryChunk[] = targetUserIds.map(
+        (userId) => ({
+          userId,
+          messages: toolCtx.db.getMessagesByUser(
+            userId,
+            toolCtx.sessionId,
+            userHistoryLimit,
+          ),
+        }),
+      );
+
+      const retriever = new MemoryRetrieval(ai, toolCtx.config, toolCtx.db);
+      const answer = await retriever.retrieveByQuestion({
+        sessionId: toolCtx.sessionId,
+        question,
+        nowTimestamp: Date.now(),
+        groupHistoryMessages,
+        userHistories,
+      });
+      const queriedAt = new Date().toLocaleString("zh-CN", {
+        hour12: false,
+      });
+      return {
+        success: true,
+        queried_at: queriedAt,
+        question,
+        found: Boolean(answer),
+        answer: answer || "",
+        group_history_count: groupHistoryMessages.length,
+        group_history_limit: groupHistoryLimit,
+        user_history_limit: userHistoryLimit,
+        user_history_targets: targetUserIds,
+        note: answer
+          ? "Memory worker retrieved historical context."
+          : "Memory worker did not find useful historical context.",
       };
     },
   };

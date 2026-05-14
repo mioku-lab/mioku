@@ -735,12 +735,10 @@ export interface HumanizeContextsResult {
 export async function getHumanizeContexts(
   humanize: HumanizeEngine,
   groupSessionId: string,
-  content: string,
   userName: string,
   history: ChatMessage[],
   triggerUserId?: number,
 ): Promise<HumanizeContextsResult> {
-  void content;
   const historyStartAt = history.length > 0 ? history[0].timestamp : undefined;
 
   const topicContext = humanize.topicTracker.getTopicContext(
@@ -861,8 +859,6 @@ export function saveBotMessages(
   config: ChatConfig,
   db: ChatDatabase,
   ctx: MiokiContext,
-  groupLastBotMessageTime: Map<string, number>,
-  groupMessageCountAfterBot: Map<string, number>,
   selfId: number,
 ): void {
   const bot = ctx.pickBot(selfId);
@@ -886,9 +882,6 @@ export function saveBotMessages(
     };
     db.saveMessage(botMsg);
   }
-
-  groupLastBotMessageTime.set(groupSessionId, timestamp);
-  groupMessageCountAfterBot.set(groupSessionId, 0);
 }
 
 export async function sendEmoji(

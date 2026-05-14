@@ -1,5 +1,6 @@
 import type { AITool } from "../../../src";
 import type { SkillSession } from "../types";
+import type { FeatureName } from "../core/feature-prompts";
 
 /**
  * 技能会话管理器
@@ -7,6 +8,7 @@ import type { SkillSession } from "../types";
  */
 export class SkillSessionManager {
   private sessions: Map<string, Map<string, SkillSession>> = new Map();
+  private features: Map<string, Map<string, FeatureSession>> = new Map();
   private EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
   getTools(sessionId: string): Map<string, AITool> {
@@ -101,5 +103,71 @@ export class SkillSessionManager {
         this.sessions.delete(sessionId);
       }
     }
+    for (const [sessionId, sessionFeatures] of this.features) {
+      for (const [featureName, feature] of sessionFeatures) {
+        if (now > feature.expiresAt) {
+          sessionFeatures.delete(featureName);
+        }
+      }
+      if (sessionFeatures.size === 0) {
+        this.features.delete(sessionId);
+      }
+    }
   }
+
+  loadFeature(
+    sessionId: string,
+    featureName: FeatureName,
+    ttlMs: number,
+  ): void {
+    let sessionFeatures = this.features.get(sessionId);
+    if (!sessionFeatures) {
+      sessionFeatures = new Map();
+      this.features.set(sessionId, sessionFeatures);
+    }
+
+    const now = Date.now();
+    sessionFeatures.set(featureName, {
+      featureName,
+      loadedAt: now,
+      expiresAt: now + ttlMs,
+    });
+  }
+
+  getActiveFeatureNames(sessionId: string): FeatureName[] {
+    const sessionFeatures = this.features.get(sessionId);
+    if (!sessionFeatures) return [];
+
+    const now = Date.now();
+    const result: FeatureName[] = [];
+    for (const [featureName, feature] of sessionFeatures) {
+      if (now > feature.expiresAt) {
+        sessionFeatures.delete(featureName);
+        continue;
+      }
+      result.push(feature.featureName);
+    }
+    return result;
+  }
+
+  getActiveFeatureTools(sessionId: string): FeatureName[] {
+    // Only return features that have tools (web_search, web_read_page, recall_memory)
+    const all = this.getActiveFeatureNames(sessionId);
+    return all.filter((name) => {
+      switch (name) {
+        case "web_search":
+        case "web_read_page":
+        case "recall_memory":
+          return true;
+        default:
+          return false;
+      }
+    });
+  }
+}
+
+interface FeatureSession {
+  featureName: FeatureName;
+  loadedAt: number;
+  expiresAt: number;
 }

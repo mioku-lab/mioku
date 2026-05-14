@@ -162,39 +162,6 @@ docker restart mioku
 
 如果 `package.json`、插件或服务依赖发生变化，容器启动时会自动执行一次 `bun install`。
 
-如果你希望 WebUI 里的“检查 Mioku 更新 / 更新 Mioku”可用，必须像上面这样把 `./.git` 挂载到 `/app/.git`。
-
-## 核心概念
-
-### 服务 (Service)
-
-服务是可复用的功能模块，提供 API 供插件使用。
-
-**内置服务：**
-
-- **ai** - AI 服务，管理 AI 实例和 Skill
-- **config** - 配置管理服务
-- **help** - 帮助系统服务
-
-### 插件 (Plugin)
-
-插件是独立的功能单元，可以依赖服务，提供 AI Skill。
-
-### AI Skill 系统
-
-每个插件可以注册一个 Skill，Skill 包含多个工具（Tool）。
-
-**命名规则：**
-
-- Skill 名称：通常与插件名相同（如 `chat`）
-- 工具调用：`{skill_name}.{tool_name}`（如 `chat.send_group_message`）
-
-**优势：**
-
-- 清晰的命名空间，避免工具名冲突
-- 按插件组织工具，便于管理
-- AI 可以理解工具的来源和分组
-
 ## 许可
 
 MIT

@@ -16,7 +16,7 @@ export class ExpressionLearner {
     this.db = db;
   }
 
-  async onMessage(_sessionId: string, message: ChatMessage): Promise<void> {
+  async onMessage(message: ChatMessage): Promise<void> {
     if (!this.config.expression?.enabled) return;
     if (message.role !== "user") return;
     if (!message.content || message.content.length < 4) return;

@@ -1,6 +1,6 @@
 {
   "name": "mioku",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "author": "Jerryplusy",
   "license": "MIT",
   "description": "AI-powered bot application based on mioki",
@@ -12,8 +12,12 @@
     "src/services/*"
   ],
   "dependencies": {
-    "mioki": "^0.16.1",
+    "mioki": "^0.16.2",
+    "napcat-sdk": "^0.16.0",
     "puppeteer": "^24.37.5"
+  },
+  "overrides": {
+    "napcat-sdk": "^0.16.0"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.0",

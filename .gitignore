@@ -162,3 +162,5 @@ vite.config.ts.timestamp-*
 /.claude/
 /.cursor/
 /skills-lock.json
+/bun.lock
+/backup/

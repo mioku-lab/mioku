@@ -5,6 +5,7 @@ import type { ChatRuntimePromptInjection } from "../../../src/services/ai/types"
 import { pickPersonalityState, pickReplyStyle } from "../humanize";
 import type { EmojiAgent } from "../humanize";
 import { filterAllowedExternalSkills } from "./external-skills";
+import type { SkillSessionManager } from "../manage/skill-session";
 
 export interface PromptContext {
   config: ChatConfig;
@@ -38,6 +39,9 @@ export interface PromptContext {
   promptInjections?: ChatRuntimePromptInjection[];
   // Emoji agent for dynamic meme info
   emojiAgent?: EmojiAgent;
+  // Skill session manager for on-demand features
+  skillManager?: SkillSessionManager;
+  sessionId?: string;
 }
 
 /**
@@ -508,11 +512,7 @@ function buildReplyStyleSection(
  - Don't be overly helpful or eager. Real people don't always have answers.
  - **NEVER use action descriptions like *xxx* or (xxx) — just speak as a normal person would**
  - Avoid ending sentences with commas or periods unless the context truly requires punctuation.
- - ${
-   ctx.config.enableMarkdownScreenshot
-     ? "**Normal chat should stay plain text. Only use markdown when you intentionally want to send a rendered Markdown screenshot with the special <MARKDOWN>...</MARKDOWN> format.**"
-     : "**DO NOT use markdown formatting, lists, or bullet points. Plain text only.**"
- }
+ - ${markdownBehaviorLine(ctx)}
  - **Reply in a natural conversational way, not as a list or structured format, unless you intentionally switch to the Markdown screenshot format.**
 
 ### Self-Protection
@@ -567,7 +567,13 @@ function buildResponseFormatSection(
   - Example: "\[[[reply:456789]]]我来回复这条消息" will quote-reply message 456789 with the text "我来回复这条消息"
   - Example multiple replies: "\[[[reply:111]]]回复第一条" + newline + "\[[[reply:222]]]回复第二条" will send two separate messages, each quoting different messages`);
 
-  if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
+  // Audio section - only when "audio" feature is loaded
+  const activeFeatures = getActiveFeatureNames(ctx);
+  if (
+    activeFeatures.includes("audio") &&
+    ctx.config.audio?.enabled &&
+    ctx.config.audio.baseUrl?.trim()
+  ) {
     const audioModeLine =
       audioStrength === "high"
         ? "- Use voice sparingly. Only use it when spoken delivery is clearly better than text, such as a greeting, a sharp emotional reaction, or a daily phrase."
@@ -584,7 +590,11 @@ The voice message function sends plain text and cannot be used for singing. If a
 ${audioModeLine}`);
   }
 
-  if (ctx.config.enableMarkdownScreenshot) {
+  // Markdown section - only when "markdown" feature is loaded
+  if (
+    activeFeatures.includes("markdown") &&
+    ctx.config.enableMarkdownScreenshot
+  ) {
     const markdownModeLine =
       markdownStrength === "high"
         ? "- Prefer normal chat text. Use Markdown only when the reply truly needs structured presentation, such as a tutorial, comparison, detailed explanation, code sample or processing large amounts of data, such as after a web search or viewing a webpage."
@@ -619,7 +629,14 @@ ${markdownModeLine}
 - Use tools only when strictly necessary.`);
   }
 
-  if (ctx.config.memory?.enabled) {
+  lines.push(`
+### Tool Calling Format
+- When you decide to use a tool, you MUST use the structured tool_calls mechanism provided by the API
+- Do NOT output tool calls, tool names, or tool arguments in your reply text under any circumstances
+- Do NOT use XML, JSON, or any text format to describe tool calls — only use the API's tool_calls field`);
+
+  // Memory Recall section - only when "recall_memory" feature is loaded
+  if (activeFeatures.includes("recall_memory") && ctx.config.memory?.enabled) {
     lines.push(`
 ### Memory Recall Tools
 - recall_memory: Delegate recall to a memory worker model. Pass a clear recall question and let the worker search historical logs.
@@ -665,8 +682,8 @@ ${emojiModeLine}
     }
   }
 
-  // Web search tool note
-  if (ctx.config.searxng?.enabled) {
+  // Web search tool note - only when "web_search" feature is loaded
+  if (activeFeatures.includes("web_search") && ctx.config.searxng?.enabled) {
     const searxngLine =
       toolStrength === "high"
         ? "- When facts may be outdated or uncertain, proactively call web_search instead of guessing."
@@ -679,7 +696,11 @@ ${emojiModeLine}
 ${searxngLine}`);
   }
 
-  if (ctx.config.webReader?.enabled) {
+  // Web reading tool note - only when "web_read_page" feature is loaded
+  if (
+    activeFeatures.includes("web_read_page") &&
+    ctx.config.webReader?.enabled
+  ) {
     const independentUseLine = ctx.config.searxng?.enabled
       ? "- web_search and web_read_page are independent. Use web_search when you need to discover URLs; use web_read_page directly when the user already gave a URL."
       : "- web_read_page can be used directly when the user provides a URL.";
@@ -700,20 +721,173 @@ ${independentUseLine}
           ctx.triggerSkillRole ?? "member",
         )
       : [];
-    const skillList =
+
+    const activeFeatures = getActiveFeatureNames(ctx);
+    const builtinFeatureNames: string[] = [];
+    const builtinFeatureDescs: string[] = [];
+
+    if (ctx.config.enableMarkdownScreenshot) {
+      builtinFeatureNames.push("markdown");
+      builtinFeatureDescs.push("- markdown: 发送MARKDOWN格式渲染的图片内容");
+    }
+    if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
+      builtinFeatureNames.push("audio");
+      builtinFeatureDescs.push("- audio: 发送语音消息");
+    }
+    if (ctx.config.searxng?.enabled) {
+      builtinFeatureNames.push("web_search");
+      builtinFeatureDescs.push("- web_search: 进行网页搜索");
+    }
+    if (ctx.config.webReader?.enabled) {
+      builtinFeatureNames.push("web_read_page");
+      builtinFeatureDescs.push("- web_read_page: 读取某个网页URL的内容");
+    }
+    if (ctx.config.memory?.enabled) {
+      builtinFeatureNames.push("recall_memory");
+      builtinFeatureDescs.push("- recall_memory: 回忆某内容，也可用于历史查询");
+    }
+
+    const pluginSkillList =
       skillEntries.length > 0
         ? skillEntries.map((s) => `- ${s.name}: ${s.description}`).join("\n")
         : "";
 
-    if (skillList) {
+    const builtinList = builtinFeatureDescs.join("\n");
+    const combinedList = pluginSkillList
+      ? pluginSkillList + "\n" + builtinList
+      : builtinList;
+
+    if (combinedList) {
       lines.push(`
 ### External Skills
 You can load external skills to gain additional capabilities. Use load_skill to load the allowed skills below.
 You prefer to use extra skills to complete the user's tasks like an assistant
 Allowed skills:
-${skillList}`);
+${combinedList}`);
     }
   }
 
   return lines.join("\n");
+}
+
+function getActiveFeatureNames(ctx: PromptContext): string[] {
+  if (!ctx.skillManager || !ctx.sessionId) {
+    return [];
+  }
+  return ctx.skillManager.getActiveFeatureNames(ctx.sessionId);
+}
+
+function markdownBehaviorLine(ctx: PromptContext): string {
+  const activeFeatures = getActiveFeatureNames(ctx);
+  const hasMarkdownFeature = activeFeatures.includes("markdown");
+
+  if (!ctx.config.enableMarkdownScreenshot) {
+    return "**DO NOT use markdown formatting, lists, or bullet points. Plain text only.**";
+  }
+
+  if (!hasMarkdownFeature) {
+    // Markdown enabled in config but feature not loaded — tell AI markdown is NOT available
+    return "**DO NOT use markdown formatting, lists, or bullet points. Plain text only.**";
+  }
+
+  // Feature loaded — allow markdown usage (full instructions in markdown section below)
+  return "**Normal chat should stay plain text. Only use markdown when you intentionally want to send a rendered Markdown screenshot with the special <MARKDOWN>...</MARKDOWN> format.**";
+}
+
+// ==================== Exported Feature Helpers ====================
+// Used by tools.ts to generate usage hints in load_skill results
+
+export function buildAudioFeatureSection(
+  config: ChatConfig,
+  audioStrength: ConstraintStrength = "medium",
+): string {
+  if (!config.audio?.enabled || !config.audio.baseUrl?.trim()) {
+    return "";
+  }
+  const audioModeLine =
+    audioStrength === "high"
+      ? "- Use voice sparingly. Only use it when spoken delivery is clearly better than text, such as a greeting, a sharp emotional reaction, or a daily phrase."
+      : audioStrength === "medium"
+        ? "- You may use voice for greetings, reactions, calls, confirmations, or comforting words, but stay selective."
+        : "- When a short spoken reaction would make the conversation feel more natural or vivid, you can use voice more freely.";
+  return `
+### Optional Voice Message Format
+- You MAY optionally send one voice message by writing [audio:content]
+- Audio is OPTIONAL. Do NOT use it in every reply
+The voice message function sends plain text and cannot be used for singing. If a user needs you to sing, other skills should be considered first.
+- Put [audio:...] on its own line when you want it sent as a separate message in sequence
+- Example: "[audio:おはようー]"
+${audioModeLine}`;
+}
+
+export function buildMarkdownFeatureSection(
+  config: ChatConfig,
+  markdownStrength: ConstraintStrength = "medium",
+): string {
+  if (!config.enableMarkdownScreenshot) {
+    return "";
+  }
+  const markdownModeLine =
+    markdownStrength === "high"
+      ? "- Prefer normal chat text. Use Markdown only when the reply truly needs structured presentation, such as a tutorial, comparison, detailed explanation, code sample or processing large amounts of data, such as after a web search or viewing a webpage."
+      : markdownStrength === "medium"
+        ? "- Use Markdown when your responses require a structured presentation."
+        : "- Use Markdown freely where it can make your responses clearer.";
+  return `
+### Optional Markdown Screenshot Format
+- You MAY optionally send one rendered Markdown screenshot by wrapping content with exact tags: <MARKDOWN> ... </MARKDOWN>
+- Put the Markdown block on its own message whenever possible.
+- It is forbidden to use Markdown syntax or formulas in plain text; they must be rendered using <MARKDOWN> blocks.
+${markdownModeLine}
+- Inside <MARKDOWN>...</MARKDOWN>, there is NO length limit. If the user needs detail, explain clearly and thoroughly instead of over-compressing.`;
+}
+
+export function buildWebSearchFeatureSection(
+  config: ChatConfig,
+  toolStrength: ConstraintStrength = "medium",
+): string {
+  if (!config.searxng?.enabled) {
+    return "";
+  }
+  const searxngLine =
+    toolStrength === "high"
+      ? "- When facts may be outdated or uncertain, proactively call web_search instead of guessing."
+      : toolStrength === "medium"
+        ? "- Use web_search when current or external info is needed."
+        : "- Use web_search only when the user explicitly needs external/current information.";
+  return `
+### Web Search Tool
+- web_search: Use this when you need current or external information that is not in chat history.
+${searxngLine}`;
+}
+
+export function buildWebReadFeatureSection(
+  config: ChatConfig,
+  toolStrength: ConstraintStrength = "medium",
+): string {
+  if (!config.webReader?.enabled) {
+    return "";
+  }
+  const independentUseLine = config.searxng?.enabled
+    ? "- web_search and web_read_page are independent. Use web_search when you need to discover URLs; use web_read_page directly when the user already gave a URL."
+    : "- web_read_page can be used directly when the user provides a URL.";
+  return `
+### Web Reading Tool
+- web_read_page: Read a webpage URL, extract the main content, and return a compressed content block that preserves as much page information as possible.
+${independentUseLine}
+- Only set render_js=true when the page clearly needs JavaScript rendering, because it costs much more CPU and memory.`;
+}
+
+export function buildRecallMemoryFeatureSection(
+  config: ChatConfig,
+): string {
+  if (!config.memory?.enabled) {
+    return "";
+  }
+  return `
+### Memory Recall Tools
+- recall_memory: Delegate recall to a memory worker model. Pass a clear recall question and let the worker search historical logs.
+- Use recall_memory ONLY when there is explicit need to recall past content and required information is clearly missing from current context.
+- Do NOT call recall_memory for every question.
+- The worker returns historical logs with timestamps; treat them as past records, not newly sent messages.`;
 }

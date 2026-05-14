@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import type { HumanizeEngine } from "../humanize";
 import type { PromptContext } from "./prompt";
-import type { SkillSessionManager } from "./tools";
+import type { SkillSessionManager } from "../manage/skill-session";
 import { createTools } from "./tools";
 import { buildSystemPrompt } from "./prompt";
 import {
@@ -61,7 +61,7 @@ export async function runChat(
   const skillTools = skillManager.getTools(toolCtx.sessionId);
   const activeSkillsInfo = skillManager.getActiveSkillsInfo(
     toolCtx.sessionId,
-    (skillName) => {
+    (skillName: string) => {
       if (
         !toolCtx.config.enableExternalSkills ||
         !isExternalSkillAllowed(toolCtx.config, skillName)
@@ -79,6 +79,8 @@ export async function runChat(
     chatHistory: history,
     targetMessage,
     emojiAgent: humanize.emojiAgent,
+    skillManager,
+    sessionId: toolCtx.sessionId,
   });
 
   logger.info(
@@ -106,6 +108,30 @@ export async function runChat(
   const directImageUrls = toolCtx.config.isMultimodal
     ? toolCtx.pendingImageUrls
     : undefined;
+  const usageId = `chat:${toolCtx.sessionId}:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+  const systemPromptTokens = estimateTextTokens(prompt);
+  const chatHistoryTokens = estimateChatHistoryTokens(history);
+  const currentUserTokens = estimateMessageContentTokens(
+    buildCurrentMessages(
+      "",
+      targetMessage,
+      [],
+      currentUserMessages,
+      directImageUrls,
+    ).filter((message) => message.role !== "system"),
+  );
+  const usageContext = {
+    usageId,
+    source: "chat",
+    botId: getEventNumber(toolCtx.event, "self_id"),
+    groupId: toolCtx.groupId,
+    groupName: getEventString(toolCtx.event, "group_name"),
+    userId: toolCtx.userId,
+    userName: targetMessage.userName,
+    sessionId: toolCtx.sessionId,
+  };
 
   if (hasStructuredHistory) {
     structuredHistory!.manager.touch(
@@ -162,32 +188,43 @@ export async function runChat(
     }
   };
 
-  const response = await ai.complete({
-    model: toolCtx.config.model,
-    messages: buildCurrentMessages(
-      prompt,
-      targetMessage,
-      cachedHistory,
-      currentUserMessages,
-      directImageUrls,
-    ),
-    executableToolsProvider: () =>
-      buildSessionTools(
-        chatTools,
-        skillManager.getTools(toolCtx.sessionId),
-        toolCtx,
-        runtimeOptions?.extraTools,
+  const runComplete = () =>
+    ai.complete({
+      model: toolCtx.config.model,
+      messages: buildCurrentMessages(
+        prompt,
+        targetMessage,
+        cachedHistory,
+        currentUserMessages,
+        directImageUrls,
       ),
-    temperature: toolCtx.config.temperature,
-    maxIterations: toolCtx.config.maxIterations,
-    stream: streamEnabled,
-    onTextDelta: streamEnabled
-      ? async (delta) => {
-          streamBuffer += delta;
-          await flushStreamBuffer(false);
-        }
-      : undefined,
-  });
+      usageContext,
+      usageContextTokens: chatHistoryTokens,
+      usageBreakdown: {
+        systemPromptTokens,
+        chatHistoryTokens,
+        otherContextTokens: currentUserTokens,
+      },
+      executableToolsProvider: () =>
+        buildSessionTools(
+          chatTools,
+          skillManager.getTools(toolCtx.sessionId),
+          toolCtx,
+          runtimeOptions?.extraTools,
+        ),
+      temperature: toolCtx.config.temperature,
+      maxIterations: toolCtx.config.maxIterations,
+      stream: streamEnabled,
+      onTextDelta: streamEnabled
+        ? async (delta) => {
+            streamBuffer += delta;
+            await flushStreamBuffer(false);
+          }
+        : undefined,
+    });
+  const response = ai.withUsageContext
+    ? await ai.withUsageContext(usageContext, runComplete)
+    : await runComplete();
 
   if (streamEnabled) {
     await flushStreamBuffer(true);
@@ -226,6 +263,10 @@ export async function runChat(
       [],
     );
     logger.info(`[chat-engine] Session ${toolCtx.sessionId} ended by tool`);
+    toolCtx.aiService.finalizeUsage?.(usageId, {
+      sentUserMessages: 0,
+      sentAssistantMessages: 0,
+    });
     return {
       messages: [],
       pendingAt: [],
@@ -271,6 +312,13 @@ export async function runChat(
   const finalMessages = splitOutgoingUnits(finalText).filter(
     (unit) => unit.trim() && unit.trim() !== "---",
   );
+  const sentAssistantMessages = streamEnabled
+    ? streamedMessages.length
+    : finalMessages.length;
+  toolCtx.aiService.finalizeUsage?.(usageId, {
+    sentUserMessages: 1,
+    sentAssistantMessages,
+  });
 
   logger.info(
     `[chat-engine] Session ${toolCtx.sessionId} done | ${finalMessages.length} msg(s), ${allToolCalls.length} tool call(s)`,
@@ -297,6 +345,66 @@ export async function runChat(
     emojiPath,
     protocolMessages: response.turnMessages,
   };
+}
+
+function estimateChatHistoryTokens(history: ChatMessage[]): number {
+  if (history.length === 0) return 0;
+  return estimateTextTokens(
+    history
+      .map((message) =>
+        [
+          message.userName,
+          message.userId,
+          message.userRole,
+          message.userTitle,
+          message.messageId,
+          message.content,
+        ]
+          .filter((value) => value !== undefined && value !== null)
+          .join(" "),
+      )
+      .join("\n"),
+  );
+}
+
+function estimateMessageContentTokens(messages: Array<{ content?: unknown }>): number {
+  return messages.reduce(
+    (sum, message) => sum + estimateContentTokens(message.content),
+    0,
+  );
+}
+
+function estimateContentTokens(content: unknown): number {
+  if (typeof content === "string") {
+    return estimateTextTokens(content);
+  }
+  if (!Array.isArray(content)) {
+    return 0;
+  }
+  return content.reduce((sum, item) => {
+    if (!item || typeof item !== "object") return sum;
+    const record = item as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return sum + estimateTextTokens(record.text);
+    }
+    if (record.type === "image_url") {
+      return sum + 85;
+    }
+    return sum + estimateTextTokens(JSON.stringify(record));
+  }, 0);
+}
+
+function estimateTextTokens(text: string): number {
+  const normalized = text.trim();
+  if (!normalized) return 0;
+  const cjkChars =
+    normalized.match(/[\u3400-\u9fff\u3040-\u30ff]/g)?.length || 0;
+  const latinWords = normalized.match(/[A-Za-z0-9_]+/g)?.length || 0;
+  const symbols = Math.max(0, normalized.length - cjkChars);
+  return Math.max(
+    1,
+    Math.ceil(cjkChars * 0.6 + latinWords * 1.3 + symbols / 6),
+  );
 }
 
 function buildCurrentMessages(
@@ -466,7 +574,13 @@ function isPlainAssistantMessage(message: any): boolean {
  * Note: ALL markers are preserved here - they'll be parsed by parseLineMarkers in index.ts
  */
 function cleanMarkers(text: string): string {
-  return text.trim();
+  return text
+    .replace(/<Ai>\s*<think>[\s\S]*?<\/Ai>/gi, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/gi, "")
+    .replace(/<｜｜DSML｜｜invoke[^>]*>[\s\S]*?<\/｜｜DSML｜｜invoke>/gi, "")
+    .replace(/<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi, "")
+    .trim();
 }
 
 function isToolErrorResult(result: any): boolean {
@@ -509,6 +623,15 @@ ${failedSummary}
         { role: "system", content: chatSystemPrompt },
         { role: "user", content: userPrompt },
       ],
+      usageContext: {
+        source: "chat.tool-failure",
+        botId: getEventNumber(toolCtx.event, "self_id"),
+        groupId: toolCtx.groupId,
+        groupName: getEventString(toolCtx.event, "group_name"),
+        userId: toolCtx.userId,
+        userName: targetMessage.userName,
+        sessionId: toolCtx.sessionId,
+      },
       temperature: Math.max(0.2, Math.min(0.8, toolCtx.config.temperature)),
       max_tokens: 120,
     });
@@ -524,4 +647,18 @@ ${failedSummary}
   }
 
   return "我刚刚查这条信息时出了点问题，你可以换个关键词再试试，或者给我更具体一点的线索。";
+}
+
+function getEventNumber(event: unknown, key: string): number | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const value = (event as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function getEventString(event: unknown, key: string): string | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const value = (event as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
