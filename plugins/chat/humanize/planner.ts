@@ -14,6 +14,7 @@ export class ActionPlanner {
     string,
     { action: PlannerAction; time: number }[]
   > = new Map();
+  private pendingPlans: Map<string, Promise<PlannerResult>> = new Map();
 
   constructor(ai: AIInstance, config: ChatConfig) {
     this.ai = ai;
@@ -26,6 +27,34 @@ export class ActionPlanner {
     recentHistory: ChatMessage[],
     lastTriggerMessage: string,
     isIdleCheck: boolean = false,
+  ): Promise<PlannerResult> {
+    if (!this.config.planner?.enabled) {
+      return { action: "reply", reason: "planner disabled" };
+    }
+
+    // Guard: if a plan call is already in-flight for this session, wait for it
+    const existing = this.pendingPlans.get(sessionId);
+    if (existing) {
+      logger.info(`[ActionPlanner] Session ${sessionId} has a plan already in-flight, waiting...`);
+      return existing;
+    }
+
+    const planPromise = this.doPlan(sessionId, botName, recentHistory, lastTriggerMessage, isIdleCheck);
+    this.pendingPlans.set(sessionId, planPromise);
+
+    try {
+      return await planPromise;
+    } finally {
+      this.pendingPlans.delete(sessionId);
+    }
+  }
+
+  private async doPlan(
+    sessionId: string,
+    botName: string,
+    recentHistory: ChatMessage[],
+    lastTriggerMessage: string,
+    isIdleCheck: boolean,
   ): Promise<PlannerResult> {
     if (!this.config.planner?.enabled) {
       return { action: "reply", reason: "planner disabled" };
