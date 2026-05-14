@@ -5,6 +5,7 @@ import type { ChatRuntimePromptInjection } from "../../../src/services/ai/types"
 import { pickPersonalityState, pickReplyStyle } from "../humanize";
 import type { EmojiAgent } from "../humanize";
 import { filterAllowedExternalSkills } from "./external-skills";
+import type { SkillSessionManager } from "../manage/skill-session";
 
 export interface PromptContext {
   config: ChatConfig;
@@ -38,6 +39,9 @@ export interface PromptContext {
   promptInjections?: ChatRuntimePromptInjection[];
   // Emoji agent for dynamic meme info
   emojiAgent?: EmojiAgent;
+  // Skill session manager for on-demand features
+  skillManager?: SkillSessionManager;
+  sessionId?: string;
 }
 
 /**
@@ -567,7 +571,9 @@ function buildResponseFormatSection(
   - Example: "\[[[reply:456789]]]我来回复这条消息" will quote-reply message 456789 with the text "我来回复这条消息"
   - Example multiple replies: "\[[[reply:111]]]回复第一条" + newline + "\[[[reply:222]]]回复第二条" will send two separate messages, each quoting different messages`);
 
-  if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
+  // Audio section - only when "audio" feature is loaded
+  const activeFeatures = getActiveFeatureNames(ctx);
+  if (activeFeatures.includes("audio") && ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
     const audioModeLine =
       audioStrength === "high"
         ? "- Use voice sparingly. Only use it when spoken delivery is clearly better than text, such as a greeting, a sharp emotional reaction, or a daily phrase."
@@ -584,7 +590,8 @@ The voice message function sends plain text and cannot be used for singing. If a
 ${audioModeLine}`);
   }
 
-  if (ctx.config.enableMarkdownScreenshot) {
+  // Markdown section - only when "markdown" feature is loaded
+  if (activeFeatures.includes("markdown") && ctx.config.enableMarkdownScreenshot) {
     const markdownModeLine =
       markdownStrength === "high"
         ? "- Prefer normal chat text. Use Markdown only when the reply truly needs structured presentation, such as a tutorial, comparison, detailed explanation, code sample or processing large amounts of data, such as after a web search or viewing a webpage."
@@ -625,7 +632,8 @@ ${markdownModeLine}
 - Do NOT output tool calls, tool names, or tool arguments in your reply text under any circumstances
 - Do NOT use XML, JSON, or any text format to describe tool calls — only use the API's tool_calls field`);
 
-  if (ctx.config.memory?.enabled) {
+  // Memory Recall section - only when "recall_memory" feature is loaded
+  if (activeFeatures.includes("recall_memory") && ctx.config.memory?.enabled) {
     lines.push(`
 ### Memory Recall Tools
 - recall_memory: Delegate recall to a memory worker model. Pass a clear recall question and let the worker search historical logs.
@@ -671,8 +679,8 @@ ${emojiModeLine}
     }
   }
 
-  // Web search tool note
-  if (ctx.config.searxng?.enabled) {
+  // Web search tool note - only when "web_search" feature is loaded
+  if (activeFeatures.includes("web_search") && ctx.config.searxng?.enabled) {
     const searxngLine =
       toolStrength === "high"
         ? "- When facts may be outdated or uncertain, proactively call web_search instead of guessing."
@@ -685,7 +693,8 @@ ${emojiModeLine}
 ${searxngLine}`);
   }
 
-  if (ctx.config.webReader?.enabled) {
+  // Web reading tool note - only when "web_read_page" feature is loaded
+  if (activeFeatures.includes("web_read_page") && ctx.config.webReader?.enabled) {
     const independentUseLine = ctx.config.searxng?.enabled
       ? "- web_search and web_read_page are independent. Use web_search when you need to discover URLs; use web_read_page directly when the user already gave a URL."
       : "- web_read_page can be used directly when the user provides a URL.";
@@ -722,4 +731,11 @@ ${skillList}`);
   }
 
   return lines.join("\n");
+}
+
+function getActiveFeatureNames(ctx: PromptContext): string[] {
+  if (!ctx.skillManager || !ctx.sessionId) {
+    return [];
+  }
+  return ctx.skillManager.getActiveFeatureNames(ctx.sessionId);
 }

@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import type { HumanizeEngine } from "../humanize";
 import type { PromptContext } from "./prompt";
-import type { SkillSessionManager } from "./tools";
+import type { SkillSessionManager } from "../manage/skill-session";
 import { createTools } from "./tools";
 import { buildSystemPrompt } from "./prompt";
 import {
@@ -61,7 +61,7 @@ export async function runChat(
   const skillTools = skillManager.getTools(toolCtx.sessionId);
   const activeSkillsInfo = skillManager.getActiveSkillsInfo(
     toolCtx.sessionId,
-    (skillName) => {
+    (skillName: string) => {
       if (
         !toolCtx.config.enableExternalSkills ||
         !isExternalSkillAllowed(toolCtx.config, skillName)
@@ -79,6 +79,8 @@ export async function runChat(
     chatHistory: history,
     targetMessage,
     emojiAgent: humanize.emojiAgent,
+    skillManager,
+    sessionId: toolCtx.sessionId,
   });
 
   logger.info(
