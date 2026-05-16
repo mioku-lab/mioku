@@ -44,10 +44,35 @@ process.on("exit", cleanup);
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`${cmd} --version`, { stdio: "ignore", windowsHide: true });
+    execSync(`which ${cmd}`, { stdio: "ignore", windowsHide: true });
     return true;
   } catch {
     return false;
+  }
+}
+
+function installUnzip(): void {
+  if (commandExists("unzip")) return;
+
+  const platform = process.platform;
+  if (platform === "darwin") {
+    if (commandExists("brew")) {
+      execSync("brew install unzip", { stdio: "inherit" });
+      return;
+    }
+    die("未找到 unzip，且未安装 brew，请先运行: brew install unzip");
+  } else if (platform === "linux") {
+    if (commandExists("apt")) {
+      execSync("sudo apt install -y unzip", { stdio: "inherit" });
+      return;
+    }
+    if (commandExists("yum")) {
+      execSync("sudo yum install -y unzip", { stdio: "inherit" });
+      return;
+    }
+    die("未找到 unzip，且未安装 apt/yum，请先运行: sudo apt install unzip");
+  } else {
+    die("未找到 unzip，请手动安装");
   }
 }
 
@@ -229,6 +254,8 @@ function downloadGitHubJson(url: string, output: string) {
 
 function extractZip(zipFile: string, destDir: string) {
   mkdirSync(destDir, { recursive: true });
+
+  installUnzip();
 
   if (commandExists("unzip")) {
     execSync(`unzip -oq "${zipFile}" -d "${destDir}"`, { stdio: "inherit" });
