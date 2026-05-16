@@ -25,6 +25,11 @@ import type {
   BuildStructuredUserInputFromTarget,
   RunChat,
 } from "./manage/types";
+import type {
+  ChatRuntimeNoticeOptions,
+  ChatRuntimeResult,
+  ChatRuntimeInformationRequestOptions,
+} from "../../src/services/ai/types";
 
 /**
  * Core plugin context - bundles all managers and core services.
@@ -72,7 +77,20 @@ export interface ChatPluginContext {
 /**
  * Runtime state for rate limiting - passed separately as it's mutable state.
  */
-export interface ChatRuntime {
+export interface ChatRuntimeState {
   isRateLimitBlocked: () => boolean;
   processingSet: Set<string>;
+}
+
+/**
+ * Chat runtime implementation for external callers (like boot plugin).
+ * Provides notice generation and information request capabilities.
+ */
+export interface ChatRuntime {
+  generateNotice(
+    options: ChatRuntimeNoticeOptions,
+  ): Promise<ChatRuntimeResult>;
+  requestInformation(
+    options: ChatRuntimeInformationRequestOptions,
+  ): Promise<ChatRuntimeResult>;
 }
