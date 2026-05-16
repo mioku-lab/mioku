@@ -21,8 +21,6 @@ import {
   type FeatureName,
 } from "./feature-prompts";
 import {
-  buildAudioFeatureSection,
-  buildMarkdownFeatureSection,
   buildWebSearchFeatureSection,
   buildWebReadFeatureSection,
   buildRecallMemoryFeatureSection,
@@ -586,13 +584,7 @@ function createLoadSkillTool(
 
         const sections: string[] = [];
 
-        if (skillName === "markdown") {
-          const s = buildMarkdownFeatureSection(toolCtx.config, markdownStrength);
-          if (s) sections.push(s);
-        } else if (skillName === "audio") {
-          const s = buildAudioFeatureSection(toolCtx.config, audioStrength);
-          if (s) sections.push(s);
-        } else if (skillName === "web_search") {
+        if (skillName === "web_search") {
           const s = buildWebSearchFeatureSection(toolCtx.config, toolStrength);
           if (s) sections.push(s);
         } else if (skillName === "web_read_page") {

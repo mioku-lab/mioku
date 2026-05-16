@@ -567,13 +567,8 @@ function buildResponseFormatSection(
   - Example: "\[[[reply:456789]]]我来回复这条消息" will quote-reply message 456789 with the text "我来回复这条消息"
   - Example multiple replies: "\[[[reply:111]]]回复第一条" + newline + "\[[[reply:222]]]回复第二条" will send two separate messages, each quoting different messages`);
 
-  // Audio section - only when "audio" feature is loaded
-  const activeFeatures = getActiveFeatureNames(ctx);
-  if (
-    activeFeatures.includes("audio") &&
-    ctx.config.audio?.enabled &&
-    ctx.config.audio.baseUrl?.trim()
-  ) {
+  // Audio section - always attached when enabled
+  if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
     const audioModeLine =
       audioStrength === "high"
         ? "- Use voice sparingly. Only use it when spoken delivery is clearly better than text, such as a greeting, a sharp emotional reaction, or a daily phrase."
@@ -590,11 +585,8 @@ The voice message function sends plain text and cannot be used for singing. If a
 ${audioModeLine}`);
   }
 
-  // Markdown section - only when "markdown" feature is loaded
-  if (
-    activeFeatures.includes("markdown") &&
-    ctx.config.enableMarkdownScreenshot
-  ) {
+  // Markdown section - always attached when enabled
+  if (ctx.config.enableMarkdownScreenshot) {
     const markdownModeLine =
       markdownStrength === "high"
         ? "- Prefer normal chat text. Use Markdown only when the reply truly needs structured presentation, such as a tutorial, comparison, detailed explanation, code sample or processing large amounts of data, such as after a web search or viewing a webpage."
@@ -636,6 +628,7 @@ ${markdownModeLine}
 - Do NOT use XML, JSON, or any text format to describe tool calls — only use the API's tool_calls field`);
 
   // Memory Recall section - only when "recall_memory" feature is loaded
+  const activeFeatures = getActiveFeatureNames(ctx);
   if (activeFeatures.includes("recall_memory") && ctx.config.memory?.enabled) {
     lines.push(`
 ### Memory Recall Tools
@@ -722,18 +715,9 @@ ${independentUseLine}
         )
       : [];
 
-    const activeFeatures = getActiveFeatureNames(ctx);
     const builtinFeatureNames: string[] = [];
     const builtinFeatureDescs: string[] = [];
 
-    if (ctx.config.enableMarkdownScreenshot) {
-      builtinFeatureNames.push("markdown");
-      builtinFeatureDescs.push("- markdown: 发送MARKDOWN格式渲染的图片内容");
-    }
-    if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
-      builtinFeatureNames.push("audio");
-      builtinFeatureDescs.push("- audio: 发送语音消息");
-    }
     if (ctx.config.searxng?.enabled) {
       builtinFeatureNames.push("web_search");
       builtinFeatureDescs.push("- web_search: 进行网页搜索");
@@ -797,51 +781,6 @@ function markdownBehaviorLine(ctx: PromptContext): string {
 // ==================== Exported Feature Helpers ====================
 // Used by tools.ts to generate usage hints in load_skill results
 
-export function buildAudioFeatureSection(
-  config: ChatConfig,
-  audioStrength: ConstraintStrength = "medium",
-): string {
-  if (!config.audio?.enabled || !config.audio.baseUrl?.trim()) {
-    return "";
-  }
-  const audioModeLine =
-    audioStrength === "high"
-      ? "- Use voice sparingly. Only use it when spoken delivery is clearly better than text, such as a greeting, a sharp emotional reaction, or a daily phrase."
-      : audioStrength === "medium"
-        ? "- You may use voice for greetings, reactions, calls, confirmations, or comforting words, but stay selective."
-        : "- When a short spoken reaction would make the conversation feel more natural or vivid, you can use voice more freely.";
-  return `
-### Optional Voice Message Format
-- You MAY optionally send one voice message by writing [audio:content]
-- Audio is OPTIONAL. Do NOT use it in every reply
-The voice message function sends plain text and cannot be used for singing. If a user needs you to sing, other skills should be considered first.
-- Put [audio:...] on its own line when you want it sent as a separate message in sequence
-- Example: "[audio:おはようー]"
-${audioModeLine}`;
-}
-
-export function buildMarkdownFeatureSection(
-  config: ChatConfig,
-  markdownStrength: ConstraintStrength = "medium",
-): string {
-  if (!config.enableMarkdownScreenshot) {
-    return "";
-  }
-  const markdownModeLine =
-    markdownStrength === "high"
-      ? "- Prefer normal chat text. Use Markdown only when the reply truly needs structured presentation, such as a tutorial, comparison, detailed explanation, code sample or processing large amounts of data, such as after a web search or viewing a webpage."
-      : markdownStrength === "medium"
-        ? "- Use Markdown when your responses require a structured presentation."
-        : "- Use Markdown freely where it can make your responses clearer.";
-  return `
-### Optional Markdown Screenshot Format
-- You MAY optionally send one rendered Markdown screenshot by wrapping content with exact tags: <MARKDOWN> ... </MARKDOWN>
-- Put the Markdown block on its own message whenever possible.
-- It is forbidden to use Markdown syntax or formulas in plain text; they must be rendered using <MARKDOWN> blocks.
-${markdownModeLine}
-- Inside <MARKDOWN>...</MARKDOWN>, there is NO length limit. If the user needs detail, explain clearly and thoroughly instead of over-compressing.`;
-}
-
 export function buildWebSearchFeatureSection(
   config: ChatConfig,
   toolStrength: ConstraintStrength = "medium",
@@ -878,9 +817,7 @@ ${independentUseLine}
 - Only set render_js=true when the page clearly needs JavaScript rendering, because it costs much more CPU and memory.`;
 }
 
-export function buildRecallMemoryFeatureSection(
-  config: ChatConfig,
-): string {
+export function buildRecallMemoryFeatureSection(config: ChatConfig): string {
   if (!config.memory?.enabled) {
     return "";
   }
