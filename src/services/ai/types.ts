@@ -255,6 +255,7 @@ export interface AIService {
     apiUrl: string;
     apiKey: string;
     modelType: "text" | "multimodal";
+    model?: string;
   }): Promise<AIInstance>;
   get(name: string): AIInstance | undefined;
   list(): string[];

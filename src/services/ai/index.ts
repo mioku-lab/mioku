@@ -40,11 +40,13 @@ class AIInstanceImpl implements AIInstance {
   private readonly globalSkills: Map<string, AISkill>;
   private readonly usageStore: AIUsageStore;
   private usageContext: AIUsageContext | undefined;
+  private readonly defaultModel: string | undefined;
 
   constructor(
     apiUrl: string,
     apiKey: string,
     _modelType: "text" | "multimodal",
+    defaultModel: string | undefined,
     globalSkills: Map<string, AISkill>,
     usageStore: AIUsageStore,
   ) {
@@ -52,6 +54,7 @@ class AIInstanceImpl implements AIInstance {
       baseURL: apiUrl,
       apiKey: apiKey,
     });
+    this.defaultModel = defaultModel;
     this.globalSkills = globalSkills;
     this.usageStore = usageStore;
   }
@@ -651,6 +654,7 @@ class AIServiceImpl implements AIService {
     apiUrl: string;
     apiKey: string;
     modelType: "text" | "multimodal";
+    model?: string;
   }): Promise<AIInstance> {
     if (this.instances.has(options.name)) {
       logger.error(`AI instance ${options.name} already exists`);
@@ -660,6 +664,7 @@ class AIServiceImpl implements AIService {
       options.apiUrl,
       options.apiKey,
       options.modelType,
+      options.model,
       this.globalSkills,
       this.usageStore,
     );

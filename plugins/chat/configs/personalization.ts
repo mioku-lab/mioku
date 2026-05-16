@@ -79,7 +79,7 @@ export const PERSONALIZATION_CONFIG: {
   },
 
   emoji: {
-    enabled: false,
+    enabled: true,
     characters: [],
     useAISelection: true,
   },
