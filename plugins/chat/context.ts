@@ -41,6 +41,8 @@ export interface ChatPluginContext {
   config: ChatConfig;
   db: ChatDatabase;
   aiInstance: AIInstance;
+  workAIInstance: AIInstance;
+  visionAIInstance: AIInstance;
   aiService: AIService;
   humanize: HumanizeEngine;
 

@@ -24,13 +24,18 @@ export class HumanizeEngine {
   readonly emojiAgent: EmojiAgent;
   readonly expressionLearner: ExpressionLearner;
 
-  constructor(ai: AIInstance, config: ChatConfig, db: ChatDatabase) {
-    this.memoryRetrieval = new MemoryRetrieval(ai, config, db);
-    this.topicTracker = new TopicTracker(ai, config, db);
-    this.actionPlanner = new ActionPlanner(ai, config);
+  constructor(
+    mainAI: AIInstance,
+    workAI: AIInstance,
+    config: ChatConfig,
+    db: ChatDatabase,
+  ) {
+    this.memoryRetrieval = new MemoryRetrieval(workAI, config, db);
+    this.topicTracker = new TopicTracker(workAI, config, db);
+    this.actionPlanner = new ActionPlanner(workAI, config);
     this.typoGenerator = new TypoGenerator(config);
-    this.emojiAgent = new EmojiAgent(ai, config, db);
-    this.expressionLearner = new ExpressionLearner(ai, config, db);
+    this.emojiAgent = new EmojiAgent(workAI, config, db);
+    this.expressionLearner = new ExpressionLearner(workAI, config, db);
   }
 
   async init(): Promise<void> {

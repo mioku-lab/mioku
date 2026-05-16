@@ -335,15 +335,38 @@ const chatPlugin = definePlugin({
       return;
     }
 
-    const aiInstance = await aiService.create({
-      name: "default",
+    const mainAIInstance = await aiService.create({
+      name: "main",
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
       modelType: config.isMultimodal ? "multimodal" : "text",
+      model: config.model,
     });
-    aiService.setDefault("default");
 
-    const humanize = new HumanizeEngine(aiInstance, config, db);
+    const workAIInstance = await aiService.create({
+      name: "work",
+      apiUrl: config.apiUrl,
+      apiKey: config.apiKey,
+      modelType: "text",
+      model: config.workingModel,
+    });
+
+    const visionAIInstance = await aiService.create({
+      name: "vision",
+      apiUrl: config.apiUrl,
+      apiKey: config.apiKey,
+      modelType: "multimodal",
+      model: config.multimodalWorkingModel,
+    });
+
+    aiService.setDefault("main");
+
+    const humanize = new HumanizeEngine(
+      mainAIInstance,
+      workAIInstance,
+      config,
+      db,
+    );
     await humanize.init();
 
     const pokeCooldowns = new Map<number, number>();
@@ -423,7 +446,7 @@ const chatPlugin = definePlugin({
       config,
       db,
       humanize,
-      aiInstance,
+      mainAIInstance,
       aiService,
       skillManager,
       groupStructuredHistory,
@@ -444,7 +467,7 @@ const chatPlugin = definePlugin({
       config,
       db,
       humanize,
-      aiInstance,
+      mainAIInstance,
       aiService,
       skillManager,
       groupStructuredHistory,
@@ -469,7 +492,7 @@ const chatPlugin = definePlugin({
       config,
       db,
       humanize,
-      aiInstance,
+      mainAIInstance,
       aiService,
       skillManager,
       groupStructuredHistory,
@@ -501,7 +524,9 @@ const chatPlugin = definePlugin({
       ctx,
       config,
       db,
-      aiInstance,
+      aiInstance: mainAIInstance,
+      workAIInstance,
+      visionAIInstance,
       aiService,
       humanize,
       sessionManager,
@@ -571,7 +596,9 @@ const chatPlugin = definePlugin({
       if (options.event) {
         const event = options.event;
         const isGroup = event.message_type === "group";
-        const groupId: number | undefined = isGroup ? event.group_id : undefined;
+        const groupId: number | undefined = isGroup
+          ? event.group_id
+          : undefined;
         const userId: number = event.user_id || event.sender?.user_id || 0;
         const selfId: number = event.self_id;
         return {
@@ -624,8 +651,9 @@ const chatPlugin = definePlugin({
         groupId: options.groupId,
         userId,
         selfId: options.selfId,
-        sessionId:
-          options.groupId ? `group:${options.groupId}` : `personal:${userId}`,
+        sessionId: options.groupId
+          ? `group:${options.groupId}`
+          : `personal:${userId}`,
         personalSessionId:
           options.groupId && userId ? `personal:${userId}` : undefined,
         senderName: options.groupId ? "system" : String(userId),
@@ -743,7 +771,7 @@ const chatPlugin = definePlugin({
       }
 
       const result = await runChat(
-        aiInstance,
+        mainAIInstance,
         toolCtx,
         history,
         targetMessage,
@@ -977,7 +1005,7 @@ const chatPlugin = definePlugin({
           ctx,
           e,
           cfg,
-          aiInstance,
+          mainAIInstance,
           db,
           humanize,
           skillManager,
@@ -1316,7 +1344,7 @@ const chatPlugin = definePlugin({
         const result = await runWithRateLimitGuard(
           () =>
             runChat(
-              aiInstance,
+              mainAIInstance,
               toolCtx,
               history,
               targetMessage,
@@ -1406,7 +1434,7 @@ async function handleIdleCheckDebug(
   ctx: MiokiContext,
   e: any,
   cfg: ChatConfig,
-  aiInstance: AIInstance,
+  mainAIInstance: AIInstance,
   db: import("./db").ChatDatabase,
   humanize: HumanizeEngine,
   skillManager: SkillSessionManager,
@@ -1447,7 +1475,7 @@ async function handleIdleCheckDebug(
       cfg.historyCount,
       db,
       e.self_id,
-      buildHistoryMediaOptions(aiInstance, cfg),
+      buildHistoryMediaOptions(mainAIInstance, cfg),
     );
     const planResult = await humanize.actionPlanner.plan(
       groupSessionId,
@@ -1491,7 +1519,7 @@ async function handleIdleCheckDebug(
     const result = await runWithRateLimitGuard(
       () =>
         runChat(
-          aiInstance,
+          mainAIInstance,
           toolCtx,
           history,
           targetMessage,
