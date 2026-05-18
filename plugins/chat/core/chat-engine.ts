@@ -574,14 +574,22 @@ function isPlainAssistantMessage(message: any): boolean {
  * Note: ALL markers are preserved here - they'll be parsed by parseLineMarkers in index.ts
  */
 function cleanMarkers(text: string): string {
-  return text
+  // Handle unclosed think tags (streaming: <think> opened but no closing tag)
+  // Strip lines that start with <think or <think> and have no closing </think> on the same line
+  let cleaned = text
+    .replace(/^<think[^<]*(?:(?!<\/think>)[^<])*$/gim, "")
+    .replace(/^<think[^<]*$/gim, "")
+    .trim();
+
+  cleaned = cleaned
     .replace(/<Ai>\s*<think>[\s\S]*?<\/Ai>/gi, "")
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<think[\s\S]*?<\/think>/gi, "")
     .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/gi, "")
     .replace(/<｜｜DSML｜｜invoke[^>]*>[\s\S]*?<\/｜｜DSML｜｜invoke>/gi, "")
-    .replace(/<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi, "")
-    .trim();
+    .replace(/<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi, "");
+
+  return cleaned;
 }
 
 function isToolErrorResult(result: any): boolean {
