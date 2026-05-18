@@ -142,6 +142,7 @@ export async function runChat(
 
   const streamEnabled = Boolean(toolCtx.config.stream);
   const streamedMessages: string[] = [];
+  const streamThinkFilter = createThinkTagStreamFilter();
   let streamBuffer = "";
   let streamUnitIndex = 0;
 
@@ -217,7 +218,7 @@ export async function runChat(
       stream: streamEnabled,
       onTextDelta: streamEnabled
         ? async (delta) => {
-            streamBuffer += delta;
+            streamBuffer += streamThinkFilter.push(delta, false);
             await flushStreamBuffer(false);
           }
         : undefined,
@@ -227,6 +228,7 @@ export async function runChat(
     : await runComplete();
 
   if (streamEnabled) {
+    streamBuffer += streamThinkFilter.push("", true);
     await flushStreamBuffer(true);
   }
 
@@ -574,22 +576,126 @@ function isPlainAssistantMessage(message: any): boolean {
  * Note: ALL markers are preserved here - they'll be parsed by parseLineMarkers in index.ts
  */
 function cleanMarkers(text: string): string {
-  // Handle unclosed think tags (streaming: <think> opened but no closing tag)
-  // Strip lines that start with <think or <think> and have no closing </think> on the same line
-  let cleaned = text
-    .replace(/^<think[^<]*(?:(?!<\/think>)[^<])*$/gim, "")
-    .replace(/^<think[^<]*$/gim, "")
-    .trim();
+  let cleaned = stripThinkBlocks(text).trim();
 
   cleaned = cleaned
     .replace(/<Ai>\s*<think>[\s\S]*?<\/Ai>/gi, "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<think[\s\S]*?<\/think>/gi, "")
     .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/gi, "")
     .replace(/<｜｜DSML｜｜invoke[^>]*>[\s\S]*?<\/｜｜DSML｜｜invoke>/gi, "")
     .replace(/<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi, "");
 
   return cleaned;
+}
+
+function stripThinkBlocks(text: string): string {
+  let source = String(text || "");
+  let output = "";
+
+  while (source) {
+    const open = findThinkOpenTag(source);
+    if (!open) {
+      output += source;
+      break;
+    }
+
+    output += source.slice(0, open.index);
+    const afterOpen = source.slice(open.end);
+    const close = findThinkCloseTag(afterOpen);
+    if (!close) {
+      break;
+    }
+
+    source = afterOpen.slice(close.end);
+  }
+
+  return output.replace(/<\/think\s*>/gi, "");
+}
+
+function createThinkTagStreamFilter() {
+  let buffer = "";
+  let insideThink = false;
+
+  return {
+    push(delta: string, force: boolean): string {
+      buffer += delta;
+      let output = "";
+
+      while (buffer) {
+        if (insideThink) {
+          const close = findThinkCloseTag(buffer);
+          if (!close) {
+            buffer = force ? "" : keepTagPrefixSuffix(buffer, "</think>");
+            break;
+          }
+
+          buffer = buffer.slice(close.end);
+          insideThink = false;
+          continue;
+        }
+
+        const open = findThinkOpenTag(buffer);
+        if (!open) {
+          const keep = force ? "" : keepTagPrefixSuffix(buffer, "<think");
+          output += buffer.slice(0, buffer.length - keep.length);
+          buffer = keep;
+          break;
+        }
+
+        output += buffer.slice(0, open.index);
+        buffer = buffer.slice(open.end);
+        insideThink = true;
+      }
+
+      return output.replace(/<\/think\s*>/gi, "");
+    },
+  };
+}
+
+function findThinkOpenTag(text: string): { index: number; end: number } | null {
+  const lower = text.toLowerCase();
+  const index = lower.indexOf("<think");
+  if (index < 0) {
+    return null;
+  }
+
+  const afterName = text[index + "<think".length];
+  if (afterName && !/[\s>]/.test(afterName)) {
+    const next = findThinkOpenTag(text.slice(index + 1));
+    return next
+      ? { index: index + 1 + next.index, end: index + 1 + next.end }
+      : null;
+  }
+
+  const closeIndex = text.indexOf(">", index + "<think".length);
+  if (closeIndex < 0) {
+    return { index, end: text.length };
+  }
+
+  return { index, end: closeIndex + 1 };
+}
+
+function findThinkCloseTag(
+  text: string,
+): { index: number; end: number } | null {
+  const match = /<\/think\s*>/i.exec(text);
+  return match
+    ? { index: match.index, end: match.index + match[0].length }
+    : null;
+}
+
+function keepTagPrefixSuffix(text: string, tagPrefix: string): string {
+  const maxLength = Math.min(text.length, tagPrefix.length - 1);
+  const lowerText = text.toLowerCase();
+  const lowerPrefix = tagPrefix.toLowerCase();
+
+  for (let length = maxLength; length > 0; length--) {
+    const suffix = lowerText.slice(-length);
+    if (lowerPrefix.startsWith(suffix)) {
+      return text.slice(-length);
+    }
+  }
+
+  return "";
 }
 
 function isToolErrorResult(result: any): boolean {
