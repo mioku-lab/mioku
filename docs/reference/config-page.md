@@ -39,7 +39,7 @@ plugins/<plugin_name>/
 
 `type: string`
 
-> 字段类型: text, textarea, number, switch, select, multi-select, secret, json
+> 字段类型: text, textarea, number, switch, select, multi-select, secret, json, array
 
 `description?: string`
 
@@ -324,6 +324,40 @@ plugins/<plugin_name>/
 `defaultValue?`
 
 > 默认值
+
+### `array` 数组编辑
+
+> 用于编辑数组类型配置，例如服务器列表
+
+`key`
+
+> 字段键名
+
+`label`
+
+> 显示标签
+
+`type: "array"`
+
+> 字段类型标识
+
+`description?`
+
+> 字段描述信息
+
+`required?`
+
+> 是否为必填字段
+
+`itemFields: ConfigField[]`
+
+> 数组元素的内嵌字段定义，每个元素是一个对象，包含以下子字段：
+> - `key`: 子字段键名（直接填字段名，不用带前缀）
+> - `label`: 显示标签
+> - `type`: 子字段类型（text/textarea/number/switch/select 等）
+> - `description?`: 字段描述
+> - `placeholder?`: 占位提示
+> - `options?`: 下拉选项（select 类型）
 
 ---
 
