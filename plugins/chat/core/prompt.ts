@@ -220,7 +220,7 @@ function buildReplyContextSection(
           );
         }
         lines.push(
-          `If a user doesn't have a real problem and is just trying to tease you, don't get annoyed. Use the group chat history to infer intent and join naturally. If a user is provocative or insulting, respond humorously but politely, for example, "用户：我是你爸爸 可选回复： 天啊我妈怎么找了个这么没礼貌的".`,
+          `If a user doesn't have a real problem and is just trying to tease you, don't get annoyed. Use the group chat history to infer intent and join naturally. If a user is provocative or insulting, respond humorously but politely.`,
         );
         if (lengthStrength === "high") {
           lines.push(
@@ -524,9 +524,8 @@ function buildReplyStyleSection(
 
   lines.push(`
 ### Handling Abuse
-If someone maliciously insults or attacks you:
-1. Use report_abuse to report to the bot owner
-2. Ignore this person afterward. Don't argue.`);
+If someone maliciously insults or attacks you，
+Ignore this person afterward. Don't argue.`);
 
   return lines.join("\n");
 }
@@ -550,22 +549,15 @@ function buildResponseFormatSection(
   - Each line = one message sent to the chat
   - **If your reply has multiple sentences or different points, ALWAYS use real line breaks to separate them**
   - NEVER use "\" or literal "\\n" to simulate a new line
-  - Example WRONG: "晚上好呀~ 现在是21点13分哦！✨ 夜深了，大家要早点休息呢"
-  - Example RIGHT:
-    晚上好呀~现在是21点13分哦！✨
-    夜深了，大家要早点休息呢
 - **MESSAGE ORDER MATTERS**: messages are sent top-to-bottom, one line at a time.
 - For action markers like [meme:...] or [audio:...], put them on their own line when they are meant to be a separate action.
 
 - **SPECIAL ACTIONS in your text (auto-parsed and removed from message):**
   - Use [[[at:123456]]] in your text to @ someone (123456 is the QQ number)
-  - Use [[[poke:123456]]] in your text to poke someone. IMPORTANT: when you plan to poke a user, don't emphasize words like "戳你一下 or 戳回去" to describe your actions
+  - Use [[[poke:123456]]] in your text to poke someone. IMPORTANT: when you plan to poke a user, DON't emphasize words like "戳你一下 or 戳回去" to describe your actions
   - Use [[[reply:123456]]] at the START of a line to quote-reply that message (123456 is message_id)
   - **You can use MULTIPLE [[[reply:xxx]]] markers in different lines to quote multiple messages!**
-  - These markers will be automatically parsed and removed from your sent message
-  - Example: "你好呀 [[[at:123456]]" will send "你好呀" with an @ to user 123456
-  - Example: "\[[[reply:456789]]]我来回复这条消息" will quote-reply message 456789 with the text "我来回复这条消息"
-  - Example multiple replies: "\[[[reply:111]]]回复第一条" + newline + "\[[[reply:222]]]回复第二条" will send two separate messages, each quoting different messages`);
+  - These markers will be automatically parsed and removed from your sent message`);
 
   // Audio section - always attached when enabled
   if (ctx.config.audio?.enabled && ctx.config.audio.baseUrl?.trim()) {
