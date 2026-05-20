@@ -4,7 +4,6 @@ import type {
   MemoryConfig,
   TopicConfig,
   PlannerConfig,
-  TypoConfig,
   EmojiConfig,
   ExpressionConfig,
 } from "../types";
@@ -16,7 +15,6 @@ export const PERSONALIZATION_CONFIG: {
   memory: MemoryConfig;
   topic: TopicConfig;
   planner: PlannerConfig;
-  typo: TypoConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
 } = {
@@ -70,12 +68,6 @@ export const PERSONALIZATION_CONFIG: {
     idleThresholdMs: 30 * 60_000, // 30分钟无消息视为空闲
     idleMessageCount: 100, // 保底消息数量，超过这个数量才触发空闲回复
     idleCheckBotIds: [], // 空闲检查的 bot ID 列表，为空时使用所有已连接的 bot
-  },
-
-  typo: {
-    enabled: true,
-    errorRate: 0.03,
-    wordReplaceRate: 0.1,
   },
 
   emoji: {

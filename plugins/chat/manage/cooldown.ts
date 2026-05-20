@@ -158,7 +158,7 @@ export class CooldownManager {
     );
     if (!result) return;
 
-    await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
+    await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices }, selfId);
     await this.sendEmoji(this.ctx, groupId, result.emojiPath, selfId);
 
     const now = Date.now();
@@ -214,7 +214,7 @@ export class CooldownManager {
       return;
     }
 
-    await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
+    await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: this.cfg, sentIndices: toolCtx.sentMessageIndices }, selfId);
     await this.sendEmoji(this.ctx, groupId, result.emojiPath, selfId);
     const now = Date.now();
     this.saveBotMessages(groupId, groupSessionId, result.messages, now, this.cfg, this.db, this.ctx, selfId);

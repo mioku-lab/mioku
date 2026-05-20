@@ -1,4 +1,5 @@
 import type { MiokiContext } from "mioki";
+import { logger } from "mioki";
 import type { SkillPermissionRole } from "../../../src";
 import type { AIInstance } from "../../../src/services/ai/types";
 import type {
@@ -26,7 +27,6 @@ export interface SendAIResponseOptions {
   messages: string[];
   config: ChatConfig;
   sentIndices?: Set<number>;
-  typoGenerator: { apply: (text: string) => string };
   onLineSent?: () => void | Promise<void>;
 }
 
@@ -83,7 +83,6 @@ export async function sendAIResponse(
     messages,
     config,
     sentIndices,
-    typoGenerator,
     onLineSent,
   } = options;
   const typingDelayEnabled = config.enableTypingDelay ?? false;
@@ -101,7 +100,7 @@ export async function sendAIResponse(
   for (let i = 0; i < messages.length; i++) {
     if (sentIndices?.has(i)) continue;
 
-    const expandedLines = expandOutgoingLines(messages[i], typoGenerator);
+    const expandedLines = expandOutgoingLines(messages[i]);
 
     let pendingReply: number | undefined;
     let lastDelayBasisText = "";
@@ -244,9 +243,6 @@ export async function sendMessage(
   userId: number,
   text: string,
   config: ChatConfig,
-  typoGenerator: {
-    apply: (text: string) => string;
-  },
   selfId: number,
 ): Promise<void> {
   const typingDelayEnabled = config.enableTypingDelay ?? false;
@@ -261,7 +257,7 @@ export async function sendMessage(
     }
 
     // 应用错别字生成器
-    const expandedLines = expandOutgoingLines(text, typoGenerator);
+    const expandedLines = expandOutgoingLines(text);
 
     let pendingReply: number | undefined;
     let lastDelayBasisText = "";
@@ -508,10 +504,7 @@ export async function sendMessage(
   }
 }
 
-function expandOutgoingLines(
-  text: string,
-  typoGenerator: { apply: (text: string) => string },
-): string[] {
+function expandOutgoingLines(text: string): string[] {
   const units = splitOutgoingUnits(text);
   const expandedLines: string[] = [];
 
@@ -526,10 +519,7 @@ function expandOutgoingLines(
     }
 
     const normalizedUnit = normalizeActionLineBreaks(unit);
-    const typoApplied = /\[audio:/i.test(normalizedUnit)
-      ? normalizedUnit
-      : typoGenerator.apply(normalizedUnit);
-    const lineParts = typoApplied
+    const lineParts = normalizedUnit
       .split(/\n+/)
       .map((part) => part.trim())
       .filter(Boolean);
@@ -752,11 +742,13 @@ export async function getHumanizeContexts(
       )
     : "";
 
-  return {
+  const result = {
     memoryContext: undefined,
     topicContext: topicContext || undefined,
     expressionContext: expressionContext || undefined,
   };
+  logger.info(`[getHumanizeContexts] session=${groupSessionId} user=${userName} triggerUserId=${triggerUserId} memoryContext=undefined topicContext="${topicContext?.slice(0, 100) ?? ""}" expressionContext="${expressionContext?.slice(0, 100) ?? ""}"`);
+  return result;
 }
 
 export interface BuildToolContextOptions {
@@ -844,7 +836,6 @@ export function buildToolContext(
         targetMessage.userId,
         content,
         config,
-        humanize.typoGenerator,
         selfId,
       );
     },

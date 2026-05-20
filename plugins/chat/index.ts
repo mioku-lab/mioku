@@ -810,7 +810,6 @@ const chatPlugin = definePlugin({
               messages: result.messages,
               config: cfg,
               sentIndices: toolCtx.sentMessageIndices,
-              typoGenerator: humanize.typoGenerator,
             },
             selfId,
           );
@@ -840,7 +839,6 @@ const chatPlugin = definePlugin({
               userId,
               result.messages[i],
               cfg,
-              humanize.typoGenerator,
               selfId,
             );
           }
@@ -1383,7 +1381,6 @@ const chatPlugin = definePlugin({
             messages: result.messages,
             config: cfg,
             sentIndices: toolCtx.sentMessageIndices,
-            typoGenerator: humanize.typoGenerator,
           },
           e.self_id,
         );
@@ -1549,7 +1546,6 @@ async function handleIdleCheckDebug(
         messages: result.messages,
         config: cfg,
         sentIndices: toolCtx.sentMessageIndices,
-        typoGenerator: humanize.typoGenerator,
       },
       e.self_id,
     );
@@ -1775,7 +1771,6 @@ async function processChat(
           messages: result.messages,
           config: cfg,
           sentIndices: toolCtx.sentMessageIndices,
-          typoGenerator: pluginCtx.humanize.typoGenerator,
         },
         e.self_id,
       );
@@ -1813,7 +1808,6 @@ async function processChat(
           userId,
           result.messages[i],
           cfg,
-          pluginCtx.humanize.typoGenerator,
           e.self_id,
         );
       }

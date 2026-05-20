@@ -1,4 +1,5 @@
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
+import { logger } from "mioki";
 import type { SkillPermissionRole } from "../../../src";
 import type { AIService } from "../../../src/services/ai/types";
 import type { ChatRuntimePromptInjection } from "../../../src/services/ai/types";
@@ -72,14 +73,20 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 
   // 2. Expression Habits
   if (ctx.expressionContext) {
+    logger.info(`[buildSystemPrompt] Adding expressionContext (${ctx.expressionContext.length} chars) for user`);
     sections.push(ctx.expressionContext);
+  } else {
+    logger.info(`[buildSystemPrompt] No expressionContext for session ${ctx.sessionId}`);
   }
 
   // 3. Memory Retrieval Results
   if (ctx.memoryContext) {
+    logger.info(`[buildSystemPrompt] Adding memoryContext (${ctx.memoryContext.length} chars)`);
     sections.push(
       `## Memory Retrieval Results\nRelevant context retrieved from conversation history:\n${ctx.memoryContext}`,
     );
+  } else {
+    logger.info(`[buildSystemPrompt] No memoryContext for session ${ctx.sessionId}`);
   }
 
   // 4. Background Topics Outside Visible History

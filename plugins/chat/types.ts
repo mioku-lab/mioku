@@ -60,16 +60,6 @@ export interface PlannerConfig {
   idleCheckBotIds: number[];
 }
 
-/**
- * 错别字生成器配置
- */
-export interface TypoConfig {
-  enabled: boolean;
-  // 单字替换概率 (0-1)
-  errorRate: number;
-  // 整词替换概率 (0-1)
-  wordReplaceRate: number;
-}
 
 /**
  * 表情包系统配置
@@ -203,7 +193,6 @@ export interface ChatConfig {
   memory: MemoryConfig;
   topic: TopicConfig;
   planner: PlannerConfig;
-  typo: TypoConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
 }

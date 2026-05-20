@@ -169,7 +169,7 @@ export class IdleCheckManager {
             return;
           }
 
-          await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: cfg, sentIndices: toolCtx.sentMessageIndices, typoGenerator: this.humanize.typoGenerator }, selfId);
+          await this.sendAIResponse({ ctx: this.ctx, groupId, messages: result.messages, config: cfg, sentIndices: toolCtx.sentMessageIndices }, selfId);
           this.saveBotMessages(groupId, groupSessionId, result.messages, now, cfg, this.db, this.ctx, selfId);
           this.groupLastBotMessageTime.set(groupSessionId, now);
           this.groupMessageCountAfterBot.set(groupSessionId, 0);

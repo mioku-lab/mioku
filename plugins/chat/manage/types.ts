@@ -64,15 +64,12 @@ export type SaveBotMessages = (
 
 export type SendEmoji = (ctx: MiokiContext, groupId: number, emojiPath: string | null | undefined, selfId: number) => Promise<void>;
 
-export type TypoGenerator = { apply: (text: string) => string };
-
 export type SendMessage = (
   ctx: MiokiContext,
   groupId: number | undefined,
   userId: number,
   text: string,
   config: ChatConfig,
-  typoGenerator: TypoGenerator,
   selfId: number,
 ) => Promise<void>;
 

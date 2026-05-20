@@ -34,7 +34,10 @@ export class ExpressionLearner {
 
     const sampleSize = this.config.expression?.sampleSize ?? 8;
     const expressions = this.db.getExpressionsByUser(userId, sampleSize);
-    if (expressions.length === 0) return "";
+    if (expressions.length === 0) {
+      logger.info(`[ExpressionLearner] No expression habits found for user ${userName} (${userId})`);
+      return "";
+    }
     const selected = expressions.slice(0, sampleSize);
 
     const habits = selected.map(
@@ -42,7 +45,9 @@ export class ExpressionLearner {
         `- When ${expr.situation}: ${expr.style} (e.g. "${expr.example}")`,
     );
 
-    return `## Expression Habits\nExpression habits learned from ${userName}. If you are replying to this user, you may naturally reference these habits:\n${habits.join("\n")}`;
+    const context = `## Expression Habits\nExpression habits learned from ${userName}. If you are replying to this user, you may naturally reference these habits:\n${habits.join("\n")}`;
+    logger.info(`[ExpressionLearner] Expression context for ${userName} (${userId}): ${habits.length} habits`);
+    return context;
   }
 
   private async tryLearn(userId: number): Promise<void> {
@@ -53,6 +58,7 @@ export class ExpressionLearner {
       this.config.expression?.learnAfterMessages ?? 100,
     );
     const pending = this.pendingMessagesByUser.get(userId) ?? [];
+    logger.info(`[ExpressionLearner] User ${userId} has ${pending.length}/${threshold} pending messages (threshold=${threshold})`);
     if (pending.length < threshold) return;
 
     this.learningUsers.add(userId);
@@ -140,7 +146,7 @@ If nothing reliable can be extracted, keep stable previous habits when possible.
 
     this.db.replaceExpressionsByUser(userId, userName, normalized);
     logger.info(
-      `[ExpressionLearner] Updated ${normalized.length} habits for ${userName} (${userId})`,
+      `[ExpressionLearner] Updated ${normalized.length} habits for ${userName} (${userId}): ${JSON.stringify(normalized)}`,
     );
   }
 }
