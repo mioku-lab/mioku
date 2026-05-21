@@ -144,7 +144,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /config/
-/example/
 /temp/
 /src/services/
 /plugins

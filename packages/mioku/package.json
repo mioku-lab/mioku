@@ -1,0 +1,73 @@
+{
+  "name": "mioku",
+  "type": "module",
+  "version": "1.0.0",
+  "packageManager": "bun@1.2.0",
+  "description": "Mioku - Plugin framework extended from mioki for NapCat OneBot v11",
+  "keywords": [
+    "onebot",
+    "framework",
+    "bot",
+    "mioki",
+    "mioku"
+  ],
+  "bin": {
+    "mioku": "./dist/cli.mjs"
+  },
+  "engines": {
+    "node": ">= 22.18.0"
+  },
+  "homepage": "https://github.com/jerryplusy/mioku#readme",
+  "files": [
+    "dist"
+  ],
+  "bugs": {
+    "url": "https://github.com/jerryplusy/mioku/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jerryplusy/mioku.git",
+    "directory": "src/packages/mioku"
+  },
+  "scripts": {
+    "dev": "tsdown -w",
+    "build": "tsdown"
+  },
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "author": "Jerryplusy <jerryplusy@outlook.com>",
+  "license": "MIT",
+  "dependencies": {
+    "mioki": "^0.16.0",
+    "napcat-sdk": "^0.16.0",
+    "consola": "^3.4.2",
+    "dayjs": "^1.11.19",
+    "dedent": "^1.7.1",
+    "filesize": "^11.0.13",
+    "inquirer": "^10.0.0",
+    "jiti": "^2.6.1",
+    "lowdb": "^7.0.1",
+    "mri": "^1.2.0",
+    "node-cron": "^4.2.1",
+    "openai": "^4.0.0",
+    "puppeteer": "^23.10.0",
+    "better-sqlite3": "^11.0.0",
+    "pretty-ms": "^9.3.0",
+    "string2argv": "^1.0.2",
+    "systeminformation": "^5.30.7",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/lodash": "^4.17.0",
+    "@types/node": "^22.0.0",
+    "@types/puppeteer": "^7.0.4",
+    "tsdown": "^0.11.0",
+    "typescript": "^5.8.0"
+  }
+}

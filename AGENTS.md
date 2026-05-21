@@ -1,60 +1,88 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`app.ts` is the local entrypoint. Mioku startup lives in `src/index.ts`, `src/config-loader.ts`, and `src/first-run-setup.ts`. Framework infrastructure lives in `src/core/`. Built-in services live in `src/services/*`. User-facing plugins live in `plugins/*`. Runtime config belongs in `config/`, persistent data in `data/`, temporary screenshots in `temp/`, and compiled output in `dist/`.
+
+Mioku 是一个基于 mioki 的插件框架，代码组织如下：
+
+- `packages/mioku/`: Mioku npm 包源码（**开发用**）
+  - `src/index.ts`: 包入口
+  - `src/cli.ts`: npx 脚手架工具
+  - `src/plugins/`: 内置插件（boot, help, chat）
+  - `src/services/`: 内置服务（config, ai, screenshot）
+  - `src/core/`: 核心框架代码
+  - `dist/`: 构建输出
+- `plugins/`: **用户插件目录**（放这里）
+- `services/`:**用户服务目录**（放这里）
+- `example/`: 测试实例
+- `docs/`: VitePress 文档
+- `unadapted/`: 未适配的插件和服务
+
+> ⚠️ **重要**：只有 `packages/mioku/src/` 下的代码需要使用包内相对路径（如 `../../service-types`）。
+> 用户编写插件时，导入方式与普通 npm 包一致：`import { definePlugin } from "mioki"`
 
 ## Build, Test, and Development Commands
-Install dependencies with `bun install`. Use `bun run start` to start Mioku once, `bun run dev` for watch mode, and `bun run build` to validate TypeScript changes. For edits in `src/`, `plugins/`, or `src/services/`, the default validation target is `bun run build`.
+
+```bash
+# 构建 mioku 包（根目录执行）
+bun run build
+
+# 根目录（文档）
+bun run docs:dev
+```
 
 ## Architecture Rules
-Mioku is a layer on top of `mioki`. `mioki` handles plugin execution, bot lifecycle, and event dispatch. Mioku adds plugin metadata discovery, service discovery/loading, automatic help registration, and automatic plugin AI skill loading.
 
-Startup flow:
-- `src/index.ts` discovers plugin metadata from `plugins/*/package.json`
-- `src/index.ts` discovers service metadata from `src/services/*/package.json`
-- `plugins/boot` loads all discovered services
-- `src/core/plugin-artifact-registry.ts` auto-registers plugin help from `package.json -> mioku.help`
-- `src/core/plugin-artifact-registry.ts` auto-loads plugin skills from `skills.ts` or `skills.js`
-- normal plugins then run through `mioki`
+Mioku 是 mioki 的上层框架：
+- `mioki` 处理插件执行、机器人生命周期和事件分发
+- Mioku 添加插件元数据发现、服务发现/加载、自动帮助注册和自动 AI 技能加载
 
-Current plugin contract:
-- `index.ts` contains runtime behavior only: handlers, config wiring, service usage, startup, cleanup
-- `package.json -> mioku.services` declares required services
-- `package.json -> mioku.help` is the only place to add help content
-- `skills.ts` is the only place to add plugin AI skills/tools
-- do not define `help` or `skill` on the plugin object
-- do not call `helpService.registerHelp(...)` or `aiService.registerSkill(...)` from normal plugins unless changing framework internals
-- simple plugins/services can stay in one focused file
-- as complexity grows, split by responsibility into small files instead of growing one large `index.ts` or one large shared helper file
+启动流程：
+1. `packages/mioku/src/index.ts` 导出 `start()` 函数
+2. `start()` 发现插件从 `plugins/*/package.json`（本地）和 `node_modules/mioku-plugin-*`（npm）
+3. `start()` 发现服务从 `services/*/package.json`（本地）
+4. `plugins/boot` 优先加载（priority -Infinity）
+5. `packages/mioku/src/core/plugin-artifact-registry.ts` 自动注册插件帮助和技能
 
-`runtime.ts` convention:
-- use `runtime.ts` when `skills.ts` needs mutable state created during `setup()`
-- `skills.ts` is imported outside plugin `setup()`, so it cannot depend on setup-local closures
-- `shared.ts` / `utils.ts` are optional names for pure reusable logic, not mandatory files
-- keep mutable process state in `runtime.ts`
+## 用户插件开发
 
-Service contract:
-- services live in `src/services/<name>/index.ts`
-- services export a `MiokuService` with `name`, `version`, `api`, `init()`, and optional `dispose()`
-- service APIs are exposed to plugins through `ctx.services.<name>`
+用户编写的插件应放在项目根目录的 `plugins/` 目录下：
 
-Built-in non-legacy services:
-- `ai`
-- `config`
-- `help`
-- `screenshot`
-- `webui`
+```text
+my-project/
+├── plugins/
+│   └── my-plugin/
+│       ├── index.ts
+│       └── package.json
+├── services/           # 用户编写的服务（如有）
+├── package.json
+└── node_modules/
+    └── mioku/           # mioku npm 包
+```
 
-Ignore legacy Minecraft plugin/service code unless the task explicitly targets it.
+**不要修改 `packages/mioku/` 下的内置插件和服务**，如需自定义，请：
+1. 在 `plugins/` 目录下创建新插件
+2. 或发布为 npm 包 `mioku-plugin-xxx`
 
-## Coding Style & Naming Conventions
-Use TypeScript with 2-space indentation, double quotes, and semicolons. Keep modules focused. Keep plugin and service names aligned with directory names. Use `skills.ts`, `runtime.ts`, `shared.ts`, and `utils.ts` only when they match those responsibilities.
+## 插件契约
 
-## Testing Guidelines
-Run `bun run build` after meaningful code changes. If behavior changes, also verify the affected startup path, command flow, or service integration locally when practical.
+- `package.json -> mioku.services` 声明需要的服务
+- `package.json -> mioku.help` 是帮助内容的唯一位置
+- `skills.ts` 是插件 AI 技能/工具的唯一位置
+- 不要在插件对象上定义 `help` 或 `skill`
+- 不要从普通插件调用 `helpService.registerHelp(...)` 或 `aiService.registerSkill(...)`
 
-## Commit & Pull Request Guidelines
-Follow lowercase Conventional Commit prefixes such as `feat:`, `fix:`, and `refactor:`. Keep commits focused. PRs should summarize behavior changes, call out config changes, and include screenshots for UI, config-page, or help-image changes.
+## 服务契约
 
-## Security & Configuration Tips
-Do not commit secrets or machine-local state from `config/`, `data/`, generated auth files, or local runtime caches. Be careful when testing first-run flows because they may rewrite local config. Note the current repository typo `src/services/config/tpyes.ts` when updating imports.
+- 服务位于 `services/<name>/index.ts`
+- 服务导出 `MiokuService`，包含 `name`, `version`, `api`, `init()`, 可选 `dispose()`
+- 服务 API 通过 `ctx.services.<name>` 暴露给插件
+
+内置服务（在 `packages/mioku/` 中）：
+- `config` - 配置管理
+- `ai` - AI 实例管理
+- `screenshot` - 网页截图
+- `help` - 帮助服务
+
+## Coding Style
+
+使用 TypeScript，2 空格缩进，双引号，分号。
