@@ -1,0 +1,40 @@
+{
+  "name": "mioku-example",
+  "private": false,
+  "type": "module",
+  "dependencies": {
+    "mioku": "workspace:*",
+    "mioku-plugin-boot": "workspace:*",
+    "mioku-plugin-help": "workspace:*",
+    "mioku-plugin-chat": "workspace:*",
+    "mioku-service-config": "workspace:*",
+    "mioku-service-ai": "workspace:*",
+    "mioku-service-screenshot": "workspace:*",
+    "mioku-service-help": "workspace:*"
+  },
+  "scripts": {
+    "start": "bun run app.ts"
+  },
+  "mioki": {
+    "prefix": "~",
+    "owners": [
+      3479445703
+    ],
+    "admins": [],
+    "plugins": [
+      "boot",
+      "help",
+      "chat",
+      "demo"
+    ],
+    "log_level": "info",
+    "napcat": [
+      {
+        "protocol": "ws",
+        "port": 5577,
+        "host": "192.168.1.201",
+        "token": "turing"
+      }
+    ]
+  }
+}
