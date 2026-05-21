@@ -1,10 +1,11 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { botConfig, logger, type MiokiContext } from "mioki";
+import type { MiokiContext } from "mioki";
 import type { AIService } from "../types";
 import type { HelpService } from "../service-types";
 import type { AISkill } from "./types";
 import pluginManager from "./plugin-manager";
+import { logger } from "./logger";
 
 async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -71,7 +72,9 @@ export async function registerPluginArtifacts(
   ctx: MiokiContext,
 ): Promise<void> {
   const enabledPlugins = new Set<string>(
-    Array.isArray(botConfig?.plugins) ? botConfig.plugins : [],
+    Array.isArray((ctx as any).botConfig?.plugins)
+      ? (ctx as any).botConfig.plugins
+      : [],
   );
   const pluginMetadata = pluginManager
     .getAllMetadata()

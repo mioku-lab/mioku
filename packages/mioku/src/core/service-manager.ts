@@ -1,8 +1,9 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { existsSync, mkdirSync } from "fs";
-import { logger, type MiokiContext } from "mioki";
+import type { MiokiContext } from "mioki";
 import type { ServiceMetadata, MiokuService } from "./types";
+import { logger } from "./logger";
 
 const SERVICE_MANAGER_SYMBOL = Symbol.for("mioku.service-manager");
 
@@ -40,6 +41,7 @@ export class ServiceManager {
     }
 
     const discovered: ServiceMetadata[] = [];
+    this.serviceMetadata.clear();
 
     // Discover from local services/ directory
     if (existsSync(this.servicesDir)) {
@@ -83,7 +85,15 @@ export class ServiceManager {
     name: string,
     servicePath: string,
   ): Promise<ServiceMetadata | null> {
-    const packageJsonPath = path.join(servicePath, "package.json");
+    // Resolve symlinks to get actual path
+    let resolvedPath = servicePath;
+    try {
+      resolvedPath = await fs.realpath(servicePath);
+    } catch {
+      // Not a symlink or doesn't exist, use original path
+    }
+
+    const packageJsonPath = path.join(resolvedPath, "package.json");
 
     if (!(await pathExists(packageJsonPath))) {
       return null;
@@ -97,7 +107,7 @@ export class ServiceManager {
         name,
         version: packageJson.version || "0.0.0",
         description: packageJson.description,
-        path: servicePath,
+        path: resolvedPath,
         packageJson,
       };
       return metadata;
@@ -111,13 +121,34 @@ export class ServiceManager {
    * Load built-in services from the package
    */
   private async loadBuiltinServices(): Promise<void> {
-    // Builtin services are registered directly via the package exports
-    // This method is called to ensure they're counted in the discovery output
-    const builtinServices = ["config", "ai", "screenshot", "webui"];
-    for (const name of builtinServices) {
-      if (!this.serviceMetadata.has(name)) {
-        logger.debug(`Registered builtin service: ${name}`);
+    // Discover from node_modules (mioku-service-* prefix)
+    await this.discoverFromNodeModules();
+  }
+
+  private async discoverFromNodeModules(): Promise<void> {
+    const nodeModulesPath = path.resolve(process.cwd(), "node_modules");
+
+    if (!(await pathExists(nodeModulesPath))) {
+      return;
+    }
+
+    try {
+      const entries = await fs.readdir(nodeModulesPath, { withFileTypes: true });
+      for (const entry of entries) {
+        // Don't check isDirectory - symlinks return false
+        if (!entry.name.startsWith("mioku-service-")) {
+          continue;
+        }
+
+        const serviceName = entry.name.replace(/^mioku-service-/, "");
+        const servicePath = path.join(nodeModulesPath, entry.name);
+        const metadata = await this.loadServiceMetadata(serviceName, servicePath);
+        if (metadata) {
+          this.serviceMetadata.set(serviceName, metadata);
+        }
       }
+    } catch (error) {
+      logger.debug(`扫描 node_modules 服务失败: ${error}`);
     }
   }
 

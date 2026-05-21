@@ -62,7 +62,7 @@ export interface TextMessage {
 
 export interface MultimodalMessage {
   role: "system" | "user" | "assistant";
-  content: string | Array<{ type: "text"; text?: string } | { type: "image_url"; image_url?: string }>;
+  content: string | MultimodalContentItem[];
 }
 
 export interface ToolCallRecord {
@@ -87,6 +87,9 @@ export interface CompleteOptions {
   executableToolsProvider?: () => SessionToolDefinition[];
   maxIterations?: number;
   onTextDelta?: (delta: string) => void | Promise<void>;
+  usageContext?: AIUsageContext;
+  usageContextTokens?: number;
+  usageBreakdown?: AIUsageFinalization["breakdown"];
 }
 
 export interface CompleteResponse {
@@ -100,11 +103,19 @@ export interface CompleteResponse {
 }
 
 export interface ChatRuntime {
-  generateNotice?(options: any): Promise<void>;
-  requestInformation?(options: any): Promise<any>;
+  generateNotice(options: ChatRuntimeNoticeOptions): Promise<ChatRuntimeResult>;
+  requestInformation(options: ChatRuntimeInformationRequestOptions): Promise<ChatRuntimeResult>;
 }
 
 export const TOOL_RESULT_FOLLOWUP_KEY = "__miokuFollowup";
+
+export interface ToolResultFollowup {
+  text: string;
+  images: Array<{
+    url: string;
+    detail?: "auto" | "low" | "high";
+  }>;
+}
 
 // Permission role for skills
 export type SkillPermissionRole = "owner" | "admin" | "member";
@@ -113,11 +124,121 @@ export type SkillPermissionRole = "owner" | "admin" | "member";
 export interface MultimodalContentItem {
   type: "text" | "image_url";
   text?: string;
-  image_url?: string;
+  image_url?: {
+    url: string;
+    detail?: "auto" | "low" | "high";
+  };
 }
 
 // Chat runtime types
-export interface ChatRuntimeNoticeOptions {
+export interface ChatRuntimePromptInjection {
+  content: string;
+  title?: string;
+}
+
+export interface ChatRuntimeGroupTarget {
+  selfId: number;
+  groupId: number;
+}
+
+export interface ChatRuntimePrivateTarget {
+  selfId: number;
+  userId: number;
+}
+
+export type ChatRuntimeSource =
+  | { event: any }
+  | ChatRuntimeGroupTarget
+  | ChatRuntimePrivateTarget;
+
+export type ChatRuntimeBaseOptions = ChatRuntimeSource & {
+  targetMessage?: string;
+  promptInjections?: ChatRuntimePromptInjection[];
+  send?: boolean;
+};
+
+export type ChatRuntimeNoticeOptions = ChatRuntimeBaseOptions & {
+  instruction: string;
+};
+
+export type ChatRuntimeInformationRequestOptions = ChatRuntimeBaseOptions & {
+  task: string;
+  schema: {
+    type: "object";
+    properties: Record<string, any>;
+    required?: string[];
+  };
+  toolName?: string;
+  toolDescription?: string;
+};
+
+export interface ChatRuntimeCollectedInfo {
+  data: any;
+  isComplete?: boolean;
+  confidence?: number;
+  notes?: string;
+}
+
+export type AIUsageRange = "today" | "7d" | "30d";
+
+export interface AIUsageContext {
+  usageId?: string;
+  source?: string;
+  botId?: number;
+  groupId?: number;
+  groupName?: string;
+  userId?: number;
+  userName?: string;
+  sessionId?: string;
+}
+
+export interface AIUsageBreakdown {
+  systemPromptTokens?: number;
+  chatHistoryTokens?: number;
+  toolDefinitionTokens?: number;
+  toolUseTokens?: number;
+  otherContextTokens?: number;
+}
+
+export interface AIUsageFinalization {
+  sentUserMessages?: number;
+  sentAssistantMessages?: number;
+  breakdown?: AIUsageBreakdown;
+}
+
+export interface AIUsageSummary {
+  range: AIUsageRange;
+  total: {
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens: number;
+    cacheReadTokens: number;
+    totalTokens: number;
+  };
+  byBot: Array<{
+    botId: number | null;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens: number;
+    cacheReadTokens: number;
+    totalTokens: number;
+  }>;
+}
+
+export interface ChatRuntimeResult {
+  messages: string[];
+  toolCalls: ToolCallRecord[];
+  collectedInfo: ChatRuntimeCollectedInfo | null;
+  pendingAt?: number[];
+  pendingPoke?: number[];
+  pendingQuote?: number;
+  emojiPath?: string | null;
+  protocolMessages?: any[];
+}
+
+export interface LegacyChatRuntimeNoticeOptions {
   sessionId: string;
   groupId?: number;
   userId: number;
@@ -125,17 +246,7 @@ export interface ChatRuntimeNoticeOptions {
   replyContextType: string;
 }
 
-export interface ChatRuntimeResult {
-  messages: string[];
-  pendingAt: number[];
-  pendingPoke: number[];
-  pendingQuote?: number;
-  toolCalls: { name: string; args: any; result: any }[];
-  emojiPath?: string | null;
-  protocolMessages?: any[];
-}
-
-export interface ChatRuntimeInformationRequestOptions {
+export interface LegacyChatRuntimeInformationRequestOptions {
   sessionId: string;
   groupId?: number;
   userId: number;
@@ -146,10 +257,12 @@ export interface ChatRuntimeInformationRequestOptions {
 // ============ AI Service Interfaces ============
 
 export interface AIInstance {
-  generateText(options: { messages: TextMessage[]; model?: string; temperature?: number }): Promise<string>;
-  generateMultimodal(options: { messages: MultimodalMessage[]; model?: string; temperature?: number }): Promise<string>;
-  complete(options: any): Promise<any>;
-  generateWithTools(options: any): Promise<any>;
+  generateText(options: { prompt?: string; messages: TextMessage[]; model?: string; temperature?: number; max_tokens?: number }): Promise<string>;
+  generateMultimodal(options: { prompt?: string; messages: MultimodalMessage[]; model?: string; temperature?: number; max_tokens?: number }): Promise<string>;
+  complete(options: CompleteOptions): Promise<CompleteResponse>;
+  generateWithTools(options: { prompt?: string; messages: TextMessage[] | MultimodalMessage[]; model?: string; temperature?: number; maxIterations?: number }): Promise<any>;
+  setUsageContext?(context: AIUsageContext | undefined): void;
+  withUsageContext?<T>(context: AIUsageContext | undefined, fn: () => Promise<T>): Promise<T>;
   registerPrompt(name: string, prompt: string): boolean;
   getPrompt(name: string): string | undefined;
   getAllPrompts(): Record<string, string>;
@@ -172,4 +285,7 @@ export interface AIService {
   removeSkill(skillName: string): boolean;
   getTool(toolName: string): AITool | undefined;
   getAllTools(): Map<string, AITool>;
+  getUsageSummary?(options: { range: AIUsageRange; botId?: number }): AIUsageSummary;
+  cleanupUsageStats?(retentionMs?: number): number;
+  finalizeUsage?(usageId: string, finalization: AIUsageFinalization): boolean;
 }

@@ -8,6 +8,17 @@ import dedent from 'dedent'
 import consola from 'consola'
 import { version } from '../package.json'
 
+const DEFAULT_PACKAGES = [
+  'mioku',
+  'mioku-plugin-boot',
+  'mioku-plugin-help',
+  'mioku-plugin-chat',
+  'mioku-service-config',
+  'mioku-service-ai',
+  'mioku-service-screenshot',
+  'mioku-service-help',
+]
+
 const args = process.argv.slice(2)
 
 interface CliOptions {
@@ -53,6 +64,20 @@ function ensurePackageManager(pm: string) {
   }
 
   return pm
+}
+
+function getAddCommand(pm: string, packages: string[]): string {
+  const packageList = packages.join(' ')
+
+  if (pm === 'npm') {
+    return `npm add ${packageList}`
+  }
+
+  if (pm === 'pnpm') {
+    return `pnpm add ${packageList}`
+  }
+
+  return `bun add ${packageList}`
 }
 
 async function selectPackageManager(): Promise<string> {
@@ -154,10 +179,9 @@ async function selectPackageManager(): Promise<string> {
   {
     "name": "${name}",
     "private": true,
-    "dependencies": {
-      "mioku": "^${version}"
-    },
-    "mioku": {
+    "type": "module",
+    "dependencies": {},
+    "mioki": {
       "prefix": "${prefix}",
       "owners": [${String(owners)
         .split(',')
@@ -171,7 +195,7 @@ async function selectPackageManager(): Promise<string> {
               .join(', ')
           : ''
       }],
-      "plugins": ["boot", "help", "chat"],
+      "plugins": ["boot", "help", "chat", "demo"],
       "log_level": "info",
       "online_push": true,
       "error_push": true,
@@ -185,7 +209,7 @@ async function selectPackageManager(): Promise<string> {
       ]
     },
     "scripts": {
-      "start": "node app.ts",
+      "start": "bun run app.ts",
       "dev": "bun run --watch app.ts"
     }
   }
@@ -219,7 +243,7 @@ async function selectPackageManager(): Promise<string> {
 `)
 
   const fileTree: Record<string, any> = {
-    'app.ts': "require('mioku').start({ cwd: __dirname })",
+    'app.ts': "import { start } from 'mioku'\n\nstart({ cwd: import.meta.dirname }).then()\n",
     'package.json': pkgJson,
     plugins: { demo: { 'index.ts': pluginCode } },
     config: {},
@@ -258,7 +282,12 @@ async function createNewProject(name: string, fileTree: Record<string, any>, opt
   makeFileTree(fileTree, projectPath)
 
   console.log(`项目 ${projectName} 创建成功！`)
-  console.log(`\ncd ${projectPath} && ${options.pkgManager} install && ${options.pkgManager} start\n`)
+
+  const addCommand = getAddCommand(options.pkgManager, DEFAULT_PACKAGES)
+  console.log(`正在安装 Mioku 依赖: ${addCommand}`)
+  execSync(addCommand, { cwd: projectPath, stdio: 'inherit' })
+
+  console.log(`\ncd ${projectPath} && ${options.pkgManager} start\n`)
 
   if (options.installWebui) {
     console.log('WebUI 将通过 mioku 框架自动加载，无需额外安装。')

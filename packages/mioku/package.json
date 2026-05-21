@@ -1,7 +1,7 @@
 {
   "name": "mioku",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.8.0",
   "packageManager": "bun@1.2.0",
   "description": "Mioku - Plugin framework extended from mioki for NapCat OneBot v11",
   "keywords": [
@@ -12,7 +12,7 @@
     "mioku"
   ],
   "bin": {
-    "mioku": "./dist/cli.mjs"
+    "mioku": "./dist/cli.js"
   },
   "engines": {
     "node": ">= 22.18.0"

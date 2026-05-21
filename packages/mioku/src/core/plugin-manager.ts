@@ -1,8 +1,9 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { existsSync, mkdirSync } from "fs";
-import { logger } from "mioki";
+import { mkdirSync } from "fs";
 import type { PluginMetadata } from "./types";
+import { DEFAULT_RUNTIME_PLUGINS_DIR } from "./plugin-linker";
+import { logger } from "./logger";
 
 const PLUGIN_MANAGER_SYMBOL = Symbol.for("mioku.plugin-manager");
 
@@ -33,9 +34,13 @@ export class PluginManager {
 
   async discoverPlugins(miokuConfig: any = {}): Promise<PluginMetadata[]> {
     // Resolve pluginsDir dynamically so it uses the current cwd
-    const pluginsDir = miokuConfig.plugins_dir
-      ? path.resolve(process.cwd(), miokuConfig.plugins_dir)
-      : path.resolve(process.cwd(), "plugins");
+    const configuredPluginsDir = miokuConfig.plugins_dir;
+    const pluginsDir =
+      configuredPluginsDir && configuredPluginsDir !== DEFAULT_RUNTIME_PLUGINS_DIR
+        ? path.resolve(process.cwd(), configuredPluginsDir)
+        : path.resolve(process.cwd(), "plugins");
+
+    this.pluginMetadata.clear();
 
     // Ensure plugins directory exists
     if (!(await pathExists(pluginsDir))) {
@@ -64,9 +69,10 @@ export class PluginManager {
     try {
       const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
         const pluginPath = path.join(pluginsDir, entry.name);
+        const metadataPath = await this.resolveDirectoryPath(pluginPath);
+        if (!metadataPath) continue;
+
         const metadata = await this.loadPluginMetadata(entry.name, pluginPath);
         if (metadata) {
           discovered.push(metadata);
@@ -91,8 +97,8 @@ export class PluginManager {
     try {
       const entries = await fs.readdir(nodeModulesPath, { withFileTypes: true });
       for (const entry of entries) {
-        // Check for mioku-plugin-* prefix
-        if (!entry.isDirectory() || !entry.name.startsWith("mioku-plugin-")) {
+        // Check for mioku-plugin-* prefix (don't check isDirectory - symlinks return false)
+        if (!entry.name.startsWith("mioku-plugin-")) {
           continue;
         }
 
@@ -111,18 +117,33 @@ export class PluginManager {
     return discovered;
   }
 
+  private async resolveDirectoryPath(entryPath: string): Promise<string | null> {
+    try {
+      const stat = await fs.stat(entryPath);
+      return stat.isDirectory() ? entryPath : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async loadPluginMetadata(
     name: string,
     pluginPath: string,
   ): Promise<PluginMetadata | null> {
-    const packageJsonPath = path.join(pluginPath, "package.json");
+    // Resolve symlinks to get actual path
+    let resolvedPath = pluginPath;
+    try {
+      resolvedPath = await fs.realpath(pluginPath);
+    } catch {
+      // Not a symlink or doesn't exist, use original path
+    }
+
+    const packageJsonPath = path.join(resolvedPath, "package.json");
 
     let packageJson: any = null;
     try {
-      const stats = await fs.stat(packageJsonPath);
-      if (stats.isFile()) {
-        packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf-8"));
-      }
+      const content = await fs.readFile(packageJsonPath, "utf-8");
+      packageJson = JSON.parse(content);
     } catch {
       // File doesn't exist or can't be read - plugin uses defaults
     }
@@ -131,7 +152,7 @@ export class PluginManager {
       name,
       version: packageJson?.version || "0.0.0",
       description: packageJson?.description,
-      path: pluginPath,
+      path: resolvedPath,
       packageJson,
       config: packageJson?.mioku || {},
     };

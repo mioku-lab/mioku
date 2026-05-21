@@ -4,33 +4,31 @@
  * Main entry point for the mioku npm package
  */
 
-import { start as startMioki, logger, botConfig } from "mioki";
 import pluginManager from "./core/plugin-manager";
 import serviceManager from "./core/service-manager";
 import { registerPluginArtifacts } from "./core/plugin-artifact-registry";
 import * as fs from "fs";
 import * as path from "path";
 import { existsSync, mkdirSync } from "fs";
+import {
+  DEFAULT_RUNTIME_PLUGINS_DIR,
+  prepareRuntimePluginLinks,
+} from "./core/plugin-linker";
+import { setMiokuLogger } from "./core/logger";
 
 // Re-export mioki types for convenience
 export type { MiokiPlugin, MiokiContext } from "mioki";
 
-export { definePlugin } from "mioki";
+export function definePlugin<T extends import("mioki").MiokiPlugin>(
+  plugin: T,
+): T {
+  return plugin;
+}
 
 // Core functionality
 export { default as pluginManager } from "./core/plugin-manager";
 export { default as serviceManager } from "./core/service-manager";
 export { registerPluginArtifacts } from "./core/plugin-artifact-registry";
-
-// Services (from src/services/)
-export { default as configService } from "./services/config";
-export { default as aiService } from "./services/ai";
-export { default as screenshotService } from "./services/screenshot";
-
-// Plugins (from src/plugins/)
-export { default as bootPlugin } from "./plugins/boot";
-export { default as helpPlugin } from "./plugins/help";
-export { default as chatPlugin } from "./plugins/chat";
 
 // Types from types.ts
 export type {
@@ -59,7 +57,26 @@ export type {
   CompleteOptions,
   CompleteResponse,
   SessionToolDefinition,
+  SkillPermissionRole,
+  MultimodalContentItem,
+  ToolResultFollowup,
+  ChatRuntimePromptInjection,
+  ChatRuntimeGroupTarget,
+  ChatRuntimePrivateTarget,
+  ChatRuntimeSource,
+  ChatRuntimeBaseOptions,
+  ChatRuntimeNoticeOptions,
+  ChatRuntimeInformationRequestOptions,
+  ChatRuntimeCollectedInfo,
+  ChatRuntimeResult,
+  AIUsageRange,
+  AIUsageContext,
+  AIUsageBreakdown,
+  AIUsageFinalization,
+  AIUsageSummary,
 } from "./service-types";
+
+export { TOOL_RESULT_FOLLOWUP_KEY } from "./service-types";
 
 /**
  * Start options for Mioku
@@ -78,8 +95,11 @@ export async function start(options: MiokuStartOptions = {}): Promise<void> {
     process.chdir(cwd);
   }
 
+  const { start: startMioki, logger, botConfig } = await import("mioki");
+  setMiokuLogger(logger);
+
   // Read mioku config from package.json (mioki field contains merged config)
-  const packageJsonPath = path.join(cwd, "package.json");
+  const packageJsonPath = path.join(process.cwd(), "package.json");
   let miokuConfig: any = {};
   if (fs.existsSync(packageJsonPath)) {
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
@@ -104,6 +124,16 @@ export async function start(options: MiokuStartOptions = {}): Promise<void> {
   const discoveredPlugins = await pluginManager.discoverPlugins(miokuConfig);
   logger.info(`O.o 共发现 ${discoveredPlugins.length} 个插件: ${discoveredPlugins.map(p => p.name).join(", ")}`);
 
+  const runtimePluginsDir = path.resolve(
+    process.cwd(),
+    DEFAULT_RUNTIME_PLUGINS_DIR,
+  );
+  const linkedPluginNames = await prepareRuntimePluginLinks(
+    discoveredPlugins,
+    runtimePluginsDir,
+  );
+  botConfig.plugins_dir = DEFAULT_RUNTIME_PLUGINS_DIR;
+
   logger.info("o.O Miku 正在翻找服务..");
   await serviceManager.discoverServices(miokuConfig);
 
@@ -116,7 +146,7 @@ export async function start(options: MiokuStartOptions = {}): Promise<void> {
   }
 
   // Merge discovered plugin names into botConfig.plugins so mioki loads them
-  const discoveredPluginNames = discoveredPlugins.map((p) => p.name);
+  const discoveredPluginNames = linkedPluginNames;
   for (const name of discoveredPluginNames) {
     if (!botConfig.plugins.includes(name)) {
       botConfig.plugins.push(name);

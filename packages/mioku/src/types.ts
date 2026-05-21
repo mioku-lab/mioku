@@ -16,6 +16,28 @@ export interface MiokuService {
   dispose?(): Promise<void>;
 }
 
+export interface ConfigService {
+  registerConfig(pluginName: string, configName: string, initialConfig: any): Promise<boolean>;
+  updateConfig(pluginName: string, configName: string, updates: any): Promise<boolean>;
+  getConfig(pluginName: string, configName: string): Promise<any>;
+  getPluginConfigs(pluginName: string): Promise<Record<string, any>>;
+  onConfigChange(pluginName: string, configName: string, callback: (newConfig: any) => void): () => void;
+}
+
+export interface ScreenshotService {
+  screenshot(html: string, options?: any): Promise<string>;
+  screenshotMarkdown(markdownContent: string, options?: any): Promise<string>;
+  screenshotFromUrl(url: string, options?: any): Promise<string>;
+  cleanupTemp(olderThanMs?: number): Promise<number>;
+}
+
+export interface HelpService {
+  registerHelp(pluginName: string, help: PluginHelp): void;
+  getHelp(pluginName: string): PluginHelp | undefined;
+  getAllHelp(): Map<string, PluginHelp>;
+  unregisterHelp(pluginName: string): boolean;
+}
+
 /**
  * AI 相关类型
  */
@@ -67,7 +89,18 @@ export interface AIService {
 }
 
 export interface ChatRuntime {
-  generateNotice(options: any): Promise<void>;
+  generateNotice(options: ChatRuntimeNoticeOptions): Promise<ChatRuntimeResult>;
+  requestInformation(options: ChatRuntimeInformationRequestOptions): Promise<ChatRuntimeResult>;
+}
+
+export const TOOL_RESULT_FOLLOWUP_KEY = "__miokuFollowup";
+
+export interface ToolResultFollowup {
+  text: string;
+  images: Array<{
+    url: string;
+    detail?: "auto" | "low" | "high";
+  }>;
 }
 
 export interface TextMessage {
@@ -75,9 +108,18 @@ export interface TextMessage {
   content: string;
 }
 
+export interface MultimodalContentItem {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: {
+    url: string;
+    detail?: "auto" | "low" | "high";
+  };
+}
+
 export interface MultimodalMessage {
   role: "system" | "user" | "assistant";
-  content: string | Array<{ type: "text"; text?: string } | { type: "image_url"; image_url?: string }>;
+  content: string | MultimodalContentItem[];
 }
 
 export interface ToolCallRecord {
@@ -112,6 +154,60 @@ export interface CompleteResponse {
 export interface SessionToolDefinition {
   name: string;
   tool: AITool;
+}
+
+export interface ChatRuntimePromptInjection {
+  content: string;
+  title?: string;
+}
+
+export interface ChatRuntimeGroupTarget {
+  selfId: number;
+  groupId: number;
+}
+
+export interface ChatRuntimePrivateTarget {
+  selfId: number;
+  userId: number;
+}
+
+export type ChatRuntimeSource =
+  | { event: any }
+  | ChatRuntimeGroupTarget
+  | ChatRuntimePrivateTarget;
+
+export type ChatRuntimeBaseOptions = ChatRuntimeSource & {
+  targetMessage?: string;
+  promptInjections?: ChatRuntimePromptInjection[];
+  send?: boolean;
+};
+
+export type ChatRuntimeInformationRequestOptions = ChatRuntimeBaseOptions & {
+  task: string;
+  schema: {
+    type: "object";
+    properties: Record<string, any>;
+    required?: string[];
+  };
+  toolName?: string;
+  toolDescription?: string;
+};
+
+export type ChatRuntimeNoticeOptions = ChatRuntimeBaseOptions & {
+  instruction: string;
+};
+
+export interface ChatRuntimeCollectedInfo {
+  data: any;
+  isComplete?: boolean;
+  confidence?: number;
+  notes?: string;
+}
+
+export interface ChatRuntimeResult {
+  messages: string[];
+  toolCalls: ToolCallRecord[];
+  collectedInfo: ChatRuntimeCollectedInfo | null;
 }
 
 /**
