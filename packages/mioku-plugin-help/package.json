@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-help",
-  "version": "1.0.0",
+  "version": "0.8.0",
   "description": "帮助插件，使用截图服务生成美观的帮助图片",
   "main": "index.ts",
   "type": "module",

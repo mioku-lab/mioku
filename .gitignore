@@ -172,3 +172,4 @@ vite.config.ts.timestamp-*
 /example/config/help/demo.json
 /example/config/
 /example/data/
+/example/temp/

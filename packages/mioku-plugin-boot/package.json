@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-boot",
-  "version": "1.0.0",
+  "version": "0.8.0",
   "description": "Mioku 引导与系统功能插件",
   "main": "index.ts",
   "type": "module",
