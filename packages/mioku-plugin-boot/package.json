@@ -1,0 +1,24 @@
+{
+  "name": "mioku-plugin-boot",
+  "version": "1.0.0",
+  "description": "Mioku 引导与系统功能插件",
+  "main": "index.ts",
+  "type": "module",
+  "keywords": [
+    "mioku"
+  ],
+  "mioku": {
+    "services": [
+      "config",
+      "ai"
+    ]
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  },
+  "devDependencies": {
+    "mioku": "workspace:*",
+    "mioki": "^0.16.0"
+  }
+}
