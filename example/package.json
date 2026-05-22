@@ -25,7 +25,12 @@
       "boot",
       "help",
       "chat",
-      "demo"
+      "demo",
+      "60s",
+      "admin",
+      "media",
+      "music",
+      "meme"
     ],
     "log_level": "info",
     "napcat": [
@@ -33,7 +38,7 @@
         "protocol": "ws",
         "port": 5577,
         "host": "192.168.1.201",
-        "token": "turing"
+        "token": "114514"
       }
     ]
   }

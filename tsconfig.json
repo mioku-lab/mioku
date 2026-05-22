@@ -10,6 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
+    "types": ["bun"],
     "baseUrl": ".",
     "paths": {
       "mioku": ["packages/mioku/src/index.ts"],

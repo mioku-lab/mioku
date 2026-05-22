@@ -17,7 +17,7 @@ Treat the checked-out source as the source of truth when docs and code differ.
 # 构建 mioku 包
 bun run build
 
-# 在根目录构建文档
+# 构建文档
 bun run docs:dev
 bun run docs:build
 ```
@@ -27,47 +27,39 @@ bun run docs:build
 - `packages/mioku/`: Mioku npm 包源码
   - `src/index.ts`: 包入口，导出 start() 和所有内置插件/服务
   - `src/cli.ts`: npx 入口，交互式脚手架
-  - `src/plugins/`: 内置插件（boot, help, chat）
-  - `src/services/`: 内置服务（config, ai, screenshot）
   - `src/core/`: 核心框架代码
   - `dist/`: 构建输出
-- `plugins/`: 本地插件（示例）
+- `packages/mioku-plugin-*/`: 内置插件 (boot, help, chat 等)
+- `packages/mioku-service-*/`: 内置服务 (config, ai, screenshot, help 等)
 - `example/`: 测试实例
-- `unadapted/`: 未适配的插件和服务（需要适配才能使用）
 - `docs/`: VitePress 文档
-- `mioku-webui/`: WebUI 界面（独立仓库）
 
-## 内置插件/服务
+## 包管理
 
-所有内置插件和服务都在 `packages/mioku/` 包中：
+项目使用 `bun` 作为包管理工具，固定版本在 `packageManager` 字段。
 
-### 内置插件
-- **boot**: 系统启动插件 (priority -Infinity)
-- **help**: 帮助图片生成
-- **chat**: AI 聊天
+插件和服务通过 npm 包发布，不再使用 `src/services/*` 或 `plugins/*` 本地目录结构。
 
-### 内置服务
-- **config**: 配置管理
-- **ai**: AI 实例管理
-- **screenshot**: 网页截图
+## 数据目录
 
-## 构建流程
+插件需要持久化数据时，应将数据存放在项目目录下的 `data` 目录中。使用 `mioku` 提供的数据路径工具：
 
-1. `npx mioku` 使用 cli.ts 创建项目
-2. 项目中 `bun add mioku` 安装框架
-3. 框架自动发现 node_modules 中的 mioku-plugin-* 插件
-4. 运行时通过 `start()` 启动
+```typescript
+import { getPluginDataDir, ensureDataDir } from "mioku";
+```
 
 ## 开发
 
 ```bash
 # 克隆仓库
-git clone https://github.com/jerryplusy/mioku.git
+git clone https://github.com/mioku-lab/mioku.git
+
+cd mioku
 
 # 构建 mioku 包
 bun install
 bun run build
 
-# 或在根目录（构建文档）
+# 文档开发
 bun run docs:dev
 ```

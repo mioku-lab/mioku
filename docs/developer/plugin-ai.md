@@ -4,7 +4,7 @@
 
 先在插件的 `package.json` 里声明依赖
 
-```json {3}
+```json
 {
   "mioku": {
     "services": ["ai"]
@@ -14,9 +14,9 @@
 
 然后在 `index.ts` 里读取服务
 
-```ts {7}
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "release-note",
@@ -28,14 +28,14 @@ export default definePlugin({
 
 > [!TIP]
 > 大部分插件不需要自己创建 AI 实例
-> 
+>
 > 正常情况下，直接拿默认实例即可。默认实例通常由 `chat` 插件在启动时创建并设置
 
 ## 获取默认 AI 实例
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "release-note",
@@ -50,9 +50,9 @@ export default definePlugin({
 
 最常见的用法就是：给一段明确提示词，让 AI 直接返回可发送的文本
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "release-note",
@@ -96,9 +96,9 @@ export default definePlugin({
 
 如果你的插件要同时给模型传文字和图片，使用 `generateMultimodal()`
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "poster-review",
@@ -149,9 +149,9 @@ export default definePlugin({
 
 如果你希望模型不只是**写字**，而是**决定什么时候调用插件能力**，用 `complete()`，并传入 `executableTools`
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService, AITool } from "mioku";
 
 export default definePlugin({
   name: "web-ask",
@@ -234,9 +234,9 @@ export default definePlugin({
 });
 ```
 
-## 使用`chat`运行时
+## 使用 `chat` 运行时
 
-`chat-runtime` 不是普通文本生成接口。  
+`chat-runtime` 不是普通文本生成接口。
 它是 `chat` 插件注册到 `ai` 服务上的一层运行时能力，作用是：
 
 - 复用 `chat` 插件当前的人设
@@ -246,7 +246,7 @@ export default definePlugin({
 > [!TIP]
 > 换句话讲，你的插件可以通过 `chat` 运行时通过 `chat` 插件和用户自然地对话
 
-```ts {2}
+```typescript
 const aiService = ctx.services?.ai as AIService | undefined;
 const chatRuntime = aiService?.getChatRuntime();
 
@@ -257,16 +257,16 @@ if (!chatRuntime) {
 ```
 
 > [!IMPORTANT]
-> `chat-runtime` 由 `chat` 插件注册。  
+> `chat-runtime` 由 `chat` 插件注册。
 > 如果没启用 `chat` 插件，或者聊天插件初始化失败，`getChatRuntime()` 会返回 `undefined`。
 
 ### 用聊天人设发通知
 
 一般用 `generateNotice()`，这个方法的目标很简单，就是让当前人格把这件事自然地说出来
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "video-jobs",
@@ -290,12 +290,12 @@ export default definePlugin({
 
 ### 用聊天人设向用户追问缺失信息
 
-询问场景用 `requestInformation()`。  
+询问场景用 `requestInformation()`。
 它内部会额外挂一个**提交答案**的工具，让模型在信息足够时把结构化结果交回来。如果信息不够，它就继续追问
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { AIService } from "../../src/services/ai/types";
+import type { AIService } from "mioku";
 
 export default definePlugin({
   name: "reminder",
@@ -366,11 +366,10 @@ export default definePlugin({
 Mioku 会在启动时自动扫描插件目录下的 `skills.ts`，并注册里面 `default-export` 出来的 `AISkill[]`
 
 > [!NOTE]
-> 提供`skiils`可以让 `chat` 插件中的AI使用插件中的功能
+> 提供 `skills` 可以让 `chat` 插件中的 AI 使用插件中的功能
 
-```ts
-import type { AISkill, AITool } from "../../src";
-import type { HelpService } from "../../src/services/help/types";
+```typescript
+import type { AISkill, AITool, HelpService } from "mioku";
 import { buildHelpInfoText } from "./shared";
 
 const helpSkills: AISkill[] = [
@@ -414,7 +413,7 @@ export default helpSkills;
 
 如果 `chat` 插件启用了外部技能，它会在三处做权限校验：
 
-- 提示词中的“已加载外部技能”列表会按触发用户权限过滤
+- 提示词中的"已加载外部技能"列表会按触发用户权限过滤
 - `load_skill` 时会检查触发用户是否满足 `AISkill.permission`
 - 技能工具实际调用时会再次校验，权限不足会拒绝执行
 
@@ -443,16 +442,16 @@ export default helpSkills;
 >
 > 这意味着同一个 `runtime.ts` 文件可能被执行多次，模块级变量不会稳定共享
 >
-> 在 Mioku 里，推荐使用 `src/core/plugin-runtime-state.ts` 提供的全局 runtime registry
+> 在 Mioku 里，推荐使用 `mioku` 包提供的全局 runtime registry
 
-```ts
+```typescript
 // runtime.ts 示例
 import type { QueueManager } from "./queue-manager";
 import {
   getPluginRuntimeState,
   resetPluginRuntimeState,
   setPluginRuntimeState,
-} from "../../src";
+} from "mioku";
 
 export interface NoticeRuntimeState {
   queue?: QueueManager;
@@ -476,7 +475,7 @@ export function resetNoticeRuntimeState(): void {
 
 在 `index.ts` 的 `setup()` 里，把运行时对象塞进去：
 
-```ts
+```typescript
 // index.ts
 import { definePlugin } from "mioki";
 import { QueueManager } from "./queue-manager";
@@ -505,9 +504,9 @@ export default definePlugin({
 
 `skills.ts` 再去读取这些状态：
 
-```ts
+```typescript
 // skills.ts
-import type { AISkill } from "../../src";
+import type { AISkill } from "mioku";
 import { getNoticeRuntimeState } from "./runtime";
 
 const noticeSkills: AISkill[] = [
@@ -542,6 +541,8 @@ const noticeSkills: AISkill[] = [
     ],
   },
 ];
+
+export default noticeSkills;
 ```
 
 这样 `skills.ts` 既不会依赖 `setup()` 的局部闭包，又能稳定拿到真正的运行时对象。

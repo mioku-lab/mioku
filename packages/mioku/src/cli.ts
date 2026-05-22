@@ -172,14 +172,13 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
   用法: mioku <命令> [选项]
 
   命令:
-    install <包名>        安装插件或服务
-                          支持: mioku-plugin-xxx, mioku-service-xxx
-                          自动补全前缀，可直接写 xxx
-    update [包名|self|all] 更新插件或服务
-                          update          - 检查可用更新
-                          update all      - 更新所有 mioku- 包
-                          update self     - 更新 mioku 框架
-                          update xxx      - 更新指定包
+    install plugin <名称>   安装插件，自动补全 mioku-plugin- 前缀
+    install service <名称>  安装服务，自动补全 mioku-service- 前缀
+    update [包名|self|all]   更新插件或服务
+                            update          - 检查可用更新
+                            update all      - 更新所有 mioku- 包
+                            update self     - 更新 mioku 框架
+                            update xxx      - 更新指定包
 
   选项:
     -h, --help              显示帮助信息
@@ -201,15 +200,25 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
     case "install": {
       ensurePackageManager();
       const cwd = process.cwd();
-      if (!cmdArgs.length) {
-        consola.error("请指定要安装的包名");
+      const type = cmdArgs[0];
+      const name = cmdArgs[1];
+
+      if (!type || !name) {
+        consola.error("请指定类型和名称: mioku install plugin <名称> 或 mioku install service <名称>");
         console.log(helpInfo);
         process.exit(1);
       }
-      for (const name of cmdArgs) {
-        await installPackage(name, cwd);
+
+      if (type !== "plugin" && type !== "service") {
+        consola.error(`无效的类型 "${type}"，请使用 plugin 或 service`);
+        console.log(helpInfo);
+        process.exit(1);
       }
-      process.exit(0);
+
+      const prefix = type === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
+      const normalized = `${prefix}${name}`;
+      const success = await installPackage(normalized, cwd);
+      process.exit(success ? 0 : 1);
     }
 
     case "update": {
