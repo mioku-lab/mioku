@@ -170,3 +170,5 @@ vite.config.ts.timestamp-*
 /example/config/chat/personalization.json
 /example/config/chat/settings.json
 /example/config/help/demo.json
+/example/config/
+/example/data/
