@@ -48,55 +48,14 @@ function commandExists(cmd: string): boolean {
   }
 }
 
-function ensurePackageManager(pm: string) {
-  if (commandExists(pm)) return pm;
-
-  if (pm === "bun") {
-    console.log("安装 bun...");
-    execSync("npm install -g bun", { stdio: "inherit" });
-    return "bun";
-  }
-
-  if (pm === "pnpm") {
-    console.log("pnpm 未安装，正在安装...");
-    execSync("npm install -g pnpm", { stdio: "inherit" });
-    return "pnpm";
-  }
-
-  if (pm === "npm") {
-    return "npm";
-  }
-
-  return pm;
+function ensurePackageManager() {
+  if (commandExists("bun")) return;
+  console.log("安装 bun...");
+  execSync("npm install -g bun", { stdio: "inherit" });
 }
 
-function getAddCommand(pm: string, packages: string[]): string {
-  const packageList = packages.join(" ");
-
-  if (pm === "npm") {
-    return `npm add ${packageList}`;
-  }
-
-  if (pm === "pnpm") {
-    return `pnpm add ${packageList}`;
-  }
-
-  return `bun add ${packageList}`;
-}
-
-async function selectPackageManager(): Promise<string> {
-  const choices = ["bun", "npm", "pnpm"];
-
-  const result = await consola.prompt("选择包管理器 (默认 bun)", {
-    type: "text",
-    default: "bun",
-  });
-
-  const normalized = result.toString().trim().toLowerCase();
-  if (choices.includes(normalized)) {
-    return normalized;
-  }
-  return "bun";
+function getAddCommand(packages: string[]): string {
+  return `bun add ${packages.join(" ")}`;
 }
 
 function normalizePackageName(input: string): string {
@@ -118,23 +77,16 @@ function detectType(name: string): "plugin" | "service" | "unknown" {
 }
 
 async function getPackageManager(): Promise<string> {
-  const choices = ["bun", "npm", "pnpm"];
-  const result = await consola.prompt("选择包管理器 (默认 bun)", {
-    type: "text",
-    default: "bun",
-  });
-  const normalized = result.toString().trim().toLowerCase();
-  if (choices.includes(normalized)) return normalized;
   return "bun";
 }
 
-function execAdd(pkgManager: string, packages: string[], cwd?: string) {
-  const cmd = getAddCommand(pkgManager, packages);
+function execAdd(packages: string[], cwd?: string) {
+  const cmd = getAddCommand(packages);
   console.log(`执行: ${cmd}`);
   execSync(cmd, { cwd, stdio: "inherit" });
 }
 
-async function installPackage(name: string, pkgManager: string, cwd?: string) {
+async function installPackage(name: string, cwd?: string) {
   const normalized = normalizePackageName(name);
   const type = detectType(normalized);
   if (type === "unknown") {
@@ -142,7 +94,7 @@ async function installPackage(name: string, pkgManager: string, cwd?: string) {
     return false;
   }
   try {
-    execAdd(pkgManager, [normalized], cwd);
+    execAdd([normalized], cwd);
     consola.success(`已安装 ${normalized}`);
     return true;
   } catch {
@@ -151,14 +103,9 @@ async function installPackage(name: string, pkgManager: string, cwd?: string) {
   }
 }
 
-async function updatePackage(name: string, pkgManager: string, cwd?: string) {
+async function updatePackage(name: string, cwd?: string) {
   try {
-    const cmd =
-      pkgManager === "npm"
-        ? `npm update ${name}`
-        : pkgManager === "pnpm"
-          ? `pnpm update ${name}`
-          : `bun update ${name}`;
+    const cmd = `bun update ${name}`;
     console.log(`执行: ${cmd}`);
     execSync(cmd, { cwd, stdio: "inherit" });
     consola.success(`已更新 ${name}`);
@@ -171,15 +118,9 @@ async function updatePackage(name: string, pkgManager: string, cwd?: string) {
 
 async function checkUpdates(
   packages: string[],
-  pkgManager: string,
   cwd?: string,
 ) {
-  const cmd =
-    pkgManager === "npm"
-      ? `npm outdated --json`
-      : pkgManager === "pnpm"
-        ? `pnpm outdated --json`
-        : `bun pm outdated --json`;
+  const cmd = `bun pm outdated --json`;
 
   try {
     const output = execSync(cmd, { cwd, encoding: "utf-8", stdio: "pipe" });
@@ -258,7 +199,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
 
   switch (cmd) {
     case "install": {
-      const pkgManager = await getPackageManager();
+      ensurePackageManager();
       const cwd = process.cwd();
       if (!cmdArgs.length) {
         consola.error("请指定要安装的包名");
@@ -266,19 +207,19 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         process.exit(1);
       }
       for (const name of cmdArgs) {
-        await installPackage(name, pkgManager, cwd);
+        await installPackage(name, cwd);
       }
       process.exit(0);
     }
 
     case "update": {
-      const pkgManager = await getPackageManager();
+      ensurePackageManager();
       const cwd = process.cwd();
 
       if (!cmdArgs.length || cmdArgs[0] === "check") {
         // 检查更新
         const packages = await getInstalledPackages(cwd);
-        const updates = await checkUpdates(packages, pkgManager, cwd);
+        const updates = await checkUpdates(packages, cwd);
         if (updates.length === 0) {
           consola.info("所有 mioku 依赖已是最新版本");
         } else {
@@ -299,13 +240,13 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           process.exit(0);
         }
         for (const pkg of packages) {
-          await updatePackage(pkg, pkgManager, cwd);
+          await updatePackage(pkg, cwd);
         }
         process.exit(0);
       }
 
       if (target === "self") {
-        await updatePackage("mioku", pkgManager, cwd);
+        await updatePackage("mioku", cwd);
         process.exit(0);
       }
 
@@ -322,14 +263,14 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
             process.exit(0);
           }
           for (const pkg of filtered) {
-            await updatePackage(pkg, pkgManager, cwd);
+            await updatePackage(pkg, cwd);
           }
         } else {
           const prefix = target === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
           const normalized = name.startsWith(prefix)
             ? name
             : `${prefix}${name}`;
-          await updatePackage(normalized, pkgManager, cwd);
+          await updatePackage(normalized, cwd);
         }
         process.exit(0);
       }
@@ -337,10 +278,10 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       // update xxx - 更新指定包，自动识别前缀
       const packages = await getInstalledPackages(cwd);
       if (packages.includes(target)) {
-        await updatePackage(target, pkgManager, cwd);
+        await updatePackage(target, cwd);
       } else {
         const normalized = normalizePackageName(target);
-        await updatePackage(normalized, pkgManager, cwd);
+        await updatePackage(normalized, cwd);
       }
       process.exit(0);
     }
@@ -437,9 +378,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         initial: true,
       });
 
-      // Select and validate package manager
-      const pkgManager = await selectPackageManager();
-      const pm = ensurePackageManager(pkgManager);
+      ensurePackageManager();
 
       const pkgJson = dedent(`
       {
@@ -518,7 +457,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         ...(useNpmMirror ? { ".npmrc": npmrc } : {}),
       };
 
-      await createNewProject(name, fileTree, { installWebui, pkgManager: pm });
+      await createNewProject(name, fileTree, { installWebui });
     }
   }
 })();
@@ -526,7 +465,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
 async function createNewProject(
   name: string,
   fileTree: Record<string, any>,
-  options: { installWebui: boolean; pkgManager: string },
+  options: { installWebui: boolean },
 ) {
   const projectName = name;
   const projectPath = withRoot(`./${projectName}`);
@@ -558,11 +497,11 @@ async function createNewProject(
 
   console.log(`项目 ${projectName} 创建成功！`);
 
-  const addCommand = getAddCommand(options.pkgManager, DEFAULT_PACKAGES);
+  const addCommand = getAddCommand(DEFAULT_PACKAGES);
   console.log(`正在安装 Mioku 依赖: ${addCommand}`);
   execSync(addCommand, { cwd: projectPath, stdio: "inherit" });
 
-  console.log(`\ncd ${projectPath} && ${options.pkgManager} start\n`);
+  console.log(`\ncd ${projectPath} && bun run start\n`);
 
   if (options.installWebui) {
     console.log("WebUI 将通过 mioku 框架自动加载，无需额外安装。");

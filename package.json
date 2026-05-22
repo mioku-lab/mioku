@@ -15,7 +15,7 @@
   "scripts": {
     "start": "cd example && bun run start",
     "dev": "cd packages/mioku && bun run dev",
-    "build": "cd packages/mioku && bun run build",
+    "build": "for pkg in packages/*/; do [ -f \"$pkg/package.json\" ] && [ -d \"$pkg/src\" -o -f \"$pkg/tsdown.config.ts\" ] && (echo \"Building $pkg\" && cd \"$pkg\" && bun run build); done",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

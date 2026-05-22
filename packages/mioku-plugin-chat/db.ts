@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import * as fs from "fs/promises";
 import { existsSync } from "fs";
 import * as path from "path";
@@ -99,7 +99,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
   const db = new Database(dbPath);
 
   // 开启 WAL 模式提升并发性能
-  db.pragma("journal_mode = WAL");
+  db.exec("PRAGMA journal_mode = WAL");
 
   // 创建表
   db.exec(`
@@ -214,148 +214,148 @@ export async function initDatabase(): Promise<ChatDatabase> {
   const stmts = {
     upsertSession: db.prepare(`
       INSERT INTO sessions (id, type, target_id, created_at, updated_at, compressed_context)
-      VALUES (@id, @type, @targetId, @createdAt, @updatedAt, @compressedContext)
+      VALUES ($id, $type, $targetId, $createdAt, $updatedAt, $compressedContext)
       ON CONFLICT(id) DO UPDATE SET
-        updated_at = @updatedAt,
-        compressed_context = COALESCE(@compressedContext, compressed_context)
+        updated_at = $updatedAt,
+        compressed_context = COALESCE($compressedContext, compressed_context)
     `),
-    getSession: db.prepare(`SELECT * FROM sessions WHERE id = ?`),
+    getSession: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
     insertMessage: db.prepare(`
       INSERT INTO messages (session_id, role, content, user_id, user_name, user_role, user_title, group_id, group_name, timestamp, message_id)
-      VALUES (@sessionId, @role, @content, @userId, @userName, @userRole, @userTitle, @groupId, @groupName, @timestamp, @messageId)
+      VALUES ($sessionId, $role, $content, $userId, $userName, $userRole, $userTitle, $groupId, $groupName, $timestamp, $messageId)
     `),
     getMessages: db.prepare(`
-      SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp DESC, id DESC LIMIT ?
+      SELECT * FROM messages WHERE session_id = $sessionId ORDER BY timestamp DESC, id DESC LIMIT $limit
     `),
     getMessagesBefore: db.prepare(`
-      SELECT * FROM messages WHERE session_id = ? AND timestamp < ? ORDER BY timestamp DESC, id DESC LIMIT ?
+      SELECT * FROM messages WHERE session_id = $sessionId AND timestamp < $timestamp ORDER BY timestamp DESC, id DESC LIMIT $limit
     `),
     getBotMessages: db.prepare(`
-      SELECT * FROM messages WHERE group_id = ? AND role = 'assistant' ORDER BY timestamp DESC LIMIT ?
+      SELECT * FROM messages WHERE group_id = $groupId AND role = 'assistant' ORDER BY timestamp DESC LIMIT $limit
     `),
     getStoredGroupNoticeMessages: db.prepare(`
       SELECT * FROM messages
-      WHERE group_id = ? AND role = 'user' AND content LIKE '发布了一条群公告：%'
-      ORDER BY timestamp DESC LIMIT ?
+      WHERE group_id = $groupId AND role = 'user' AND content LIKE '发布了一条群公告：%'
+      ORDER BY timestamp DESC LIMIT $limit
     `),
     getMessagesByUser: db.prepare(`
-      SELECT * FROM messages WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?
+      SELECT * FROM messages WHERE user_id = $userId ORDER BY timestamp DESC LIMIT $limit
     `),
     getAllMessagesByUser: db.prepare(`
-      SELECT * FROM messages WHERE user_id = ? ORDER BY timestamp DESC, id DESC
+      SELECT * FROM messages WHERE user_id = $userId ORDER BY timestamp DESC, id DESC
     `),
     getMessagesByUserInSession: db.prepare(`
-      SELECT * FROM messages WHERE user_id = ? AND session_id = ? ORDER BY timestamp DESC LIMIT ?
+      SELECT * FROM messages WHERE user_id = $userId AND session_id = $sessionId ORDER BY timestamp DESC LIMIT $limit
     `),
     getAllMessagesByUserInSession: db.prepare(`
-      SELECT * FROM messages WHERE user_id = ? AND session_id = ? ORDER BY timestamp DESC, id DESC
+      SELECT * FROM messages WHERE user_id = $userId AND session_id = $sessionId ORDER BY timestamp DESC, id DESC
     `),
     getMessagesByTimeRange: db.prepare(`
       SELECT * FROM messages
-      WHERE session_id = ? AND timestamp >= ? AND timestamp < ?
+      WHERE session_id = $sessionId AND timestamp >= $startTimestamp AND timestamp < $endTimestamp
       ORDER BY timestamp ASC, id ASC
     `),
     updateCompressedContext: db.prepare(`
-      UPDATE sessions SET compressed_context = ?, updated_at = ? WHERE id = ?
+      UPDATE sessions SET compressed_context = $compressedContext, updated_at = $updatedAt WHERE id = $sessionId
     `),
     deleteSessionMessages: db.prepare(`
-      DELETE FROM messages WHERE session_id = ?
+      DELETE FROM messages WHERE session_id = $sessionId
     `),
     deleteBotMessages: db.prepare(`
-      DELETE FROM messages WHERE session_id = ? AND role = 'assistant'
+      DELETE FROM messages WHERE session_id = $sessionId AND role = 'assistant'
     `),
     resetSessionContext: db.prepare(`
-      UPDATE sessions SET compressed_context = NULL, updated_at = ? WHERE id = ?
+      UPDATE sessions SET compressed_context = NULL, updated_at = $updatedAt WHERE id = $sessionId
     `),
     // 消息搜索
     searchMessages: db.prepare(`
-      SELECT * FROM messages WHERE session_id = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?
+      SELECT * FROM messages WHERE session_id = $sessionId AND content LIKE $keyword ORDER BY timestamp DESC LIMIT $limit
     `),
     // 话题
     insertTopic: db.prepare(`
       INSERT INTO topics (session_id, title, keywords, summary, message_count, window_start_at, window_end_at, created_at, updated_at)
-      VALUES (@sessionId, @title, @keywords, @summary, @messageCount, @windowStartAt, @windowEndAt, @createdAt, @updatedAt)
+      VALUES ($sessionId, $title, $keywords, $summary, $messageCount, $windowStartAt, $windowEndAt, $createdAt, $updatedAt)
     `),
     getTopics: db.prepare(`
-      SELECT * FROM topics WHERE session_id = ? ORDER BY updated_at DESC LIMIT ?
+      SELECT * FROM topics WHERE session_id = $sessionId ORDER BY updated_at DESC LIMIT $limit
     `),
     getTopicByWindow: db.prepare(`
       SELECT * FROM topics
-      WHERE session_id = ? AND window_start_at = ? AND window_end_at = ?
+      WHERE session_id = $sessionId AND window_start_at = $windowStartAt AND window_end_at = $windowEndAt
       ORDER BY id DESC
       LIMIT 1
     `),
     updateTopic: db.prepare(`
-      UPDATE topics SET summary = @summary, keywords = @keywords, message_count = @messageCount, updated_at = @updatedAt WHERE id = @id
+      UPDATE topics SET summary = $summary, keywords = $keywords, message_count = $messageCount, updated_at = $updatedAt WHERE id = $id
     `),
     // 表达学习
     insertExpression: db.prepare(`
       INSERT INTO expressions (session_id, user_id, user_name, situation, style, example, created_at)
-      VALUES (@sessionId, @userId, @userName, @situation, @style, @example, @createdAt)
+      VALUES ($sessionId, $userId, $userName, $situation, $style, $example, $createdAt)
     `),
     getExpressions: db.prepare(`
-      SELECT * FROM expressions WHERE session_id = ? ORDER BY created_at DESC LIMIT ?
+      SELECT * FROM expressions WHERE session_id = $sessionId ORDER BY created_at DESC LIMIT $limit
     `),
     getExpressionsByUser: db.prepare(`
-      SELECT * FROM expressions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?
+      SELECT * FROM expressions WHERE user_id = $userId ORDER BY created_at DESC LIMIT $limit
     `),
     getExpressionCount: db.prepare(`
-      SELECT COUNT(*) as count FROM expressions WHERE session_id = ?
+      SELECT COUNT(*) as count FROM expressions WHERE session_id = $sessionId
     `),
     deleteExpressionsByUser: db.prepare(`
-      DELETE FROM expressions WHERE user_id = ?
+      DELETE FROM expressions WHERE user_id = $userId
     `),
     deleteOldestExpressions: db.prepare(`
-      DELETE FROM expressions WHERE session_id = ? AND id NOT IN (
-        SELECT id FROM expressions WHERE session_id = ? ORDER BY created_at DESC LIMIT ?
+      DELETE FROM expressions WHERE session_id = $sessionId AND id NOT IN (
+        SELECT id FROM expressions WHERE session_id = $sessionId ORDER BY created_at DESC LIMIT $keepCount
       )
     `),
     // 图片记录
     insertImage: db.prepare(`
       INSERT OR IGNORE INTO images (hash, url, type, description, emotion, character, file_path, created_at)
-      VALUES (@hash, @url, @type, @description, @emotion, @character, @filePath, @createdAt)
+      VALUES ($hash, $url, $type, $description, $emotion, $character, $filePath, $createdAt)
     `),
-    getImageByHash: db.prepare(`SELECT * FROM images WHERE hash = ?`),
-    getImageByUrl: db.prepare(`SELECT * FROM images WHERE url = ?`),
+    getImageByHash: db.prepare(`SELECT * FROM images WHERE hash = $hash`),
+    getImageByUrl: db.prepare(`SELECT * FROM images WHERE url = $url`),
     getAllImages: db.prepare(`SELECT * FROM images ORDER BY created_at DESC`),
     upsertMediaSummary: db.prepare(`
       INSERT INTO media_summaries (key, kind, source, summary, created_at)
-      VALUES (@key, @kind, @source, @summary, @createdAt)
+      VALUES ($key, $kind, $source, $summary, $createdAt)
       ON CONFLICT(key) DO UPDATE SET
-        summary = @summary,
-        source = @source,
-        created_at = @createdAt
+        summary = $summary,
+        source = $source,
+        created_at = $createdAt
     `),
-    getMediaSummary: db.prepare(`SELECT * FROM media_summaries WHERE key = ?`),
+    getMediaSummary: db.prepare(`SELECT * FROM media_summaries WHERE key = $key`),
     upsertMediaSummarySource: db.prepare(`
       INSERT INTO media_summary_sources (source_key, summary_key, created_at)
-      VALUES (@sourceKey, @summaryKey, @createdAt)
+      VALUES ($sourceKey, $summaryKey, $createdAt)
       ON CONFLICT(source_key) DO UPDATE SET
-        summary_key = @summaryKey,
-        created_at = @createdAt
+        summary_key = $summaryKey,
+        created_at = $createdAt
     `),
     getMediaSummaryBySource: db.prepare(`
       SELECT s.*
       FROM media_summary_sources src
       JOIN media_summaries s ON s.key = src.summary_key
-      WHERE src.source_key = ?
+      WHERE src.source_key = $sourceKey
     `),
   };
 
   return {
     saveSession(meta: SessionMeta): void {
       stmts.upsertSession.run({
-        id: meta.id,
-        type: meta.type,
-        targetId: meta.targetId,
-        createdAt: meta.createdAt,
-        updatedAt: meta.updatedAt,
-        compressedContext: meta.compressedContext,
+        $id: meta.id,
+        $type: meta.type,
+        $targetId: meta.targetId,
+        $createdAt: meta.createdAt,
+        $updatedAt: meta.updatedAt,
+        $compressedContext: meta.compressedContext,
       });
     },
 
     getSession(id: string): SessionMeta | null {
-      const row = stmts.getSession.get(id) as any;
+      const row = stmts.getSession.get({ $id: id }) as any;
       if (!row) return null;
       return {
         id: row.id,
@@ -369,17 +369,17 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     saveMessage(msg: ChatMessage): void {
       stmts.insertMessage.run({
-        sessionId: msg.sessionId,
-        role: msg.role,
-        content: msg.content,
-        userId: msg.userId ?? null,
-        userName: msg.userName ?? null,
-        userRole: msg.userRole ?? null,
-        userTitle: msg.userTitle ?? null,
-        groupId: msg.groupId ?? null,
-        groupName: msg.groupName ?? null,
-        timestamp: msg.timestamp,
-        messageId: msg.messageId ?? null,
+        $sessionId: msg.sessionId,
+        $role: msg.role,
+        $content: msg.content,
+        $userId: msg.userId ?? null,
+        $userName: msg.userName ?? null,
+        $userRole: msg.userRole ?? null,
+        $userTitle: msg.userTitle ?? null,
+        $groupId: msg.groupId ?? null,
+        $groupName: msg.groupName ?? null,
+        $timestamp: msg.timestamp,
+        $messageId: msg.messageId ?? null,
       });
     },
 
@@ -389,8 +389,8 @@ export async function initDatabase(): Promise<ChatDatabase> {
       before?: number,
     ): ChatMessage[] {
       const rows = before
-        ? (stmts.getMessagesBefore.all(sessionId, before, limit) as any[])
-        : (stmts.getMessages.all(sessionId, limit) as any[]);
+        ? (stmts.getMessagesBefore.all({ $sessionId: sessionId, $timestamp: before, $limit: limit }) as any[])
+        : (stmts.getMessages.all({ $sessionId: sessionId, $limit: limit }) as any[]);
 
       return rows
         .map((row) => ({
@@ -411,7 +411,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getBotMessages(groupId: number, limit: number = 50): ChatMessage[] {
-      const rows = stmts.getBotMessages.all(groupId, limit) as any[];
+      const rows = stmts.getBotMessages.all({ $groupId: groupId, $limit: limit }) as any[];
       return rows
         .map((row) => ({
           id: row.id,
@@ -435,8 +435,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
       limit: number = 20,
     ): ChatMessage[] {
       const rows = stmts.getStoredGroupNoticeMessages.all(
-        groupId,
-        limit,
+        { $groupId: groupId, $limit: limit },
       ) as any[];
       return rows
         .map((row) => ({
@@ -462,12 +461,12 @@ export async function initDatabase(): Promise<ChatDatabase> {
       limit: number = 20,
     ): ChatMessage[] {
       const rows = sessionId
-        ? (stmts.getMessagesByUserInSession.all(
-            userId,
-            sessionId,
-            limit,
-          ) as any[])
-        : (stmts.getMessagesByUser.all(userId, limit) as any[]);
+        ? (stmts.getMessagesByUserInSession.all({
+            $userId: userId,
+            $sessionId: sessionId,
+            $limit: limit,
+          }) as any[])
+        : (stmts.getMessagesByUser.all({ $userId: userId, $limit: limit }) as any[]);
 
       return rows
         .map((row) => ({
@@ -489,8 +488,8 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     getAllMessagesByUser(userId: number, sessionId?: string): ChatMessage[] {
       const rows = sessionId
-        ? (stmts.getAllMessagesByUserInSession.all(userId, sessionId) as any[])
-        : (stmts.getAllMessagesByUser.all(userId) as any[]);
+        ? (stmts.getAllMessagesByUserInSession.all({ $userId: userId, $sessionId: sessionId }) as any[])
+        : (stmts.getAllMessagesByUser.all({ $userId: userId }) as any[]);
 
       return rows
         .map((row) => ({
@@ -515,11 +514,11 @@ export async function initDatabase(): Promise<ChatDatabase> {
       startTimestamp: number,
       endTimestamp: number,
     ): ChatMessage[] {
-      const rows = stmts.getMessagesByTimeRange.all(
-        sessionId,
-        startTimestamp,
-        endTimestamp,
-      ) as any[];
+      const rows = stmts.getMessagesByTimeRange.all({
+        $sessionId: sessionId,
+        $startTimestamp: startTimestamp,
+        $endTimestamp: endTimestamp,
+      }) as any[];
       return rows.map((row) => ({
         id: row.id,
         sessionId: row.session_id,
@@ -537,16 +536,16 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     updateCompressedContext(sessionId: string, context: string): void {
-      stmts.updateCompressedContext.run(context, Date.now(), sessionId);
+      stmts.updateCompressedContext.run({ $compressedContext: context, $updatedAt: Date.now(), $sessionId: sessionId });
     },
 
     deleteSessionMessages(sessionId: string): void {
-      stmts.deleteSessionMessages.run(sessionId);
-      stmts.resetSessionContext.run(Date.now(), sessionId);
+      stmts.deleteSessionMessages.run({ $sessionId: sessionId });
+      stmts.resetSessionContext.run({ $updatedAt: Date.now(), $sessionId: sessionId });
     },
 
     deleteBotMessages(sessionId: string): void {
-      stmts.deleteBotMessages.run(sessionId);
+      stmts.deleteBotMessages.run({ $sessionId: sessionId });
     },
 
     searchMessages(
@@ -554,11 +553,11 @@ export async function initDatabase(): Promise<ChatDatabase> {
       keyword: string,
       limit: number = 20,
     ): ChatMessage[] {
-      const rows = stmts.searchMessages.all(
-        sessionId,
-        `%${keyword}%`,
-        limit,
-      ) as any[];
+      const rows = stmts.searchMessages.all({
+        $sessionId: sessionId,
+        $keyword: `%${keyword}%`,
+        $limit: limit,
+      }) as any[];
       return rows
         .map((row) => ({
           id: row.id,
@@ -579,21 +578,21 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     saveTopic(topic: TopicRecord): number {
       const result = stmts.insertTopic.run({
-        sessionId: topic.sessionId,
-        title: topic.title,
-        keywords: topic.keywords,
-        summary: topic.summary,
-        messageCount: topic.messageCount,
-        windowStartAt: topic.windowStartAt ?? null,
-        windowEndAt: topic.windowEndAt ?? null,
-        createdAt: topic.createdAt,
-        updatedAt: topic.updatedAt,
+        $sessionId: topic.sessionId,
+        $title: topic.title,
+        $keywords: topic.keywords,
+        $summary: topic.summary,
+        $messageCount: topic.messageCount,
+        $windowStartAt: topic.windowStartAt ?? null,
+        $windowEndAt: topic.windowEndAt ?? null,
+        $createdAt: topic.createdAt,
+        $updatedAt: topic.updatedAt,
       });
       return Number(result.lastInsertRowid);
     },
 
     getTopics(sessionId: string, limit: number = 10): TopicRecord[] {
-      const rows = stmts.getTopics.all(sessionId, limit) as any[];
+      const rows = stmts.getTopics.all({ $sessionId: sessionId, $limit: limit }) as any[];
       return rows.map((row) => ({
         id: row.id,
         sessionId: row.session_id,
@@ -613,11 +612,11 @@ export async function initDatabase(): Promise<ChatDatabase> {
       windowStartAt: number,
       windowEndAt: number,
     ): TopicRecord | null {
-      const row = stmts.getTopicByWindow.get(
-        sessionId,
-        windowStartAt,
-        windowEndAt,
-      ) as any;
+      const row = stmts.getTopicByWindow.get({
+        $sessionId: sessionId,
+        $windowStartAt: windowStartAt,
+        $windowEndAt: windowEndAt,
+      }) as any;
       if (!row) return null;
       return {
         id: row.id,
@@ -641,32 +640,32 @@ export async function initDatabase(): Promise<ChatDatabase> {
     ): void {
       // 先获取当前值用于合并
       const current = db
-        .prepare("SELECT * FROM topics WHERE id = ?")
-        .get(id) as any;
+        .prepare("SELECT * FROM topics WHERE id = $id")
+        .get({ $id: id }) as any;
       if (!current) return;
       stmts.updateTopic.run({
-        id,
-        summary: updates.summary ?? current.summary,
-        keywords: updates.keywords ?? current.keywords,
-        messageCount: updates.messageCount ?? current.message_count,
-        updatedAt: updates.updatedAt ?? Date.now(),
+        $id: id,
+        $summary: updates.summary ?? current.summary,
+        $keywords: updates.keywords ?? current.keywords,
+        $messageCount: updates.messageCount ?? current.message_count,
+        $updatedAt: updates.updatedAt ?? Date.now(),
       });
     },
 
     saveExpression(expr: ExpressionRecord): void {
       stmts.insertExpression.run({
-        sessionId: expr.sessionId,
-        userId: expr.userId,
-        userName: expr.userName,
-        situation: expr.situation,
-        style: expr.style,
-        example: expr.example,
-        createdAt: expr.createdAt,
+        $sessionId: expr.sessionId,
+        $userId: expr.userId,
+        $userName: expr.userName,
+        $situation: expr.situation,
+        $style: expr.style,
+        $example: expr.example,
+        $createdAt: expr.createdAt,
       });
     },
 
     getExpressions(sessionId: string, limit: number = 50): ExpressionRecord[] {
-      const rows = stmts.getExpressions.all(sessionId, limit) as any[];
+      const rows = stmts.getExpressions.all({ $sessionId: sessionId, $limit: limit }) as any[];
       return rows.map((row) => ({
         id: row.id,
         sessionId: row.session_id,
@@ -683,7 +682,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
       userId: number,
       limit: number = 50,
     ): ExpressionRecord[] {
-      const rows = stmts.getExpressionsByUser.all(userId, limit) as any[];
+      const rows = stmts.getExpressionsByUser.all({ $userId: userId, $limit: limit }) as any[];
       return rows.map((row) => ({
         id: row.id,
         sessionId: row.session_id,
@@ -712,16 +711,16 @@ export async function initDatabase(): Promise<ChatDatabase> {
             Pick<ExpressionRecord, "situation" | "style" | "example">
           >,
         ) => {
-          stmts.deleteExpressionsByUser.run(targetUserId);
+          stmts.deleteExpressionsByUser.run({ $userId: targetUserId });
           for (const row of rows) {
             stmts.insertExpression.run({
-              sessionId: `user:${targetUserId}`,
-              userId: targetUserId,
-              userName: targetUserName,
-              situation: row.situation,
-              style: row.style,
-              example: row.example,
-              createdAt: now,
+              $sessionId: `user:${targetUserId}`,
+              $userId: targetUserId,
+              $userName: targetUserName,
+              $situation: row.situation,
+              $style: row.style,
+              $example: row.example,
+              $createdAt: now,
             });
           }
         },
@@ -731,29 +730,29 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getExpressionCount(sessionId: string): number {
-      const row = stmts.getExpressionCount.get(sessionId) as any;
+      const row = stmts.getExpressionCount.get({ $sessionId: sessionId }) as any;
       return row?.count ?? 0;
     },
 
     deleteOldestExpressions(sessionId: string, keepCount: number): void {
-      stmts.deleteOldestExpressions.run(sessionId, sessionId, keepCount);
+      stmts.deleteOldestExpressions.run({ $sessionId: sessionId, $keepCount: keepCount });
     },
 
     saveImage(image: ImageRecord): void {
       stmts.insertImage.run({
-        hash: image.hash,
-        url: image.url,
-        type: image.type,
-        description: image.description,
-        emotion: image.emotion ?? null,
-        character: image.character ?? null,
-        filePath: image.filePath ?? null,
-        createdAt: image.createdAt,
+        $hash: image.hash,
+        $url: image.url,
+        $type: image.type,
+        $description: image.description,
+        $emotion: image.emotion ?? null,
+        $character: image.character ?? null,
+        $filePath: image.filePath ?? null,
+        $createdAt: image.createdAt,
       });
     },
 
     getImageByHash(hash: string): ImageRecord | null {
-      const row = stmts.getImageByHash.get(hash) as any;
+      const row = stmts.getImageByHash.get({ $hash: hash }) as any;
       if (!row) return null;
       return {
         id: row.id,
@@ -769,7 +768,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getImageByUrl(url: string): ImageRecord | null {
-      const row = stmts.getImageByUrl.get(url) as any;
+      const row = stmts.getImageByUrl.get({ $url: url }) as any;
       if (!row) return null;
       return {
         id: row.id,
@@ -785,7 +784,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getAllImages(): ImageRecord[] {
-      const rows = stmts.getAllImages.all() as any[];
+      const rows = stmts.getAllImages.all({}) as any[];
       return rows.map((row) => ({
         id: row.id,
         hash: row.hash,
@@ -801,16 +800,16 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     saveMediaSummary(summary: MediaSummaryRecord): void {
       stmts.upsertMediaSummary.run({
-        key: summary.key,
-        kind: summary.kind,
-        source: summary.source,
-        summary: summary.summary,
-        createdAt: summary.createdAt,
+        $key: summary.key,
+        $kind: summary.kind,
+        $source: summary.source,
+        $summary: summary.summary,
+        $createdAt: summary.createdAt,
       });
     },
 
     getMediaSummary(key: string): MediaSummaryRecord | null {
-      const row = stmts.getMediaSummary.get(key) as any;
+      const row = stmts.getMediaSummary.get({ $key: key }) as any;
       if (!row) return null;
       return {
         id: row.id,
@@ -824,14 +823,14 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     saveMediaSummarySource(sourceKey: string, summaryKey: string): void {
       stmts.upsertMediaSummarySource.run({
-        sourceKey,
-        summaryKey,
-        createdAt: Date.now(),
+        $sourceKey: sourceKey,
+        $summaryKey: summaryKey,
+        $createdAt: Date.now(),
       });
     },
 
     getMediaSummaryBySource(sourceKey: string): MediaSummaryRecord | null {
-      const row = stmts.getMediaSummaryBySource.get(sourceKey) as any;
+      const row = stmts.getMediaSummaryBySource.get({ $sourceKey: sourceKey }) as any;
       if (!row) return null;
       return {
         id: row.id,

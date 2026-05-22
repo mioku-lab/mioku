@@ -39,10 +39,10 @@ const helpPlugin = definePlugin({
     }
 
     const miokiVersion = await getPackageVersion(
-      path.join(process.cwd(), "node_modules/mioki/package.json"),
+      path.join(process.cwd(), "node_modules/mioku/node_modules/mioki/package.json"),
     );
     const miokuVersion = await getPackageVersion(
-      path.join(process.cwd(), "package.json"),
+      path.join(process.cwd(), "node_modules/mioku/package.json"),
     );
 
     setHelpRuntimeState({

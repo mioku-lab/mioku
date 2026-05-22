@@ -56,14 +56,12 @@
     "node-cron": "^4.2.1",
     "openai": "^4.0.0",
     "puppeteer": "^23.10.0",
-    "better-sqlite3": "^11.0.0",
     "pretty-ms": "^9.3.0",
     "string2argv": "^1.0.2",
     "systeminformation": "^5.30.7",
     "lodash": "^4.17.21"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
     "@types/lodash": "^4.17.0",
     "@types/node": "^22.0.0",
     "@types/puppeteer": "^7.0.4",

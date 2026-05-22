@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
@@ -15,7 +15,7 @@ const FLUSH_INTERVAL_MS = 5000;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_BUFFER_SIZE = 50;
 
-type UsageDatabase = ReturnType<typeof Database>;
+type UsageDatabase = InstanceType<typeof Database>;
 
 interface UsageRow {
   id: number;
@@ -84,8 +84,8 @@ export function createAIUsageStore(): AIUsageStore {
   fs.mkdirSync(dbDir, { recursive: true });
 
   const db = new Database(path.join(dbDir, "usage.db"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA synchronous = NORMAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS ai_usage_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,13 +167,13 @@ export function createAIUsageStore(): AIUsageStore {
       total_tokens, tool_calls
     )
     VALUES (
-      @source, @usageId, @botId, @groupId, @groupName, @userId, @userName, @sessionId,
-      @model, @stream, @success, @errorMessage, @startedAt, @endedAt, @durationMs,
-      @systemMessages, @userMessages, @assistantMessages, @toolMessages,
-      @sentUserMessages, @sentAssistantMessages,
-      @inputTokens, @outputTokens, @systemPromptTokens, @cacheWriteTokens, @cacheReadTokens,
-      @toolDefinitionTokens, @toolUseTokens, @chatHistoryTokens, @otherContextTokens,
-      @totalTokens, @toolCalls
+      $source, $usageId, $botId, $groupId, $groupName, $userId, $userName, $sessionId,
+      $model, $stream, $success, $errorMessage, $startedAt, $endedAt, $durationMs,
+      $systemMessages, $userMessages, $assistantMessages, $toolMessages,
+      $sentUserMessages, $sentAssistantMessages,
+      $inputTokens, $outputTokens, $systemPromptTokens, $cacheWriteTokens, $cacheReadTokens,
+      $toolDefinitionTokens, $toolUseTokens, $chatHistoryTokens, $otherContextTokens,
+      $totalTokens, $toolCalls
     )
   `);
   const insertMany = db.transaction((records: AIUsageCompletionMeta[]) => {
@@ -187,38 +187,38 @@ export function createAIUsageStore(): AIUsageStore {
           record.cacheReadTokens,
       );
       insertRecord.run({
-        source: record.context?.source ?? null,
-        usageId: record.context?.usageId ?? null,
-        botId: record.context?.botId ?? null,
-        groupId: record.context?.groupId ?? null,
-        groupName: record.context?.groupName ?? null,
-        userId: record.context?.userId ?? null,
-        userName: record.context?.userName ?? null,
-        sessionId: record.context?.sessionId ?? null,
-        model: record.model,
-        stream: record.stream ? 1 : 0,
-        success: record.success ? 1 : 0,
-        errorMessage: record.errorMessage ?? null,
-        startedAt: record.startedAt,
-        endedAt: record.endedAt,
-        durationMs: Math.max(0, record.endedAt - record.startedAt),
-        systemMessages: roleCounts.system,
-        userMessages: roleCounts.user,
-        assistantMessages: roleCounts.assistant,
-        toolMessages: roleCounts.tool,
-        sentUserMessages: record.sentUserMessages,
-        sentAssistantMessages: record.sentAssistantMessages,
-        inputTokens: record.inputTokens,
-        outputTokens: record.outputTokens,
-        systemPromptTokens: record.systemPromptTokens,
-        cacheWriteTokens: record.cacheWriteTokens,
-        cacheReadTokens: record.cacheReadTokens,
-        toolDefinitionTokens: record.toolDefinitionTokens,
-        toolUseTokens: record.toolUseTokens,
-        chatHistoryTokens: record.chatHistoryTokens,
-        otherContextTokens: record.otherContextTokens,
-        totalTokens,
-        toolCalls: JSON.stringify(record.toolCalls),
+        $source: record.context?.source ?? null,
+        $usageId: record.context?.usageId ?? null,
+        $botId: record.context?.botId ?? null,
+        $groupId: record.context?.groupId ?? null,
+        $groupName: record.context?.groupName ?? null,
+        $userId: record.context?.userId ?? null,
+        $userName: record.context?.userName ?? null,
+        $sessionId: record.context?.sessionId ?? null,
+        $model: record.model,
+        $stream: record.stream ? 1 : 0,
+        $success: record.success ? 1 : 0,
+        $errorMessage: record.errorMessage ?? null,
+        $startedAt: record.startedAt,
+        $endedAt: record.endedAt,
+        $durationMs: Math.max(0, record.endedAt - record.startedAt),
+        $systemMessages: roleCounts.system,
+        $userMessages: roleCounts.user,
+        $assistantMessages: roleCounts.assistant,
+        $toolMessages: roleCounts.tool,
+        $sentUserMessages: record.sentUserMessages,
+        $sentAssistantMessages: record.sentAssistantMessages,
+        $inputTokens: record.inputTokens,
+        $outputTokens: record.outputTokens,
+        $systemPromptTokens: record.systemPromptTokens,
+        $cacheWriteTokens: record.cacheWriteTokens,
+        $cacheReadTokens: record.cacheReadTokens,
+        $toolDefinitionTokens: record.toolDefinitionTokens,
+        $toolUseTokens: record.toolUseTokens,
+        $chatHistoryTokens: record.chatHistoryTokens,
+        $otherContextTokens: record.otherContextTokens,
+        $totalTokens: totalTokens,
+        $toolCalls: JSON.stringify(record.toolCalls),
       });
     }
   });
@@ -255,33 +255,33 @@ export function createAIUsageStore(): AIUsageStore {
         `
         UPDATE ai_usage_records
         SET
-          sent_user_messages = COALESCE(@sentUserMessages, sent_user_messages),
-          sent_assistant_messages = COALESCE(@sentAssistantMessages, sent_assistant_messages),
-          system_prompt_tokens = COALESCE(@systemPromptTokens, system_prompt_tokens),
-          chat_history_tokens = COALESCE(@chatHistoryTokens, chat_history_tokens),
-          tool_definition_tokens = COALESCE(@toolDefinitionTokens, tool_definition_tokens),
-          tool_use_tokens = COALESCE(@toolUseTokens, tool_use_tokens),
-          other_context_tokens = COALESCE(@otherContextTokens, other_context_tokens)
-        WHERE usage_id = @usageId
+          sent_user_messages = COALESCE($sentUserMessages, sent_user_messages),
+          sent_assistant_messages = COALESCE($sentAssistantMessages, sent_assistant_messages),
+          system_prompt_tokens = COALESCE($systemPromptTokens, system_prompt_tokens),
+          chat_history_tokens = COALESCE($chatHistoryTokens, chat_history_tokens),
+          tool_definition_tokens = COALESCE($toolDefinitionTokens, tool_definition_tokens),
+          tool_use_tokens = COALESCE($toolUseTokens, tool_use_tokens),
+          other_context_tokens = COALESCE($otherContextTokens, other_context_tokens)
+        WHERE usage_id = $usageId
       `,
       )
       .run({
-        usageId,
-        sentUserMessages: normalizeOptionalCount(finalization.sentUserMessages),
-        sentAssistantMessages: normalizeOptionalCount(
+        $usageId: usageId,
+        $sentUserMessages: normalizeOptionalCount(finalization.sentUserMessages),
+        $sentAssistantMessages: normalizeOptionalCount(
           finalization.sentAssistantMessages,
         ),
-        systemPromptTokens: normalizeOptionalCount(
+        $systemPromptTokens: normalizeOptionalCount(
           breakdown?.systemPromptTokens,
         ),
-        chatHistoryTokens: normalizeOptionalCount(
+        $chatHistoryTokens: normalizeOptionalCount(
           breakdown?.chatHistoryTokens,
         ),
-        toolDefinitionTokens: normalizeOptionalCount(
+        $toolDefinitionTokens: normalizeOptionalCount(
           breakdown?.toolDefinitionTokens,
         ),
-        toolUseTokens: normalizeOptionalCount(breakdown?.toolUseTokens),
-        otherContextTokens: normalizeOptionalCount(
+        $toolUseTokens: normalizeOptionalCount(breakdown?.toolUseTokens),
+        $otherContextTokens: normalizeOptionalCount(
           breakdown?.otherContextTokens,
         ),
       });
