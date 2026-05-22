@@ -358,10 +358,15 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         case cli.version:
           console.log(`v${version}`);
           process.exit(0);
+          // fall through
 
         case cli.help:
           console.log(helpInfo);
           process.exit(0);
+          // fall through
+
+        default:
+          break;
       }
 
       let {
@@ -513,7 +518,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         ...(useNpmMirror ? { ".npmrc": npmrc } : {}),
       };
 
-      createNewProject(name, fileTree, { installWebui, pkgManager: pm });
+      await createNewProject(name, fileTree, { installWebui, pkgManager: pm });
     }
   }
 })();

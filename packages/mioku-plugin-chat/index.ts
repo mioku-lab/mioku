@@ -58,7 +58,6 @@ import type { ChatPluginContext, ChatRuntime } from "./context";
 import type { ChatRuntimeState } from "./context";
 import type {
   ChatRuntimeNoticeOptions,
-  ChatRuntimeGroupTarget,
   ChatRuntimeResult,
   ChatRuntimePromptInjection,
   ChatRuntimeInformationRequestOptions,

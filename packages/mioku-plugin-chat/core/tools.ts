@@ -14,7 +14,6 @@ import {
   hasSkillPermission,
 } from "./external-skills";
 import {
-  FEATURE_METAS,
   isFeatureEnabled,
   isBuiltinFeature,
   getFeatureMeta,
@@ -109,7 +108,9 @@ export function createTools(
   }
 
   // === Optional feature tools (dynamically registered based on loaded features) ===
-  const activeFeatureTools = skillManager.getActiveFeatureTools(toolCtx.sessionId);
+  const activeFeatureTools = skillManager.getActiveFeatureTools(
+    toolCtx.sessionId,
+  );
 
   if (activeFeatureTools.includes("web_search")) {
     tools.push(createWebSearchTool(toolCtx));
@@ -568,7 +569,11 @@ function createLoadSkillTool(
           skillManager.loadSkill(toolCtx.sessionId, skillName, featureTools);
         } else {
           // For features without tools (markdown, audio), just record the feature state
-          skillManager.loadFeature(toolCtx.sessionId, skillName, 60 * 60 * 1000);
+          skillManager.loadFeature(
+            toolCtx.sessionId,
+            skillName,
+            60 * 60 * 1000,
+          );
         }
 
         // Build usage instructions for all builtin features
