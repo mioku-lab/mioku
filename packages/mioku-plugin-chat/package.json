@@ -7,6 +7,10 @@
   "keywords": [
     "mioku"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
   "mioku": {
     "services": [
       "ai",

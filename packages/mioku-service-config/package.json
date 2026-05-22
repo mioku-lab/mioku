@@ -4,6 +4,10 @@
   "description": "配置服务 - 配置管理和热重载",
   "main": "index.ts",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
   "dependencies": {
     "lodash": "^4.17.21"
   },

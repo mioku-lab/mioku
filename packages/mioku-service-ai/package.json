@@ -4,6 +4,10 @@
   "description": "为插件提供完整的ai服务支持，包括ai实例管理，提示词管理，skills管理等",
   "main": "index.ts",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
     "openai": "^4.72.0"

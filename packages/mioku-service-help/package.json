@@ -4,6 +4,10 @@
   "description": "帮助服务 - 自动管理和生成帮助文档",
   "main": "index.ts",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
   "dependencies": {},
   "peerDependencies": {
     "mioku": "^0.8.0",
