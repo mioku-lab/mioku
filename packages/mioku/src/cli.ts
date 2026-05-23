@@ -83,10 +83,14 @@ async function getPackageManager(): Promise<string> {
 
 async function installWebUIDist(projectPath: string) {
   consola.info("正在安装 WebUI...");
-  execSync("bun add mioku-service-webui", {
-    cwd: projectPath,
-    stdio: "ignore",
-  });
+  try {
+    execSync("bun add mioku-service-webui", {
+      cwd: projectPath,
+      stdio: "ignore",
+    });
+  } catch {
+    return;
+  }
 
   const nodeModulesWebui = path.join(projectPath, "node_modules", "mioku-service-webui");
   const targetDist = path.join(nodeModulesWebui, "dist");
@@ -121,7 +125,14 @@ async function installWebUIDist(projectPath: string) {
     fs.writeFileSync(tmpZip, buffer);
 
     const tmpUnpack = path.join(os.tmpdir(), `mioku-webui-unpack-${Date.now()}`);
-    execSync(`unzip -oq "${tmpZip}" -d "${tmpUnpack}"`, { stdio: "ignore" });
+    fs.mkdirSync(tmpUnpack, { recursive: true });
+    try {
+      execSync(`unzip -oq "${tmpZip}" -d "${tmpUnpack}"`, {
+        stdio: "ignore",
+      });
+    } catch {
+      // ignore unzip failure
+    }
 
     const sourceDir = findDistSourceDir(tmpUnpack);
     if (sourceDir) {
@@ -416,13 +427,49 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       } = cli;
 
       if (name && owners) {
-        protocol ||= "ws";
-        host ||= "localhost";
-        port ||= 3001;
-        token ||= "";
-        prefix ||= "#";
-        admins ||= "";
         useNpmMirror ??= false;
+        if (!protocol) {
+          protocol = await input("请输入 NapCat WS 协议", {
+            default: "ws",
+            placeholder: "ws",
+            required: true,
+          });
+        }
+        if (!host) {
+          host = await input("请输入 NapCat WS 主机", {
+            default: "127.0.0.1",
+            placeholder: "127.0.0.1",
+            required: true,
+          });
+        }
+        if (!port) {
+          port = parseInt(
+            await input("请输入 NapCat WS 端口", {
+              default: "3001",
+              placeholder: "3001",
+              required: true,
+            }),
+          );
+        }
+        if (!token) {
+          token = await input("请输入 NapCat WS Token（如无则留空）", {
+            default: "",
+            placeholder: "请输入",
+          });
+        }
+        if (!prefix) {
+          prefix = await input("请输入消息命令前缀", {
+            default: "#",
+            placeholder: "#",
+            required: true,
+          });
+        }
+        if (!admins) {
+          admins =
+            (await input("请输入管理员 QQ (插件权限，英文逗号分隔，可空)", {
+              placeholder: "可空",
+            })) || "";
+        }
       } else {
         token ||= await input("请输入 NapCat WS Token", {
           default: "",
@@ -463,11 +510,11 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         initial: true,
       });
 
+      ensurePackageManager();
+
       if (installWebui) {
         await installWebUIDist(path.join(process.cwd(), name));
       }
-
-      ensurePackageManager();
 
       const pkgJson = dedent(`
       {
