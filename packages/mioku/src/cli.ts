@@ -71,7 +71,7 @@ function ensurePackageManager() {
 }
 
 function getAddCommand(packages: string[]): [string, string[]] {
-  return ["bun", ["add", "--no-save", ...packages]];
+  return ["bun", ["add", "--no-peer", ...packages]];
 }
 
 function normalizePackageName(input: string): string {
@@ -100,7 +100,7 @@ async function installWebUIDist(projectPath: string) {
   consola.info("正在安装 WebUI...");
 
   try {
-    run("bun", ["add", "--no-save", "mioku-service-webui"], {
+    run("bun", ["add", "--no-peer", "mioku-service-webui"], {
       cwd: projectPath,
     });
 
