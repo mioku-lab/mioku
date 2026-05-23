@@ -1,95 +1,43 @@
-# 更多部署方式
+# 部署指南
 
-## 本地直接运行
+## 使用 npx mioku 管理
+
+Mioku 使用 `npx mioku` 脚本进行各种管理操作。
+
+### 常用命令
 
 ```bash
-bun install
-bun run start
+# 交互式创建新项目（首次使用）
+npx mioku
+
+# 安装插件
+npx mioku install plugin <名称>
+# 例如: npx mioku install plugin 60s
+
+# 安装服务
+npx mioku install service <名称>
+# 例如: npx mioku install service ai
+
+# 更新插件或服务
+npx mioku update all        # 更新所有 mioku 相关包
+npx mioku update self       # 只更新 mioku 框架
+npx mioku update <包名>     # 更新指定包
 ```
 
-## Docker Compose (推荐)
+## 常见问题
 
-```bash
-docker compose build
-# 使用交互模式启动
-docker compose run --rm --service-ports mioku
+### 端口被占用
+
+如果 3339 端口被占用，修改 `config/webui/settings.json`：
+
+```json
+{
+  "port": 3338
+}
 ```
 
-第一次需要使用交互模式完成初始化。
-
-之后可以后台启动：
+### 需要帮助
 
 ```bash
-# 后台启动
-docker compose up -d
-```
-
-## Docker
-
-```bash
-docker build -t mioku .
-```
-
-首次启动：
-
-```bash
-# 前台启动
-docker run --rm -it \
-  --name mioku-init \
-  --add-host=host.docker.internal:host-gateway \
-  -p 3339:3339 \
-  -v "$(pwd)/.git:/app/.git" \
-  -v "$(pwd)/app.ts:/app/app.ts" \
-  -v "$(pwd)/package.json:/app/package.json" \
-  -v "$(pwd)/tsconfig.json:/app/tsconfig.json" \
-  -v "$(pwd)/install-mioku.ts:/app/install-mioku.ts" \
-  -v "$(pwd)/src:/app/src" \
-  -v "$(pwd)/plugins:/app/plugins" \
-  -v "$(pwd)/config:/app/config" \
-  -v "$(pwd)/data:/app/data" \
-  -v "$(pwd)/logs:/app/logs" \
-  -v "$(pwd)/temp:/app/temp" \
-  -v mioku_node_modules:/app/node_modules \
-  -v mioku_bun_cache:/root/.bun/install/cache \
-  mioku
-```
-
-后台运行：
-
-```bash
-docker run -d \
-  --name mioku \
-  --restart unless-stopped \
-  --add-host=host.docker.internal:host-gateway \
-  -p 3339:3339 \
-  -v "$(pwd)/.git:/app/.git" \
-  -v "$(pwd)/app.ts:/app/app.ts" \
-  -v "$(pwd)/package.json:/app/package.json" \
-  -v "$(pwd)/tsconfig.json:/app/tsconfig.json" \
-  -v "$(pwd)/install-mioku.ts:/app/install-mioku.ts" \
-  -v "$(pwd)/src:/app/src" \
-  -v "$(pwd)/plugins:/app/plugins" \
-  -v "$(pwd)/config:/app/config" \
-  -v "$(pwd)/data:/app/data" \
-  -v "$(pwd)/logs:/app/logs" \
-  -v "$(pwd)/temp:/app/temp" \
-  -v mioku_node_modules:/app/node_modules \
-  -v mioku_bun_cache:/root/.bun/install/cache \
-  mioku
-```
-
-## 更新方式
-
-```bash
-# Docker Compose
-git pull
-docker compose restart mioku
-```
-
-如果你使用 `docker run`：
-
-```bash
-# Docker
-git pull
-docker restart mioku
+npx mioku --help
 ```

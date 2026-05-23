@@ -30,12 +30,12 @@ Mioku is a convenience layer based on the mioki framework, providing a service-o
 
 ### 1. Core
 
-Responsibilities: Framework infrastructure
+**Responsibilities:** Framework infrastructure
 
 **Components:**
-- 'types.ts' - Type definition
-- 'plugin-manager.ts' - Plugin metadata management
-- 'service-manager.ts' - Service Lifecycle Management
+- `types.ts` - Type definitions exported from `mioku` package
+- `plugin-manager.ts` - Plugin metadata management
+- `service-manager.ts` - Service lifecycle management
 
 **Features:**
 - Does not rely on Mioki's plugin system
@@ -48,25 +48,25 @@ Responsibilities: Framework infrastructure
 
 **Built-in Services:**
 
-#### AI Services ('src/services/ai')
+#### AI Services (`mioku-service-ai`)
 - Manage AI instances
 - Manage AI skills and tools
 - Provides a unified interface for AI calls
 
-#### Config Services ('src/services/config')
+#### Config Services (`mioku-service-config`)
 - Plugin configuration management
 - Configuration persistence
 - Configure hot updates
 
-#### Help Services ('src/services/help')
+#### Help Services (`mioku-service-help`)
 - Plugin help information registration
 - Automatically generate help documentation
 - Respond to help commands
 
 **Service Features:**
-- Separate Git repository
+- Separate npm package
 - Independent dependency management
-- Go through 'ctx.services. {name}' access
+- Access through `ctx.services.{name}`
 
 ### 3. Plugins
 
@@ -75,18 +75,18 @@ Responsibilities: Framework infrastructure
 **Plugin Types:**
 
 #### Boot Plugin (Required)
-- Highest priority ('priority: -Infinity')
+- Highest priority (`priority: -Infinity`)
 - Responsible for loading all services
 - Coordinate the initialization of services and plugins
 
 #### Functional plugins
 - Dependent on the service
-- Sign up for AI Skill
-- Sign up for help information
+- Register for AI Skill
+- Register for help information
 - Handle message events
 
 **Plugin Features:**
-- Separate Git repository
+- Separate npm package
 - Independent dependency management
 - Declarative service dependencies
 
@@ -116,18 +116,20 @@ plugin-b: register_skill({
 ### Skill structure
 
 ```typescript
+import type { AISkill, AITool } from "mioku";
+
 interface AISkill {
-  name: string;              Skill name (usually the same as plugin name)
-  description: string;       Skill description
-  tools: AITool[];          List of tools
+  name: string;              // Skill name (usually the same as plugin name)
+  description: string;        // Skill description
+  tools: AITool[];            // List of tools
 }
 
 interface AITool {
-  name: string;              Tool Name
-  description: string;       Tool description
-  parameters: {...};         Parameter definition
-  handler: (args) => any;    tool handling functions
-  returnToAI?: boolean;      Whether to return the results to the AI
+  name: string;               // Tool name
+  description: string;        // Tool description
+  parameters: {...};          // Parameter definition
+  handler: (args) => any;     // Tool handler function
+  returnToAI?: boolean;       // Whether to return results to AI
 }
 ```
 
@@ -136,7 +138,7 @@ interface AITool {
 ```
 1. The AI decides to call the tool
    ↓
-2. Call format: {skill_name}. {tool_name}
+2. Call format: {skill_name}.{tool_name}
    For example: chat.send_group_message
    ↓
 3. The AI service finds the corresponding skill and tool
@@ -153,23 +155,21 @@ interface AITool {
 1. **Namespace Isolation** - Tools with the same name for different plugins do not conflict
 2. **Semantic Clarity** - The AI can understand the source and grouping of tools
 3. **Easy to Manage** - Organize tools by plugin for easy maintenance
-4. **Highly extensible** - The new plugin allows you to name tools freely
+4. **Highly Extensible** - The new plugin allows you to name tools freely
 
 ## Life cycle
 
 ### Start the process
 
 ```
-1. app.ts Launch
+1. Project启动 (bun run start)
    ↓
-2. Load the local configuration (config-loader)
-   ↓
-3. Mioku framework launch
+2. Mioku 框架启动
    ├─ Discover plugin metadata (plugin-manager)
    ├─ Discover service metadata (service-manager)
    └─ Check for missing services
    ↓
-4. Mioki framework launch
+3. Mioki framework启动
    ├─ Load boot plugin (highest priority)
    │ └─ Load all services
    │ ├─ AI service initialization
@@ -177,7 +177,7 @@ interface AITool {
    │ └─ Help Service Initialization
    ├─ Load other plugins
    │ ├─ Register Skill to AI Services
-   │ ├─ Sign up for help services
+   │ ├─ Register for help services
    │ └─ Set up the message processor
    └─ Connect to NapCat
 ```
@@ -185,47 +185,55 @@ interface AITool {
 ### Plugin initialization process
 
 ```typescript
-async setup(ctx: MiokiContext) {
-  // 1. Register for Skill
-  const aiService = ctx.services?. ai as AIService;
-  if (aiService && this.skill) {
-    aiService.registerSkill(this.skill);
-  }
+import { definePlugin } from "mioki";
+import type { AIService, ConfigService } from "mioku";
 
-// 2. Sign up for help
-  const helpService = ctx.services?. help as HelpService;
-  if (helpService && this.help) {
-    helpService.registerHelp(this.name, this.help);
-  }
+export default definePlugin({
+  name: "example",
+  async setup(ctx) {
+    // 1. Register for Skill
+    const aiService = ctx.services?.ai as AIService | undefined;
+    if (aiService && this.skill) {
+      aiService.registerSkill(this.skill);
+    }
 
-// 3. Register the configuration
-  const configService = ctx.services?. config as ConfigService;
-  if (configService) {
-    await configService.registerConfig(...);
-  }
+    // 2. Register for help
+    const helpService = ctx.services?.help as HelpService | undefined;
+    if (helpService && this.help) {
+      helpService.registerHelp(this.name, this.help);
+    }
 
-// 4. Set up the message processor
-  ctx.handle("message", async (e) => {
-    Process messages
-  });
+    // 3. Register the configuration
+    const configService = ctx.services?.config as ConfigService | undefined;
+    if (configService) {
+      await configService.registerConfig(...);
+    }
 
-// 5. Return to the cleanup function
-  return () => {
-    Clean up resources
-  };
-}
+    // 4. Set up the message processor
+    ctx.handle("message", async (e) => {
+      // Process messages
+    });
+
+    // 5. Return to the cleanup function
+    return () => {
+      // Clean up resources
+    };
+  },
+});
 ```
 
 ## Dependency Management
 
 ### Workspace structure
 
+The project uses `bun` workspace management:
+
 ```json
 {
   "workspaces": [
-    "plugins/*",
-    "src/services/*"
-  ]
+    "packages/*"
+  ],
+  "packageManager": "bun@1.2.0"
 }
 ```
 
@@ -233,20 +241,21 @@ async setup(ctx: MiokiContext) {
 
 ```
 mioku (root project)
-├─ dependencies: mioki
-├─ plugins/chat
-│ └─ dependencies: (Plugin independent dependencies)
-├─ plugins/sign
-│ └─ dependencies: (Plugin independent dependencies)
-└─ src/services/ai
-   └─ Dependencies: OpenAI
+├─ dependencies: mioki, napcat-sdk
+├─ packages/mioku/
+│ └─ 内置插件和服务
+├─ packages/mioku-plugin-xxx/
+│ └─ 插件独立依赖
+└─ packages/mioku-service-xxx/
+   └─ 服务独立依赖
 ```
 
 ### Advantages
 
-1. Isolation - Dependencies of plugins/services do not affect each other
+1. **Isolation** - Dependencies of plugins/services do not affect each other
 2. **Portability** - Can be released and installed independently
 3. **Version Management** - Each module manages the version independently
+4. **Fast Installation** - Using bun for optimal performance
 
 ## Configure the system
 
@@ -266,22 +275,24 @@ mioku (root project)
 ### Configuration example
 
 ```typescript
-Register the configuration
+import type { ConfigService } from "mioku";
+
+// Register the configuration
 await configService.registerConfig("chat", "settings", {
   apiUrl: "https://api.openai.com/v1",
   apiKey: "your-api-key",
   model: "gpt-4",
 });
 
-Read the configuration
+// Read the configuration
 const config = await configService.getConfig("chat", "settings");
 
-Update configuration
+// Update configuration
 await configService.updateConfig("chat", "settings", {
   model: "gpt-4-turbo",
 });
 
-Listen configuration changes
+// Listen configuration changes
 const unsubscribe = configService.onConfigChange(
   "chat",
   "settings",
@@ -291,14 +302,44 @@ const unsubscribe = configService.onConfigChange(
 );
 ```
 
+## Data Directory
+
+Plugins and services should store data outside of `node_modules` to ensure data persistence.
+
+Use the data path utilities provided by `mioku`:
+
+```typescript
+import {
+  getDataDir,
+  getPluginDataDir,
+  getServiceDataDir,
+  getConfigDir,
+  getPluginConfigDir,
+  getServiceConfigDir,
+  ensureDataDir,
+} from "mioku";
+
+// Get plugin data directory: {cwd}/data/{pluginName}
+const pluginDataDir = getPluginDataDir("my-plugin");
+
+// Get service data directory: {cwd}/data/{serviceName}
+const serviceDataDir = getServiceDataDir("my-service");
+
+// Ensure directory exists
+const myDataDir = ensureDataDir("my-plugin");
+```
+
+**Important:** Always use these utilities instead of hardcoding paths. This ensures your plugin works correctly when the project is installed in different locations.
+
 ## Best Practices
 
 ### 1. Plugin development
 
 - ✅ Organize AI tools with the Skill system
-- ✅ Sign up for help information
+- ✅ Register for help information
 - ✅ Manage configurations using the configuration service
 - ✅ Declare service dependencies
+- ✅ Use data path utilities for file storage
 - ❌ Don't access other plugins directly
 - ❌ Don't share status between plugins
 
@@ -323,45 +364,37 @@ const unsubscribe = configService.onConfigChange(
 
 ### Add a new service
 
-1. Create a directory in 'src/services/'
-2. Implement the 'MiokuService' interface
+1. Create a new package in `packages/mioku-service-<name>/`
+2. Implement the `MiokuService` interface
 3. Export the service instance
 4. Services are automatically discovered and loaded
 
 ### Add a new plugin
 
-1. Create a directory in 'plugins/'
-2. Implement the 'MiokuPlugin' interface
-3. Configure the 'mioku' field for 'package.json'
-4. Add the plugin name to 'mioki.plugins' at the root 'package.json'
+1. Create a new package in `packages/mioku-plugin-<name>/`
+2. Implement the `MiokiPlugin` interface
+3. Configure the `mioku` field for `package.json`
+4. The plugin will be automatically discovered at startup
 
-### Integrate with third-party services
+### Install plugins/services
 
-```typescript
-For example: Integrate database services
-const dbService: MiokuService = {
-  name: "database",
-  version: "1.0.0",
-  api: {} as DatabaseAPI,
+Use `npx mioku` or the WebUI to install plugins and services:
 
-async init(ctx: MiokiContext) {
-    const db = await connectDatabase();
-    this.api = createDatabaseAPI(db);
-  },
+```bash
+# Interactive installation
+npx mioku
 
-async dispose() {
-    await this.api.close();
-  },
-};
+# Or use WebUI at http://127.0.0.1:3339
 ```
 
 ## Summary
 
 Through a layered design and skill system, the Mioku framework provides:
 
-1. **Clear Architecture** - Core/Service/Plugin Three-layer separation
+1. **Clear Architecture** - Core/Service/Plugin three-layer separation
 2. **Flexible Extensions** - Plugins and services are developed independently
 3. **Specification Management** - Skill system avoids conflicts
 4. **Convenient Development** - Declarative dependencies and configurations
+5. **Package Management** - Using bun workspace for efficient dependency management
 
 This allows developers to focus on business logic without worrying about the underlying architecture.

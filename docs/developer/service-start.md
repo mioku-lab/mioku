@@ -4,14 +4,14 @@
 
 Mioku 中对服务命名的要求
 
-- Git 仓库名：`mioku-service-name`
-- 本地服务文件夹名：`name`
-- Mioku 中读取的服务名：`name`
+- npm 包名：`mioku-service-name`
+- 服务目录：`packages/mioku-service-name/`
+- 在插件里读取的服务名：`name`
 
 例如你要写一个 Git 仓库管理服务
 
-- Git 仓库：`mioku-service-gitrepo`
-- 本地目录：`src/services/gitrepo/`
+- npm 包名：`mioku-service-gitrepo`
+- 服务目录：`packages/mioku-service-gitrepo/`
 - 在插件里读取：`ctx.services?.gitrepo`
 
 ## 服务目录结构
@@ -19,7 +19,7 @@ Mioku 中对服务命名的要求
 一个基础服务，至少需要这两个文件
 
 ```text
-src/services/gitrepo/
+packages/mioku-service-gitrepo/
   index.ts
   package.json
 ```
@@ -31,10 +31,8 @@ src/services/gitrepo/
 下面以 `gitrepo` 服务为例
 
 ```bash
-mkdir -p src/services/gitrepo
-cd src/services/gitrepo
-# 初始化仓库
-git init
+mkdir -p packages/mioku-service-gitrepo
+cd packages/mioku-service-gitrepo
 ```
 
 新建 `package.json`
@@ -46,7 +44,17 @@ git init
   "name": "mioku-service-gitrepo",
   "version": "1.0.0",
   "description": "Git 仓库管理服务",
-  "main": "index.ts"
+  "main": "index.ts",
+  "type": "module",
+  "keywords": ["mioku"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourname/mioku-service-gitrepo.git"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  }
 }
 ```
 
@@ -58,6 +66,8 @@ git init
 | `version`     | `string` | ✅  | 服务版本号                       |
 | `description` | `string` | ❌  | 服务描述                        |
 | `main`        | `string` | ✅  | 服务入口文件，一般写 `index.ts`       |
+| `type`        | `string` | ✅  | 必须为 `module`               |
+| `peerDependencies` | `object` | ✅  | 必须依赖 `mioku` 和 `mioki`   |
 
 ## 编写 `index.ts`
 
@@ -67,12 +77,12 @@ git init
 - `fetch()`：抓取远程更新
 - `pull()`：拉取并合并远程更新
 
-```ts
+```typescript
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
 import { logger } from "mioki";
-import type { MiokuService } from "../../core/types";
+import type { MiokuService } from "mioku";
 
 const execFileAsync = promisify(execFile);
 
@@ -164,7 +174,9 @@ export default gitrepoService;
 
 服务通过一个普通对象导出，核心接口如下：
 
-```ts
+```typescript
+import type { MiokuService } from "mioku";
+
 const service: MiokuService = {
   name: "demo",
   version: "1.0.0",
@@ -186,17 +198,25 @@ const service: MiokuService = {
 | `init`        | `function`            | ✅  | 服务初始化函数          |
 | `dispose`     | `function`            | ❌  | 服务卸载时的清理逻辑       |
 
-
 ## 服务是如何被发现的
 
-Mioku 会自动扫描 `src/services/*` 目录
-
-只要目录里存在 `package.json`，并且有 `index.ts` 或 `index.js` 入口，框架就会尝试加载它
-
+Mioku 使用 `npx mioku` 命令或 WebUI 安装服务后，会自动从 `node_modules` 发现服务。
 
 ## 在插件里使用服务
 
 服务写好以后，插件先在 `package.json` 里声明依赖：
+
+```json
+{
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0",
+    "mioku-service-gitrepo": "^1.0.0"
+  }
+}
+```
+
+然后在 `mioku.services` 中声明：
 
 ```json
 {
@@ -208,9 +228,9 @@ Mioku 会自动扫描 `src/services/*` 目录
 
 然后在 `index.ts` 里读取它：
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { GitRepoServiceAPI } from "../../src/services/gitrepo";
+import type { GitRepoServiceAPI } from "mioku-service-gitrepo";
 
 export default definePlugin({
   name: "repo-admin",
@@ -222,9 +242,9 @@ export default definePlugin({
 
 使用示例
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
-import type { GitRepoServiceAPI } from "../../src/services/gitrepo";
+import type { GitRepoServiceAPI } from "mioku-service-gitrepo";
 
 export default definePlugin({
   name: "repo-admin",

@@ -1,20 +1,20 @@
 # 开发插件入门
 
 > [!NOTE]
-> 部分示例代码来自[mioki官方文档](https://mioki.viki.moe/plugin.html)。
+> 部分示例代码来自 [mioki 官方文档](https://mioki.viki.moe/plugin.html)。
 
 ## 命名规范
 
 Mioku 中对插件命名的要求：
 
-- Git 仓库名：`mioku-plugin-name`
-- 本地插件文件夹名：`name`
-- Mioku 中启用的插件名：`name`
+- npm 包名：`mioku-plugin-name`
+- 插件目录：`packages/mioku-plugin-name/`
+- 启用插件名：`name`
 
 例如你要写一个天气插件：
 
-- Git 仓库：`mioku-plugin-weather`
-- 本地目录：`plugins/weather/`
+- npm 包名：`mioku-plugin-weather`
+- 插件目录：`packages/mioku-plugin-weather/`
 - 启用插件名：`weather`
 
 ## 插件目录结构
@@ -22,7 +22,7 @@ Mioku 中对插件命名的要求：
 一个基础的插件，只需要这两个文件：
 
 ```text
-plugins/weather/
+packages/mioku-plugin-weather/
   index.ts
   package.json
 ```
@@ -32,17 +32,15 @@ plugins/weather/
 - `index.ts`：插件运行入口
 - `package.json`：插件的基本信息
 
-当然，我们推荐把复杂的逻辑从`index.ts`中分离出来方便管理。
+当然，我们推荐把复杂的逻辑从 `index.ts` 中分离出来方便管理。
 
 ## 开始编写一个插件
 
 下面以 `weather` 插件为例
 
 ```bash
-mkdir -p plugins/weather
-cd plugins/weather
-# 初始化仓库
-git init
+mkdir -p packages/mioku-plugin-weather
+cd packages/mioku-plugin-weather
 ```
 
 新建 `package.json`
@@ -55,6 +53,16 @@ git init
   "version": "1.0.0",
   "description": "天气插件",
   "main": "index.ts",
+  "type": "module",
+  "keywords": ["mioku"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourname/mioku-plugin-weather.git"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  },
   "mioku": {
     "services": [],
     "help": {
@@ -81,6 +89,9 @@ package 字段如下
 | `version`        | `string`   | ✅  | 插件版本号                      |
 | `description`    | `string`   | ❌  | 插件描述                       |
 | `main`           | `string`   | ✅  | 插件入口文件，一般写 `index.ts`      |
+| `type`           | `string`   | ✅  | 必须为 `module`               |
+| `keywords`      | `string[]` | ❌  | 推荐包含 `mioku`              |
+| `peerDependencies` | `object` | ✅  | 必须依赖 `mioku` 和 `mioki`   |
 | `mioku.services` | `string[]` | ❌  | 插件依赖的 Mioku 服务名称           |
 | `mioku.help`     | `object`   | ❌  | 插件帮助信息，Mioku 会自动读取         |
 
@@ -95,7 +106,7 @@ package 字段如下
 
 现在再写一个入口文件，插件就可以运行了
 
-```ts
+```typescript
 import { definePlugin } from "mioki";
 
 export default definePlugin({
@@ -123,7 +134,7 @@ export default definePlugin({
 
 插件的运行入口通过 `definePlugin({...})` 定义
 
-```ts
+```typescript
 export default definePlugin({
   name: "demo",
   version: "1.0.0",
@@ -147,12 +158,12 @@ export default definePlugin({
 
 ## 上下文对象
 
-`ctx` 就是插件运行时的上下文对象。  
+`ctx` 就是插件运行时的上下文对象。
 平时写插件，大部分工作都会围绕它展开
 
 部分用法如下
 
-```ts
+```typescript
 // 机器人实例（当前处理事件的 bot）
 ctx.bot; // NapCat 实例
 
@@ -214,7 +225,7 @@ ctx.handle("message", async (event) => {
 
 使用 `ctx.handle()` 注册事件监听器
 
-```ts
+```typescript
 // 监听所有消息
 ctx.handle('message', async (event) => {
     ctx.logger.info(`收到消息：${event.raw_message}`)
@@ -246,7 +257,7 @@ ctx.handle('request.friend', async (event) => {
 
 使用 `ctx.cron()` 注册定时任务
 
-```ts
+```typescript
 // 每小时执行一次
 ctx.cron("0 * * * *", async (_ctx, task) => {
   // task.date 是这次调度的触发时间
@@ -256,7 +267,7 @@ ctx.cron("0 * * * *", async (_ctx, task) => {
 
 每天早上九点执行
 
-```ts
+```typescript
 ctx.cron("0 9 * * *", async () => {
   ctx.logger.info("早安任务开始");
 });
@@ -266,7 +277,7 @@ ctx.cron("0 9 * * *", async () => {
 
 最简单的回复就是直接使用 `event.reply()`
 
-```ts
+```typescript
 ctx.handle("message", async (event) => {
   if (ctx.text(event).trim() === "/hello") {
     // 最基础的文字回复
@@ -277,7 +288,7 @@ ctx.handle("message", async (event) => {
 
 引用回复
 
-```ts
+```typescript
 ctx.handle("message", async (event) => {
   if (ctx.text(event).trim() === "/quote") {
     // 第二个参数为 true 时会引用回复
@@ -290,7 +301,7 @@ ctx.handle("message", async (event) => {
 
 使用 `ctx.segment` 构造各种各样的消息段
 
-```ts
+```typescript
 ctx.handle('message', async (event) => {
     // 纯文本
     ctx.segment.text('Hello')
@@ -336,7 +347,7 @@ ctx.handle('message', async (event) => {
 
 精确匹配
 
-```ts
+```typescript
 ctx.handle('message', (e) => {
   if (e.raw_message === 'hello') {
     e.reply('mioku')
@@ -346,7 +357,7 @@ ctx.handle('message', (e) => {
 
 包含匹配
 
-```ts
+```typescript
 ctx.handle('message', (e) => {
   if (e.raw_message.includes('早上好')) {
     e.reply('不好也可以')
@@ -356,7 +367,7 @@ ctx.handle('message', (e) => {
 
 使用正则
 
-```ts
+```typescript
 ctx.handle('message', (e) => {
   const match = e.raw_message.match(/^签到(\d+)?$/)
   if (match) {
@@ -366,10 +377,9 @@ ctx.handle('message', (e) => {
 })
 ```
 
-
 使用 `ctx.match()` 函数
 
-```ts
+```typescript
 ctx.handle('message', (e) => {
     ctx.match(e, {
         // 字符串匹配
@@ -396,7 +406,7 @@ ctx.handle('message', (e) => {
 
 带参数的写法
 
-```ts
+```typescript
 ctx.handle("message", async (event) => {
   await ctx.match(event, {
     "/echo *": (matches) => {
@@ -409,7 +419,7 @@ ctx.handle("message", async (event) => {
 
 使用 `mri` 对复杂指令进行解析
 
-```ts
+```typescript
 ctx.handle('message', (e) => {
     // 使用 mri 解析命令行参数
     const { cmd, params, options } = ctx.createCmd(e.raw_message, {
@@ -432,7 +442,7 @@ ctx.handle('message', (e) => {
 
 `setup()` 可以返回一个清理函数，在插件卸载时自动执行。
 
-```ts
+```typescript
 // 启动一个普通定时器
 const timer = setInterval(() => {
   ctx.logger.info("定时器运行中");
@@ -447,31 +457,21 @@ return () => {
 
 ## 启用插件
 
-写好插件后，把插件名加入 Mioku 配置里的 `plugins` 列表。
-
-编辑 `config/mioku.json` 或前往 WebUI 启用你的插件：
-
-```json
-{
-  "mioki": {
-    "plugins": ["boot", "help", "chat", "hello"]
-  }
-}
-```
+插件安装后，Mioku 会自动发现并加载插件。
 
 ## 测试插件
 
 向机器人发送：
 
 ```text
-/hello
+/天气 北京
 ```
 
 如果收到回复，说明插件已经可以正常运行。
 
 ## 插件示例
 
-> 以下示例插件均来自`mioki`官方文档。
+> 以下示例插件均来自 `mioki` 官方文档。
 
 ::: code-group
 
@@ -540,3 +540,5 @@ export default definePlugin({
   },
 })
 ```
+
+:::
