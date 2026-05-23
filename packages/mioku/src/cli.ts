@@ -559,13 +559,13 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           "prefix": "#",
           "owners": [${String(owners)
             .split(",")
-            .map((o) => `"${o.trim()}"`)
+            .map((o) => o.trim())
             .join(", ")}],
           "admins": [],
           "plugins": ["boot", "help", "chat", "demo"],
           "log_level": "info",
-          "online_push": true,
-          "error_push": true,
+          "online_push": false,
+          "error_push": false,
           "napcat": [
             {
               "protocol": "ws",
