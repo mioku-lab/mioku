@@ -98,19 +98,32 @@ async function getPackageManager(): Promise<string> {
 
 async function installWebUIDist(projectPath: string) {
   consola.info("正在安装 WebUI...");
+
   try {
     run("bun", ["add", "mioku-service-webui"], {
       cwd: projectPath,
-      stdio: "ignore",
     });
-  } catch {
+
+    consola.success("mioku-service-webui 安装成功");
+  } catch (err) {
+    consola.error("安装 mioku-service-webui 失败");
+    console.error(err);
     return;
   }
 
-  const nodeModulesWebui = path.join(projectPath, "node_modules", "mioku-service-webui");
+  const nodeModulesWebui = path.join(
+    projectPath,
+    "node_modules",
+    "mioku-service-webui",
+  );
+
   const targetDist = path.join(nodeModulesWebui, "dist");
 
+  consola.info(`WebUI dist 目录: ${targetDist}`);
+
   try {
+    consola.info("正在获取 WebUI Release 信息...");
+
     const releaseRes = await fetch(
       "https://api.github.com/repos/mioku-lab/mioku-webui/releases/latest",
       {
@@ -121,44 +134,111 @@ async function installWebUIDist(projectPath: string) {
       },
     );
 
-    if (!releaseRes.ok) return;
+    if (!releaseRes.ok) {
+      consola.error(`GitHub API 请求失败: ${releaseRes.status}`);
+      return;
+    }
 
     const release = await releaseRes.json();
+
+    consola.success(`获取 Release 成功: ${release.tag_name}`);
+
     const assets = release.assets || [];
+
     const distAsset = assets.find(
-      (a: any) => /dist/i.test(a.name) || a.name.endsWith(".zip"),
+      (a: any) =>
+        a.name.includes("dist") ||
+        a.name.endsWith(".zip"),
     );
-    if (!distAsset?.browser_download_url) return;
+
+    if (!distAsset) {
+      consola.error("未找到 dist zip 资源");
+      console.log(
+        "可用资源:",
+        assets.map((a: any) => a.name),
+      );
+      return;
+    }
+
+    consola.info(`下载资源: ${distAsset.name}`);
 
     const zipRes = await fetch(distAsset.browser_download_url, {
-      headers: { "User-Agent": "mioku-cli" },
+      headers: {
+        "User-Agent": "mioku-cli",
+      },
     });
-    if (!zipRes.ok) return;
+
+    if (!zipRes.ok) {
+      consola.error(`下载失败: ${zipRes.status}`);
+      return;
+    }
 
     const buffer = Buffer.from(await zipRes.arrayBuffer());
-    const tmpZip = path.join(os.tmpdir(), `mioku-webui-${Date.now()}.zip`);
+
+    const tmpZip = path.join(
+      os.tmpdir(),
+      `mioku-webui-${Date.now()}.zip`,
+    );
+
     fs.writeFileSync(tmpZip, buffer);
 
-    const tmpUnpack = path.join(os.tmpdir(), `mioku-webui-unpack-${Date.now()}`);
-    fs.mkdirSync(tmpUnpack, { recursive: true });
-    try {
-      run("unzip", ["-oq", tmpZip, "-d", tmpUnpack], {
-        stdio: "ignore",
-      });
-    } catch {
-      // ignore unzip failure
+    consola.success(`ZIP 下载完成: ${tmpZip}`);
+
+    const tmpUnpack = path.join(
+      os.tmpdir(),
+      `mioku-webui-unpack-${Date.now()}`,
+    );
+
+    fs.mkdirSync(tmpUnpack, {
+      recursive: true,
+    });
+
+    if (!commandExists("unzip")) {
+      consola.error("系统未安装 unzip");
+      consola.info("Debian/Ubuntu: apt install unzip");
+      return;
     }
+
+    consola.info("正在解压 WebUI...");
+
+    run("unzip", ["-oq", tmpZip, "-d", tmpUnpack]);
+
+    consola.success("解压完成");
 
     const sourceDir = findDistSourceDir(tmpUnpack);
-    if (sourceDir) {
-      fs.mkdirSync(targetDist, { recursive: true });
-      fs.cpSync(sourceDir, targetDist, { recursive: true, force: true });
+
+    if (!sourceDir) {
+      consola.error("未找到 dist/index.html");
+      consola.info(`解压目录: ${tmpUnpack}`);
+      return;
     }
 
-    fs.rmSync(tmpZip, { force: true });
-    fs.rmSync(tmpUnpack, { recursive: true, force: true });
-  } catch {
-    // ignore download failure
+    consola.success(`找到 dist: ${sourceDir}`);
+
+    fs.mkdirSync(targetDist, {
+      recursive: true,
+    });
+
+    fs.cpSync(sourceDir, targetDist, {
+      recursive: true,
+      force: true,
+    });
+
+    consola.success("WebUI dist 安装成功");
+
+    fs.rmSync(tmpZip, {
+      force: true,
+    });
+
+    fs.rmSync(tmpUnpack, {
+      recursive: true,
+      force: true,
+    });
+
+    consola.success("临时文件清理完成");
+  } catch (err) {
+    consola.error("安装 WebUI dist 失败");
+    console.error(err);
   }
 }
 
@@ -459,8 +539,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         }),
       );
 
-      const token = await input("请输入 NapCat WS Token（如无则留空）", {
-        default: "",
+      const token = await password("请输入 NapCat WS Token（如无则留空）", {
         placeholder: "请输入",
       });
 
@@ -480,7 +559,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           "prefix": "#",
           "owners": [${String(owners)
             .split(",")
-            .map((o) => o.trim())
+            .map((o) => `"${o.trim()}"`)
             .join(", ")}],
           "admins": [],
           "plugins": ["boot", "help", "chat", "demo"],
@@ -539,6 +618,10 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       if (installWebui) {
         await installWebUIDist(path.join(process.cwd(), name));
       }
+
+      console.log("\n接下来的操作：");
+      console.log("  cd", name);
+      console.log("  bun run start");
     }
   }
 })();
@@ -582,8 +665,6 @@ async function createNewProject(
   run(cmd, args, {
     cwd: projectPath,
   });
-
-  console.log(`\ncd ${projectPath} && bun run start\n`);
 }
 
 function gracefullyExit() {
@@ -605,6 +686,19 @@ async function confirm(
 ) {
   return consola.prompt(message, {
     type: "confirm",
+    cancel: "reject",
+    ...options,
+  });
+}
+
+async function password(
+  message: string,
+  options?: OmitTypeWithRequired<{
+    placeholder?: string;
+  }>,
+) {
+  return consola.prompt(message, {
+    type: "password",
     cancel: "reject",
     ...options,
   });
