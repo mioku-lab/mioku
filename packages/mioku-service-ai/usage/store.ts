@@ -446,14 +446,14 @@ function buildWhere(
   params: Record<string, number>;
   scope: AIUsageScope;
 } {
-  const params: Record<string, number> = { startedAt };
-  const conditions = ["started_at >= @startedAt"];
+  const params: Record<string, number> = { $startedAt: startedAt };
+  const conditions = ["started_at >= $startedAt"];
   if (botId != null) {
-    params.botId = botId;
+    params.$botId = botId;
     conditions.push(
       includeUnscopedBotRecords
-        ? "(bot_id = @botId OR bot_id IS NULL)"
-        : "bot_id = @botId",
+        ? "(bot_id = $botId OR bot_id IS NULL)"
+        : "bot_id = $botId",
     );
   }
   return {

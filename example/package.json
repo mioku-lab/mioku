@@ -4,13 +4,22 @@
   "type": "module",
   "dependencies": {
     "mioku": "workspace:*",
+    "mioku-plugin-60s": "workspace:*",
+    "mioku-plugin-admin": "workspace:*",
     "mioku-plugin-boot": "workspace:*",
-    "mioku-plugin-help": "workspace:*",
     "mioku-plugin-chat": "workspace:*",
-    "mioku-service-config": "workspace:*",
+    "mioku-plugin-help": "workspace:*",
+    "mioku-plugin-mc": "workspace:*",
+    "mioku-plugin-media": "workspace:*",
+    "mioku-plugin-meme": "workspace:*",
+    "mioku-plugin-music": "workspace:*",
+    "mioku-service-60s": "workspace:*",
     "mioku-service-ai": "workspace:*",
+    "mioku-service-applemusic": "workspace:*",
+    "mioku-service-config": "workspace:*",
+    "mioku-service-help": "workspace:*",
     "mioku-service-screenshot": "workspace:*",
-    "mioku-service-help": "workspace:*"
+    "mioku-service-webui": "workspace:*"
   },
   "scripts": {
     "start": "bun run app.ts"

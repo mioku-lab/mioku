@@ -1,6 +1,6 @@
 {
   "name": "mioku-service-screenshot",
-  "version": "0.8.0",
+  "version": "2.0.0",
   "description": "网页截图服务，支持 HTML 与 Markdown 截图",
   "main": "index.ts",
   "type": "module",
