@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { execSync } from "node:child_process";
 import mri from "mri";
 import path from "node:path";
+import os from "node:os";
 import dedent from "dedent";
 import consola from "consola";
 import { version } from "../package.json";
@@ -78,6 +79,81 @@ function detectType(name: string): "plugin" | "service" | "unknown" {
 
 async function getPackageManager(): Promise<string> {
   return "bun";
+}
+
+async function installWebUIDist(projectPath: string) {
+  consola.info("正在安装 WebUI...");
+  execSync("bun add mioku-service-webui", {
+    cwd: projectPath,
+    stdio: "ignore",
+  });
+
+  const nodeModulesWebui = path.join(projectPath, "node_modules", "mioku-service-webui");
+  const targetDist = path.join(nodeModulesWebui, "dist");
+
+  try {
+    const releaseRes = await fetch(
+      "https://api.github.com/repos/mioku-lab/mioku-webui/releases/latest",
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "mioku-cli",
+        },
+      },
+    );
+
+    if (!releaseRes.ok) return;
+
+    const release = await releaseRes.json();
+    const assets = release.assets || [];
+    const distAsset = assets.find(
+      (a: any) => /dist/i.test(a.name) || a.name.endsWith(".zip"),
+    );
+    if (!distAsset?.browser_download_url) return;
+
+    const zipRes = await fetch(distAsset.browser_download_url, {
+      headers: { "User-Agent": "mioku-cli" },
+    });
+    if (!zipRes.ok) return;
+
+    const buffer = Buffer.from(await zipRes.arrayBuffer());
+    const tmpZip = path.join(os.tmpdir(), `mioku-webui-${Date.now()}.zip`);
+    fs.writeFileSync(tmpZip, buffer);
+
+    const tmpUnpack = path.join(os.tmpdir(), `mioku-webui-unpack-${Date.now()}`);
+    execSync(`unzip -oq "${tmpZip}" -d "${tmpUnpack}"`, { stdio: "ignore" });
+
+    const sourceDir = findDistSourceDir(tmpUnpack);
+    if (sourceDir) {
+      fs.mkdirSync(targetDist, { recursive: true });
+      fs.cpSync(sourceDir, targetDist, { recursive: true, force: true });
+    }
+
+    fs.rmSync(tmpZip, { force: true });
+    fs.rmSync(tmpUnpack, { recursive: true, force: true });
+  } catch {
+    // ignore download failure
+  }
+}
+
+function findDistSourceDir(unpackDir: string): string | null {
+  const directCandidates = [path.join(unpackDir, "dist"), unpackDir];
+  for (const candidate of directCandidates) {
+    if (fs.existsSync(path.join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+  const children = fs.readdirSync(unpackDir);
+  for (const child of children) {
+    const childPath = path.join(unpackDir, child);
+    if (fs.statSync(childPath).isDirectory()) {
+      const subCandidate = path.join(childPath, "dist");
+      if (fs.existsSync(path.join(subCandidate, "index.html"))) {
+        return subCandidate;
+      }
+    }
+  }
+  return null;
 }
 
 function execAdd(packages: string[], cwd?: string) {
@@ -387,6 +463,10 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         initial: true,
       });
 
+      if (installWebui) {
+        await installWebUIDist(path.join(process.cwd(), name));
+      }
+
       ensurePackageManager();
 
       const pkgJson = dedent(`
@@ -466,7 +546,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         ...(useNpmMirror ? { ".npmrc": npmrc } : {}),
       };
 
-      await createNewProject(name, fileTree, { installWebui });
+      await createNewProject(name, fileTree);
     }
   }
 })();
@@ -474,7 +554,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
 async function createNewProject(
   name: string,
   fileTree: Record<string, any>,
-  options: { installWebui: boolean },
 ) {
   const projectName = name;
   const projectPath = withRoot(`./${projectName}`);
@@ -511,10 +590,6 @@ async function createNewProject(
   execSync(addCommand, { cwd: projectPath, stdio: "inherit" });
 
   console.log(`\ncd ${projectPath} && bun run start\n`);
-
-  if (options.installWebui) {
-    console.log("WebUI 将通过 mioku 框架自动加载，无需额外安装。");
-  }
 }
 
 function gracefullyExit() {
