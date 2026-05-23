@@ -433,105 +433,36 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           break;
       }
 
-      let {
-        name = await input("请输入项目名称", {
-          default: "mioku-bot",
-          placeholder: "mioku-bot",
-          required: true,
-        }),
-        owners = await input("请输入主人 QQ (最高权限，英文逗号分隔，必填)", {
-          placeholder: "请输入",
-          default: "",
-          required: true,
-        }),
-        token,
-        protocol,
-        host,
-        port,
-        prefix,
-        admins,
-        "use-npm-mirror": useNpmMirror,
-      } = cli;
+      const name = await input("请输入项目名称", {
+        default: "mioku-bot",
+        placeholder: "mioku-bot",
+        required: true,
+      });
 
-      if (name && owners) {
-        useNpmMirror ??= false;
-        if (!protocol) {
-          protocol = await input("请输入 NapCat WS 协议", {
-            default: "ws",
-            placeholder: "ws",
-            required: true,
-          });
-        }
-        if (!host) {
-          host = await input("请输入 NapCat WS 主机", {
-            default: "127.0.0.1",
-            placeholder: "127.0.0.1",
-            required: true,
-          });
-        }
-        if (!port) {
-          port = parseInt(
-            await input("请输入 NapCat WS 端口", {
-              default: "3001",
-              placeholder: "3001",
-              required: true,
-            }),
-          );
-        }
-        if (!token) {
-          token = await input("请输入 NapCat WS Token（如无则留空）", {
-            default: "",
-            placeholder: "请输入",
-          });
-        }
-        if (!prefix) {
-          prefix = await input("请输入消息命令前缀", {
-            default: "#",
-            placeholder: "#",
-            required: true,
-          });
-        }
-        if (!admins) {
-          admins =
-            (await input("请输入管理员 QQ (插件权限，英文逗号分隔，可空)", {
-              placeholder: "可空",
-            })) || "";
-        }
-      } else {
-        token ||= await input("请输入 NapCat WS Token", {
-          default: "",
-          placeholder: "请输入",
-        });
-        protocol ||= await input("请输入 NapCat WS 协议", {
-          default: "ws",
-          placeholder: "ws",
+      const owners = await input("请输入主人 QQ (最高权限，英文逗号分隔，必填)", {
+        placeholder: "请输入",
+        default: "",
+        required: true,
+      });
+
+      const host = await input("请输入 NapCat WS 主机", {
+        default: "localhost",
+        placeholder: "localhost",
+        required: true,
+      });
+
+      const port = parseInt(
+        await input("请输入 NapCat WS 端口", {
+          default: "3001",
+          placeholder: "3001",
           required: true,
-        });
-        host ||= await input("请输入 NapCat WS 主机", {
-          default: "localhost",
-          placeholder: "localhost",
-          required: true,
-        });
-        port ||= parseInt(
-          await input("请输入 NapCat WS 端口", {
-            default: "3001",
-            placeholder: "3001",
-            required: true,
-          }),
-        );
-        prefix ||= await input("请输入消息命令前缀", {
-          default: "#",
-          placeholder: "#",
-          required: true,
-        });
-        admins ||=
-          (await input("请输入管理员 QQ (插件权限，英文逗号分隔，可空)", {
-            placeholder: "可空",
-          })) || "";
-        useNpmMirror ??= await confirm("是否使用 npm 镜像源加速依赖安装？", {
-          initial: false,
-        });
-      }
+        }),
+      );
+
+      const token = await input("请输入 NapCat WS Token（如无则留空）", {
+        default: "",
+        placeholder: "请输入",
+      });
 
       const installWebui = await confirm("是否安装 WebUI？(建议安装)", {
         initial: true,
@@ -546,26 +477,19 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         "type": "module",
         "dependencies": {},
         "mioki": {
-          "prefix": "${prefix}",
+          "prefix": "#",
           "owners": [${String(owners)
             .split(",")
             .map((o) => o.trim())
             .join(", ")}],
-          "admins": [${
-            admins
-              ? String(admins)
-                  .split(",")
-                  .map((o) => `"${o.trim()}"`)
-                  .join(", ")
-              : ""
-          }],
+          "admins": [],
           "plugins": ["boot", "help", "chat", "demo"],
           "log_level": "info",
           "online_push": true,
           "error_push": true,
           "napcat": [
             {
-              "protocol": "${protocol}",
+              "protocol": "ws",
               "port": ${port},
               "host": "${host}",
               "token": "${token}"
@@ -601,11 +525,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       })
 `);
 
-      const npmrc = dedent(`
-      registry=https://registry.npmmirror.com
-      fund=false
-`);
-
       const fileTree: Record<string, any> = {
         "app.ts":
           "import { start } from 'mioku'\n\nstart({ cwd: import.meta.dirname }).then()\n",
@@ -613,7 +532,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         plugins: { demo: { "index.ts": pluginCode } },
         config: {},
         data: {},
-        ...(useNpmMirror ? { ".npmrc": npmrc } : {}),
       };
 
       await createNewProject(name, fileTree);
