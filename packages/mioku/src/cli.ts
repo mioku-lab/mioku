@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import mri from "mri";
 import path from "node:path";
 import os from "node:os";
@@ -26,6 +26,17 @@ const SERVICE_PREFIX = "mioku-service-";
 
 const args = process.argv.slice(2);
 
+function run(
+  cmd: string,
+  args: string[] = [],
+  options: Parameters<typeof execFileSync>[2] = {},
+) {
+  return execFileSync(cmd, args, {
+    stdio: "inherit",
+    ...options,
+  });
+}
+
 interface CliOptions {
   name?: string;
   protocol?: string;
@@ -42,7 +53,9 @@ interface CliOptions {
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`command -v ${cmd} > /dev/null 2>&1`, { stdio: "ignore" });
+    execFileSync("which", [cmd], {
+      stdio: "ignore",
+    });
     return true;
   } catch {
     return false;
@@ -51,12 +64,14 @@ function commandExists(cmd: string): boolean {
 
 function ensurePackageManager() {
   if (commandExists("bun")) return;
+
   console.log("安装 bun...");
-  execSync("npm install -g bun", { stdio: "inherit" });
+
+  run("npm", ["install", "-g", "bun"]);
 }
 
-function getAddCommand(packages: string[]): string {
-  return `bun add ${packages.join(" ")}`;
+function getAddCommand(packages: string[]): [string, string[]] {
+  return ["bun", ["add", ...packages]];
 }
 
 function normalizePackageName(input: string): string {
@@ -84,7 +99,7 @@ async function getPackageManager(): Promise<string> {
 async function installWebUIDist(projectPath: string) {
   consola.info("正在安装 WebUI...");
   try {
-    execSync("bun add mioku-service-webui", {
+    run("bun", ["add", "mioku-service-webui"], {
       cwd: projectPath,
       stdio: "ignore",
     });
@@ -127,7 +142,7 @@ async function installWebUIDist(projectPath: string) {
     const tmpUnpack = path.join(os.tmpdir(), `mioku-webui-unpack-${Date.now()}`);
     fs.mkdirSync(tmpUnpack, { recursive: true });
     try {
-      execSync(`unzip -oq "${tmpZip}" -d "${tmpUnpack}"`, {
+      run("unzip", ["-oq", tmpZip, "-d", tmpUnpack], {
         stdio: "ignore",
       });
     } catch {
@@ -168,9 +183,13 @@ function findDistSourceDir(unpackDir: string): string | null {
 }
 
 function execAdd(packages: string[], cwd?: string) {
-  const cmd = getAddCommand(packages);
-  console.log(`执行: ${cmd}`);
-  execSync(cmd, { cwd, stdio: "inherit" });
+  const [cmd, args] = getAddCommand(packages);
+
+  console.log(`执行: ${cmd} ${args.join(" ")}`);
+
+  run(cmd, args, {
+    cwd,
+  });
 }
 
 async function installPackage(name: string, cwd?: string) {
@@ -192,9 +211,11 @@ async function installPackage(name: string, cwd?: string) {
 
 async function updatePackage(name: string, cwd?: string) {
   try {
-    const cmd = `bun update ${name}`;
-    console.log(`执行: ${cmd}`);
-    execSync(cmd, { cwd, stdio: "inherit" });
+    console.log(`执行: bun update ${name}`);
+
+    run("bun", ["update", name], {
+      cwd,
+    });
     consola.success(`已更新 ${name}`);
     return true;
   } catch {
@@ -207,10 +228,16 @@ async function checkUpdates(
   packages: string[],
   cwd?: string,
 ) {
-  const cmd = `bun pm outdated --json`;
-
   try {
-    const output = execSync(cmd, { cwd, encoding: "utf-8", stdio: "pipe" });
+    const output = execFileSync(
+      "bun",
+      ["pm", "outdated", "--json"],
+      {
+        cwd,
+        encoding: "utf-8",
+        stdio: "pipe",
+      },
+    );
     if (!output.trim()) {
       consola.info("所有依赖已是最新版本");
       return [];
@@ -512,10 +539,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
 
       ensurePackageManager();
 
-      if (installWebui) {
-        await installWebUIDist(path.join(process.cwd(), name));
-      }
-
       const pkgJson = dedent(`
       {
         "name": "${name}",
@@ -594,6 +617,10 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       };
 
       await createNewProject(name, fileTree);
+
+      if (installWebui) {
+        await installWebUIDist(path.join(process.cwd(), name));
+      }
     }
   }
 })();
@@ -632,9 +659,11 @@ async function createNewProject(
 
   console.log(`项目 ${projectName} 创建成功！`);
 
-  const addCommand = getAddCommand(DEFAULT_PACKAGES);
-  console.log(`正在安装 Mioku 依赖: ${addCommand}`);
-  execSync(addCommand, { cwd: projectPath, stdio: "inherit" });
+  const [cmd, args] = getAddCommand(DEFAULT_PACKAGES);
+  console.log(`正在安装 Mioku 依赖: ${cmd} ${args.join(" ")}`);
+  run(cmd, args, {
+    cwd: projectPath,
+  });
 
   console.log(`\ncd ${projectPath} && bun run start\n`);
 }
