@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import mri from "mri";
 import path from "node:path";
 import os from "node:os";
@@ -26,6 +26,17 @@ const SERVICE_PREFIX = "mioku-service-";
 
 const args = process.argv.slice(2);
 
+function run(
+  cmd: string,
+  args: string[] = [],
+  options: Parameters<typeof execFileSync>[2] = {},
+) {
+  return execFileSync(cmd, args, {
+    stdio: "inherit",
+    ...options,
+  });
+}
+
 interface CliOptions {
   name?: string;
   protocol?: string;
@@ -42,7 +53,9 @@ interface CliOptions {
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`command -v ${cmd} > /dev/null 2>&1`, { stdio: "ignore" });
+    execFileSync("which", [cmd], {
+      stdio: "ignore",
+    });
     return true;
   } catch {
     return false;
@@ -51,12 +64,14 @@ function commandExists(cmd: string): boolean {
 
 function ensurePackageManager() {
   if (commandExists("bun")) return;
+
   console.log("安装 bun...");
-  execSync("npm install -g bun", { stdio: "inherit" });
+
+  run("npm", ["install", "-g", "bun"]);
 }
 
-function getAddCommand(packages: string[]): string {
-  return `bun add ${packages.join(" ")}`;
+function getAddCommand(packages: string[]): [string, string[]] {
+  return ["bun", ["add", ...packages]];
 }
 
 function normalizePackageName(input: string): string {
@@ -83,10 +98,14 @@ async function getPackageManager(): Promise<string> {
 
 async function installWebUIDist(projectPath: string) {
   consola.info("正在安装 WebUI...");
-  execSync("bun add mioku-service-webui", {
-    cwd: projectPath,
-    stdio: "ignore",
-  });
+  try {
+    run("bun", ["add", "mioku-service-webui"], {
+      cwd: projectPath,
+      stdio: "ignore",
+    });
+  } catch {
+    return;
+  }
 
   const nodeModulesWebui = path.join(projectPath, "node_modules", "mioku-service-webui");
   const targetDist = path.join(nodeModulesWebui, "dist");
@@ -121,7 +140,14 @@ async function installWebUIDist(projectPath: string) {
     fs.writeFileSync(tmpZip, buffer);
 
     const tmpUnpack = path.join(os.tmpdir(), `mioku-webui-unpack-${Date.now()}`);
-    execSync(`unzip -oq "${tmpZip}" -d "${tmpUnpack}"`, { stdio: "ignore" });
+    fs.mkdirSync(tmpUnpack, { recursive: true });
+    try {
+      run("unzip", ["-oq", tmpZip, "-d", tmpUnpack], {
+        stdio: "ignore",
+      });
+    } catch {
+      // ignore unzip failure
+    }
 
     const sourceDir = findDistSourceDir(tmpUnpack);
     if (sourceDir) {
@@ -157,9 +183,13 @@ function findDistSourceDir(unpackDir: string): string | null {
 }
 
 function execAdd(packages: string[], cwd?: string) {
-  const cmd = getAddCommand(packages);
-  console.log(`执行: ${cmd}`);
-  execSync(cmd, { cwd, stdio: "inherit" });
+  const [cmd, args] = getAddCommand(packages);
+
+  console.log(`执行: ${cmd} ${args.join(" ")}`);
+
+  run(cmd, args, {
+    cwd,
+  });
 }
 
 async function installPackage(name: string, cwd?: string) {
@@ -181,9 +211,11 @@ async function installPackage(name: string, cwd?: string) {
 
 async function updatePackage(name: string, cwd?: string) {
   try {
-    const cmd = `bun update ${name}`;
-    console.log(`执行: ${cmd}`);
-    execSync(cmd, { cwd, stdio: "inherit" });
+    console.log(`执行: bun update ${name}`);
+
+    run("bun", ["update", name], {
+      cwd,
+    });
     consola.success(`已更新 ${name}`);
     return true;
   } catch {
@@ -196,10 +228,16 @@ async function checkUpdates(
   packages: string[],
   cwd?: string,
 ) {
-  const cmd = `bun pm outdated --json`;
-
   try {
-    const output = execSync(cmd, { cwd, encoding: "utf-8", stdio: "pipe" });
+    const output = execFileSync(
+      "bun",
+      ["pm", "outdated", "--json"],
+      {
+        cwd,
+        encoding: "utf-8",
+        stdio: "pipe",
+      },
+    );
     if (!output.trim()) {
       consola.info("所有依赖已是最新版本");
       return [];
@@ -395,77 +433,40 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           break;
       }
 
-      let {
-        name = await input("请输入项目名称", {
-          default: "mioku-bot",
-          placeholder: "mioku-bot",
-          required: true,
-        }),
-        owners = await input("请输入主人 QQ (最高权限，英文逗号分隔，必填)", {
-          placeholder: "请输入",
-          default: "",
-          required: true,
-        }),
-        token,
-        protocol,
-        host,
-        port,
-        prefix,
-        admins,
-        "use-npm-mirror": useNpmMirror,
-      } = cli;
+      const name = await input("请输入项目名称", {
+        default: "mioku-bot",
+        placeholder: "mioku-bot",
+        required: true,
+      });
 
-      if (name && owners) {
-        protocol ||= "ws";
-        host ||= "localhost";
-        port ||= 3001;
-        token ||= "";
-        prefix ||= "#";
-        admins ||= "";
-        useNpmMirror ??= false;
-      } else {
-        token ||= await input("请输入 NapCat WS Token", {
-          default: "",
-          placeholder: "请输入",
-        });
-        protocol ||= await input("请输入 NapCat WS 协议", {
-          default: "ws",
-          placeholder: "ws",
+      const owners = await input("请输入主人 QQ (最高权限，英文逗号分隔，必填)", {
+        placeholder: "请输入",
+        default: "",
+        required: true,
+      });
+
+      const host = await input("请输入 NapCat WS 主机", {
+        default: "localhost",
+        placeholder: "localhost",
+        required: true,
+      });
+
+      const port = parseInt(
+        await input("请输入 NapCat WS 端口", {
+          default: "3001",
+          placeholder: "3001",
           required: true,
-        });
-        host ||= await input("请输入 NapCat WS 主机", {
-          default: "localhost",
-          placeholder: "localhost",
-          required: true,
-        });
-        port ||= parseInt(
-          await input("请输入 NapCat WS 端口", {
-            default: "3001",
-            placeholder: "3001",
-            required: true,
-          }),
-        );
-        prefix ||= await input("请输入消息命令前缀", {
-          default: "#",
-          placeholder: "#",
-          required: true,
-        });
-        admins ||=
-          (await input("请输入管理员 QQ (插件权限，英文逗号分隔，可空)", {
-            placeholder: "可空",
-          })) || "";
-        useNpmMirror ??= await confirm("是否使用 npm 镜像源加速依赖安装？", {
-          initial: false,
-        });
-      }
+        }),
+      );
+
+      const token = await input("请输入 NapCat WS Token（如无则留空）", {
+        default: "",
+        placeholder: "请输入",
+      });
 
       const installWebui = await confirm("是否安装 WebUI？(建议安装)", {
         initial: true,
       });
-
-      if (installWebui) {
-        await installWebUIDist(path.join(process.cwd(), name));
-      }
 
       ensurePackageManager();
 
@@ -476,26 +477,19 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         "type": "module",
         "dependencies": {},
         "mioki": {
-          "prefix": "${prefix}",
+          "prefix": "#",
           "owners": [${String(owners)
             .split(",")
             .map((o) => o.trim())
             .join(", ")}],
-          "admins": [${
-            admins
-              ? String(admins)
-                  .split(",")
-                  .map((o) => `"${o.trim()}"`)
-                  .join(", ")
-              : ""
-          }],
+          "admins": [],
           "plugins": ["boot", "help", "chat", "demo"],
           "log_level": "info",
           "online_push": true,
           "error_push": true,
           "napcat": [
             {
-              "protocol": "${protocol}",
+              "protocol": "ws",
               "port": ${port},
               "host": "${host}",
               "token": "${token}"
@@ -531,11 +525,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       })
 `);
 
-      const npmrc = dedent(`
-      registry=https://registry.npmmirror.com
-      fund=false
-`);
-
       const fileTree: Record<string, any> = {
         "app.ts":
           "import { start } from 'mioku'\n\nstart({ cwd: import.meta.dirname }).then()\n",
@@ -543,10 +532,13 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         plugins: { demo: { "index.ts": pluginCode } },
         config: {},
         data: {},
-        ...(useNpmMirror ? { ".npmrc": npmrc } : {}),
       };
 
       await createNewProject(name, fileTree);
+
+      if (installWebui) {
+        await installWebUIDist(path.join(process.cwd(), name));
+      }
     }
   }
 })();
@@ -585,9 +577,11 @@ async function createNewProject(
 
   console.log(`项目 ${projectName} 创建成功！`);
 
-  const addCommand = getAddCommand(DEFAULT_PACKAGES);
-  console.log(`正在安装 Mioku 依赖: ${addCommand}`);
-  execSync(addCommand, { cwd: projectPath, stdio: "inherit" });
+  const [cmd, args] = getAddCommand(DEFAULT_PACKAGES);
+  console.log(`正在安装 Mioku 依赖: ${cmd} ${args.join(" ")}`);
+  run(cmd, args, {
+    cwd: projectPath,
+  });
 
   console.log(`\ncd ${projectPath} && bun run start\n`);
 }
