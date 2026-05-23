@@ -173,3 +173,4 @@ vite.config.ts.timestamp-*
 /example/config/
 /example/data/
 /example/temp/
+/example/backup/
