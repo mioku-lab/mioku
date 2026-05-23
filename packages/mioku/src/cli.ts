@@ -539,7 +539,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         }),
       );
 
-      const token = await password("请输入 NapCat WS Token（如无则留空）", {
+      const token = await input("请输入 NapCat WS Token（如无则留空）", {
         placeholder: "请输入",
       });
 
@@ -686,19 +686,6 @@ async function confirm(
 ) {
   return consola.prompt(message, {
     type: "confirm",
-    cancel: "reject",
-    ...options,
-  });
-}
-
-async function password(
-  message: string,
-  options?: OmitTypeWithRequired<{
-    placeholder?: string;
-  }>,
-) {
-  return consola.prompt(message, {
-    type: "password",
     cancel: "reject",
     ...options,
   });
