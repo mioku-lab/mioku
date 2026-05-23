@@ -4,13 +4,14 @@
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/mioku-webui" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/plugins/60s" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/plugins/admin" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/plugins/media" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/plugins/meme" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/plugins/music" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/src/services/60s" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/src/services/applemusic" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/src/services/webui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-60s" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-admin" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-mc" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-media" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-meme" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-plugin-music" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-service-60s" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-service-applemusic" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/mioku-service-webui" vcs="Git" />
   </component>
 </project>

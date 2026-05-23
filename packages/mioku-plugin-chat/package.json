@@ -1,0 +1,51 @@
+{
+  "name": "mioku-plugin-chat",
+  "version": "2.0.0",
+  "description": "AI 智能聊天插件",
+  "main": "index.ts",
+  "type": "module",
+  "keywords": [
+    "mioku"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
+  "mioku": {
+    "services": [
+      "ai",
+      "config",
+      "help",
+      "screenshot"
+    ],
+    "help": {
+      "title": "AI 聊天",
+      "description": "智能 AI 聊天插件",
+      "commands": [
+        {
+          "cmd": "/重置会话",
+          "desc": "重置自己的AI聊天记录",
+          "role": "member"
+        },
+        {
+          "cmd": "/重置群会话",
+          "desc": "重置当前群的AI聊天记录",
+          "role": "admin"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "mioki": "^0.16.0",
+    "mioku": "workspace:*"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  }
+}

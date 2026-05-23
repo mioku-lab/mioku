@@ -1,0 +1,54 @@
+{
+  "name": "mioku-example",
+  "private": false,
+  "type": "module",
+  "dependencies": {
+    "mioku": "workspace:*",
+    "mioku-plugin-60s": "workspace:*",
+    "mioku-plugin-admin": "workspace:*",
+    "mioku-plugin-boot": "workspace:*",
+    "mioku-plugin-chat": "workspace:*",
+    "mioku-plugin-help": "workspace:*",
+    "mioku-plugin-mc": "workspace:*",
+    "mioku-plugin-media": "workspace:*",
+    "mioku-plugin-meme": "workspace:*",
+    "mioku-plugin-music": "workspace:*",
+    "mioku-service-60s": "workspace:*",
+    "mioku-service-ai": "workspace:*",
+    "mioku-service-applemusic": "workspace:*",
+    "mioku-service-config": "workspace:*",
+    "mioku-service-help": "workspace:*",
+    "mioku-service-screenshot": "workspace:*",
+    "mioku-service-webui": "workspace:*"
+  },
+  "scripts": {
+    "start": "bun run app.ts"
+  },
+  "mioki": {
+    "prefix": "~",
+    "owners": [
+      3479445703
+    ],
+    "admins": [],
+    "plugins": [
+      "boot",
+      "help",
+      "chat",
+      "demo",
+      "60s",
+      "admin",
+      "media",
+      "music",
+      "meme"
+    ],
+    "log_level": "info",
+    "napcat": [
+      {
+        "protocol": "ws",
+        "port": 5577,
+        "host": "192.168.1.201",
+        "token": "114514"
+      }
+    ]
+  }
+}

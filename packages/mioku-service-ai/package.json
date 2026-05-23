@@ -1,0 +1,23 @@
+{
+  "name": "mioku-service-ai",
+  "version": "2.0.0",
+  "description": "为插件提供完整的ai服务支持，包括ai实例管理，提示词管理，skills管理等",
+  "main": "index.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
+  "dependencies": {
+    "openai": "^4.72.0"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "mioki": "^0.16.0",
+    "mioku": "workspace:*"
+  }
+}

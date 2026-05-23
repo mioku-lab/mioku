@@ -1,8 +1,0 @@
-{
-  "name": "mioku-service-help",
-  "version": "1.0.0",
-  "description": "帮助服务 - 自动管理和生成帮助文档",
-  "main": "index.ts",
-  "keywords": ["mioku"],
-  "dependencies": {}
-}

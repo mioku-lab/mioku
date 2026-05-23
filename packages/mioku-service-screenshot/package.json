@@ -1,0 +1,25 @@
+{
+  "name": "mioku-service-screenshot",
+  "version": "2.0.0",
+  "description": "网页截图服务，支持 HTML 与 Markdown 截图",
+  "main": "index.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.25",
+    "markdown-it": "^14.1.0",
+    "puppeteer": "^22.0.0"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  },
+  "devDependencies": {
+    "mioku": "workspace:*",
+    "mioki": "^0.16.0"
+  }
+}

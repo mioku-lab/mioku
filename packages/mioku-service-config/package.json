@@ -1,0 +1,22 @@
+{
+  "name": "mioku-service-config",
+  "version": "2.0.0",
+  "description": "配置服务 - 配置管理和热重载",
+  "main": "index.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mioku-lab/mioku.git"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  },
+  "peerDependencies": {
+    "mioku": "^0.8.0",
+    "mioki": "^0.16.0"
+  },
+  "devDependencies": {
+    "mioku": "workspace:*",
+    "mioki": "^0.16.0"
+  }
+}

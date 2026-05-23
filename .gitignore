@@ -144,7 +144,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /config/
-/example/
 /temp/
 /src/services/
 /plugins
@@ -156,6 +155,8 @@ vite.config.ts.timestamp-*
 !/plugins/*/shared.ts
 /data/
 /webui/
+/example/.mioku/
+/.mioku/
 /mioku-webui/
 /.agents/
 /.trae/
@@ -164,3 +165,12 @@ vite.config.ts.timestamp-*
 /skills-lock.json
 /bun.lock
 /backup/
+/example/config/boot/base.json
+/example/config/chat/base.json
+/example/config/chat/personalization.json
+/example/config/chat/settings.json
+/example/config/help/demo.json
+/example/config/
+/example/data/
+/example/temp/
+/example/backup/
