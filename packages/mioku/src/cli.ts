@@ -31,6 +31,19 @@ function run(
   args: string[] = [],
   options: Parameters<typeof execFileSync>[2] = {},
 ) {
+  // On Windows, ensure PATH includes common locations for npm/node
+  if (process.platform === "win32") {
+    const npmPath = process.env.PATH || "";
+    const extraPaths = [
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+      `${process.env.APPDATA || ""}\\npm`,
+    ].filter(Boolean).join(";");
+    options.env = {
+      ...process.env,
+      PATH: extraPaths ? `${extraPaths};${npmPath}` : npmPath,
+    };
+  }
   return execFileSync(cmd, args, {
     stdio: "inherit",
     ...options,
@@ -53,13 +66,19 @@ interface CliOptions {
 
 function commandExists(cmd: string): boolean {
   try {
-    execFileSync("which", [cmd], {
-      stdio: "ignore",
-    });
+    if (process.platform === "win32") {
+      execFileSync("where", [cmd], { stdio: "ignore" });
+    } else {
+      execFileSync("which", [cmd], { stdio: "ignore" });
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+function isWindows(): boolean {
+  return process.platform === "win32";
 }
 
 function ensurePackageManager() {
