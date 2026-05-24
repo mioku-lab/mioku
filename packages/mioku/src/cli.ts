@@ -31,19 +31,6 @@ function run(
   args: string[] = [],
   options: Parameters<typeof execFileSync>[2] = {},
 ) {
-  // On Windows, ensure PATH includes common locations for npm/node
-  if (process.platform === "win32") {
-    const npmPath = process.env.PATH || "";
-    const extraPaths = [
-      "C:\\Program Files\\nodejs",
-      "C:\\Program Files (x86)\\nodejs",
-      `${process.env.APPDATA || ""}\\npm`,
-    ].filter(Boolean).join(";");
-    options.env = {
-      ...process.env,
-      PATH: extraPaths ? `${extraPaths};${npmPath}` : npmPath,
-    };
-  }
   return execFileSync(cmd, args, {
     stdio: "inherit",
     ...options,
@@ -64,29 +51,53 @@ interface CliOptions {
   "use-npm-mirror"?: boolean;
 }
 
-function commandExists(cmd: string): boolean {
-  try {
-    if (process.platform === "win32") {
-      execFileSync("where", [cmd], { stdio: "ignore" });
-    } else {
-      execFileSync("which", [cmd], { stdio: "ignore" });
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
+function findNpmPath(): string | null {
+  if (process.platform !== "win32") return "npm";
 
-function isWindows(): boolean {
-  return process.platform === "win32";
+  const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const candidates = [
+    path.join(programFiles, "nodejs", "npm"),
+    path.join(programFilesX86, "nodejs", "npm"),
+    path.join(process.env.APPDATA || "", "npm", "npm"),
+    path.join(process.env.LOCALAPPDATA || "", "npm", "npm"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate + ".cmd")) return candidate + ".cmd";
+  }
+
+  try {
+    const result = execFileSync("where", ["npm"], { stdio: "pipe", encoding: "utf-8" });
+    const firstPath = result.trim().split("\n")[0].trim();
+    if (firstPath && fs.existsSync(firstPath)) return firstPath;
+    if (firstPath && fs.existsSync(firstPath + ".cmd")) return firstPath + ".cmd";
+  } catch {
+    // where failed
+  }
+
+  return null;
 }
 
 function ensurePackageManager() {
-  if (commandExists("bun")) return;
+  // Try to run bun, if it doesn't exist then install it
+  try {
+    run("bun", ["--version"]);
+    return;
+  } catch {
+    // bun not found, install it
+  }
 
   console.log("安装 bun...");
 
-  run("npm", ["install", "-g", "bun"]);
+  const npmPath = findNpmPath();
+  if (!npmPath) {
+    consola.error("未找到 npm，请确保 Node.js 已安装并包含 npm");
+    process.exit(1);
+  }
+
+  run(npmPath, ["install", "-g", "bun"]);
 }
 
 function getAddCommand(packages: string[]): [string, string[]] {
