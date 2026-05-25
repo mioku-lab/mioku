@@ -4,7 +4,7 @@
 
 ## 入口配置
 
-`config/mioku.json`
+`package.json`
 
 一个示例的配置如下
 

@@ -35,7 +35,7 @@
 npx mioku
 ```
 
-首次启动时会自动创建 `config/mioku.json`，并引导你填写 NapCat 正向 WS 配置。
+首次启动时会自动询问 mioki 相关配置字段，并引导你填写 NapCat 正向 WS 配置。
 
 首次启动还会询问是否安装 WebUI。
 

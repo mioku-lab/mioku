@@ -33,8 +33,31 @@ function run(
 ) {
   return execFileSync(cmd, args, {
     stdio: "inherit",
+    shell: process.platform === "win32",
     ...options,
   });
+}
+
+async function rmrf(dir: string, retries = 5): Promise<void> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err: any) {
+      if (i === retries - 1) throw err;
+      const code = err?.code;
+      if (
+        code === "EPERM" ||
+        code === "EBUSY" ||
+        code === "ENOTEMPTY" ||
+        code === "ENOENT"
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 300 * (i + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
 }
 
 interface CliOptions {
@@ -51,35 +74,6 @@ interface CliOptions {
   "use-npm-mirror"?: boolean;
 }
 
-function findNpmPath(): string | null {
-  if (process.platform !== "win32") return "npm";
-
-  const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
-  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
-  const candidates = [
-    path.join(programFiles, "nodejs", "npm"),
-    path.join(programFilesX86, "nodejs", "npm"),
-    path.join(process.env.APPDATA || "", "npm", "npm"),
-    path.join(process.env.LOCALAPPDATA || "", "npm", "npm"),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-    if (fs.existsSync(candidate + ".cmd")) return candidate + ".cmd";
-  }
-
-  try {
-    const result = execFileSync("where", ["npm"], { stdio: "pipe", encoding: "utf-8" });
-    const firstPath = result.trim().split("\n")[0].trim();
-    if (firstPath && fs.existsSync(firstPath)) return firstPath;
-    if (firstPath && fs.existsSync(firstPath + ".cmd")) return firstPath + ".cmd";
-  } catch {
-    // where failed
-  }
-
-  return null;
-}
-
 function ensurePackageManager() {
   // Try to run bun, if it doesn't exist then install it
   try {
@@ -90,14 +84,7 @@ function ensurePackageManager() {
   }
 
   console.log("安装 bun...");
-
-  const npmPath = findNpmPath();
-  if (!npmPath) {
-    consola.error("未找到 npm，请确保 Node.js 已安装并包含 npm");
-    process.exit(1);
-  }
-
-  run(npmPath, ["install", "-g", "bun"]);
+  run("npm", ["install", "-g", "bun"]);
 }
 
 function getAddCommand(packages: string[]): [string, string[]] {
@@ -120,10 +107,6 @@ function detectType(name: string): "plugin" | "service" | "unknown" {
   if (name.startsWith(PLUGIN_PREFIX)) return "plugin";
   if (name.startsWith(SERVICE_PREFIX)) return "service";
   return "unknown";
-}
-
-async function getPackageManager(): Promise<string> {
-  return "bun";
 }
 
 async function installWebUIDist(projectPath: string) {
@@ -169,23 +152,22 @@ async function installWebUIDist(projectPath: string) {
       return;
     }
 
-    const release = await releaseRes.json();
+    const release = (await releaseRes.json()) as {
+      tag_name: string;
+      assets: Array<{ name: string; browser_download_url: string }>;
+    };
 
     consola.success(`获取 Release 成功: ${release.tag_name}`);
-
-    const assets = release.assets || [];
-
-    const distAsset = assets.find(
-      (a: any) =>
-        a.name.includes("dist") ||
-        a.name.endsWith(".zip"),
+    const distAsset = release.assets.find(
+      (a: { name: string; browser_download_url: string }) =>
+        a.name.includes("dist") || a.name.endsWith(".zip"),
     );
 
     if (!distAsset) {
       consola.error("未找到 dist zip 资源");
       console.log(
         "可用资源:",
-        assets.map((a: any) => a.name),
+        release.assets.map((a: { name: string }) => a.name),
       );
       return;
     }
@@ -205,10 +187,7 @@ async function installWebUIDist(projectPath: string) {
 
     const buffer = Buffer.from(await zipRes.arrayBuffer());
 
-    const tmpZip = path.join(
-      os.tmpdir(),
-      `mioku-webui-${Date.now()}.zip`,
-    );
+    const tmpZip = path.join(os.tmpdir(), `mioku-webui-${Date.now()}.zip`);
 
     fs.writeFileSync(tmpZip, buffer);
 
@@ -223,15 +202,9 @@ async function installWebUIDist(projectPath: string) {
       recursive: true,
     });
 
-    if (!commandExists("unzip")) {
-      consola.error("系统未安装 unzip");
-      consola.info("Debian/Ubuntu: apt install unzip");
-      return;
-    }
-
     consola.info("正在解压 WebUI...");
 
-    run("unzip", ["-oq", tmpZip, "-d", tmpUnpack]);
+    run("bun", ["x", "unzip", tmpZip, "-d", tmpUnpack]);
 
     consola.success("解压完成");
 
@@ -256,14 +229,8 @@ async function installWebUIDist(projectPath: string) {
 
     consola.success("WebUI dist 安装成功");
 
-    fs.rmSync(tmpZip, {
-      force: true,
-    });
-
-    fs.rmSync(tmpUnpack, {
-      recursive: true,
-      force: true,
-    });
+    await rmrf(tmpZip);
+    await rmrf(tmpUnpack);
 
     consola.success("临时文件清理完成");
   } catch (err) {
@@ -334,20 +301,14 @@ async function updatePackage(name: string, cwd?: string) {
   }
 }
 
-async function checkUpdates(
-  packages: string[],
-  cwd?: string,
-) {
+async function checkUpdates(packages: string[], cwd?: string) {
   try {
-    const output = execFileSync(
-      "bun",
-      ["pm", "outdated", "--json"],
-      {
-        cwd,
-        encoding: "utf-8",
-        stdio: "pipe",
-      },
-    );
+    const output = execFileSync("bun", ["pm", "outdated", "--json"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: "pipe",
+      shell: process.platform === "win32",
+    });
     if (!output.trim()) {
       consola.info("所有依赖已是最新版本");
       return [];
@@ -428,21 +389,26 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       const name = cmdArgs[1];
 
       if (!type || !name) {
-        consola.error("请指定类型和名称: mioku install plugin <名称> 或 mioku install service <名称>");
+        consola.error(
+          "请指定类型和名称: mioku install plugin <名称> 或 mioku install service <名称>",
+        );
         console.log(helpInfo);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       if (type !== "plugin" && type !== "service") {
         consola.error(`无效的类型 "${type}"，请使用 plugin 或 service`);
         console.log(helpInfo);
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
 
       const prefix = type === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
       const normalized = `${prefix}${name}`;
       const success = await installPackage(normalized, cwd);
-      process.exit(success ? 0 : 1);
+      process.exitCode = success ? 0 : 1;
+      return;
     }
 
     case "update": {
@@ -460,7 +426,8 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           updates.forEach((u) => consola.warn(`  ${u}`));
           console.log("\n运行 npx mioku update all 更新所有包");
         }
-        process.exit(0);
+        process.exitCode = 0;
+        return;
       }
 
       const target = cmdArgs[0];
@@ -470,17 +437,20 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         const packages = await getInstalledPackages(cwd);
         if (packages.length === 0) {
           consola.info("未找到 mioku 相关依赖");
-          process.exit(0);
+          process.exitCode = 0;
+          return;
         }
         for (const pkg of packages) {
           await updatePackage(pkg, cwd);
         }
-        process.exit(0);
+        process.exitCode = 0;
+        return;
       }
 
       if (target === "self") {
         await updatePackage("mioku", cwd);
-        process.exit(0);
+        process.exitCode = 0;
+        return;
       }
 
       if (target === "plugin" || target === "service") {
@@ -493,7 +463,8 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
           const filtered = packages.filter((p) => p.startsWith(prefix));
           if (filtered.length === 0) {
             consola.info(`未找到 ${prefix}* 相关依赖`);
-            process.exit(0);
+            process.exitCode = 0;
+            return;
           }
           for (const pkg of filtered) {
             await updatePackage(pkg, cwd);
@@ -505,7 +476,8 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
             : `${prefix}${name}`;
           await updatePackage(normalized, cwd);
         }
-        process.exit(0);
+        process.exitCode = 0;
+        return;
       }
 
       // update xxx - 更新指定包，自动识别前缀
@@ -516,7 +488,8 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         const normalized = normalizePackageName(target);
         await updatePackage(normalized, cwd);
       }
-      process.exit(0);
+      process.exitCode = 0;
+      return;
     }
 
     default: {
@@ -531,13 +504,15 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       switch (true) {
         case cli.version:
           console.log(`v${version}`);
-          process.exit(0);
-          // fall through
+          process.exitCode = 0;
+          return;
+        // fall through
 
         case cli.help:
           console.log(helpInfo);
-          process.exit(0);
-          // fall through
+          process.exitCode = 0;
+          return;
+        // fall through
 
         default:
           break;
@@ -549,11 +524,14 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         required: true,
       });
 
-      const owners = await input("请输入主人 QQ (最高权限，英文逗号分隔，必填)", {
-        placeholder: "请输入",
-        default: "",
-        required: true,
-      });
+      const owners = await input(
+        "请输入主人 QQ (最高权限，英文逗号分隔，必填)",
+        {
+          placeholder: "请输入",
+          default: "",
+          required: true,
+        },
+      );
 
       const host = await input("请输入 NapCat WS 主机", {
         default: "localhost",
@@ -656,10 +634,7 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
   }
 })();
 
-async function createNewProject(
-  name: string,
-  fileTree: Record<string, any>,
-) {
+async function createNewProject(name: string, fileTree: Record<string, any>) {
   const projectName = name;
   const projectPath = withRoot(`./${projectName}`);
 
@@ -681,10 +656,10 @@ async function createNewProject(
       }
     }
 
-    fs.rmSync(projectPath, { recursive: true });
+    await rmrf(projectPath);
   }
 
-  fs.mkdirSync(projectPath);
+  fs.mkdirSync(projectPath, { recursive: true });
 
   makeFileTree(fileTree, projectPath);
 
@@ -749,7 +724,10 @@ function makeFileTree(
       }
       for (const [subName, subContent] of Object.entries(content)) {
         if (typeof subContent === "object") {
-          makeFileTree(content as typeof fileTree, subPath);
+          makeFileTree(
+            subContent as typeof fileTree,
+            path.join(subPath, subName),
+          );
         } else {
           fs.writeFileSync(`${subPath}/${subName}`, subContent);
         }
