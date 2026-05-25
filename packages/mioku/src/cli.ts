@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
+import fs, { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import mri from "mri";
 import path from "node:path";
-import os from "node:os";
 import dedent from "dedent";
 import consola from "consola";
 import { version } from "../package.json";
-import { readFileSync } from "node:fs";
-import AdmZip from "adm-zip";
-
 const DEFAULT_PACKAGES = [
   "mioku",
   "mioku-plugin-boot",
@@ -162,157 +158,6 @@ function detectType(name: string): "plugin" | "service" | "unknown" {
   if (name.startsWith(PLUGIN_PREFIX)) return "plugin";
   if (name.startsWith(SERVICE_PREFIX)) return "service";
   return "unknown";
-}
-
-async function installWebUIDist(projectPath: string) {
-  consola.info("正在安装 WebUI...");
-
-  try {
-    run("bun", ["add", "mioku-service-webui"], {
-      cwd: projectPath,
-    });
-
-    consola.success("mioku-service-webui 安装成功");
-  } catch (err) {
-    consola.error("安装 mioku-service-webui 失败");
-    console.error(err);
-    return;
-  }
-
-  const nodeModulesWebui = path.join(
-    projectPath,
-    "node_modules",
-    "mioku-service-webui",
-  );
-
-  const targetDist = path.join(nodeModulesWebui, "dist");
-
-  consola.info(`WebUI dist 目录: ${targetDist}`);
-
-  try {
-    consola.info("正在获取 WebUI Release 信息...");
-
-    const releaseRes = await fetch(
-      "https://api.github.com/repos/mioku-lab/mioku-webui/releases/latest",
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          "User-Agent": "mioku-cli",
-        },
-      },
-    );
-
-    if (!releaseRes.ok) {
-      consola.error(`GitHub API 请求失败: ${releaseRes.status}`);
-      return;
-    }
-
-    const release = (await releaseRes.json()) as {
-      tag_name: string;
-      assets: Array<{ name: string; browser_download_url: string }>;
-    };
-
-    consola.success(`获取 Release 成功: ${release.tag_name}`);
-    const distAsset = release.assets.find(
-      (a: { name: string; browser_download_url: string }) =>
-        a.name.includes("dist") || a.name.endsWith(".zip"),
-    );
-
-    if (!distAsset) {
-      consola.error("未找到 dist zip 资源");
-      console.log(
-        "可用资源:",
-        release.assets.map((a: { name: string }) => a.name),
-      );
-      return;
-    }
-
-    consola.info(`下载资源: ${distAsset.name}`);
-
-    const zipRes = await fetch(distAsset.browser_download_url, {
-      headers: {
-        "User-Agent": "mioku-cli",
-      },
-    });
-
-    if (!zipRes.ok) {
-      consola.error(`下载失败: ${zipRes.status}`);
-      return;
-    }
-
-    const buffer = Buffer.from(await zipRes.arrayBuffer());
-
-    const tmpZip = path.join(os.tmpdir(), `mioku-webui-${Date.now()}.zip`);
-
-    fs.writeFileSync(tmpZip, buffer);
-
-    consola.success(`ZIP 下载完成: ${tmpZip}`);
-
-    const tmpUnpack = path.join(
-      os.tmpdir(),
-      `mioku-webui-unpack-${Date.now()}`,
-    );
-
-    fs.mkdirSync(tmpUnpack, {
-      recursive: true,
-    });
-
-    consola.info("正在解压 WebUI...");
-
-    const zip = new AdmZip(tmpZip);
-    zip.extractAllTo(tmpUnpack, true);
-
-    consola.success("解压完成");
-
-    const sourceDir = findDistSourceDir(tmpUnpack);
-
-    if (!sourceDir) {
-      consola.error("未找到 dist/index.html");
-      consola.info(`解压目录: ${tmpUnpack}`);
-      return;
-    }
-
-    consola.success(`找到 dist: ${sourceDir}`);
-
-    fs.mkdirSync(targetDist, {
-      recursive: true,
-    });
-
-    fs.cpSync(sourceDir, targetDist, {
-      recursive: true,
-      force: true,
-    });
-
-    consola.success("WebUI dist 安装成功");
-
-    await rmrf(tmpZip);
-    await rmrf(tmpUnpack);
-
-    consola.success("临时文件清理完成");
-  } catch (err) {
-    consola.error("安装 WebUI dist 失败");
-    console.error(err);
-  }
-}
-
-function findDistSourceDir(unpackDir: string): string | null {
-  const directCandidates = [path.join(unpackDir, "dist"), unpackDir];
-  for (const candidate of directCandidates) {
-    if (fs.existsSync(path.join(candidate, "index.html"))) {
-      return candidate;
-    }
-  }
-  const children = fs.readdirSync(unpackDir);
-  for (const child of children) {
-    const childPath = path.join(unpackDir, child);
-    if (fs.statSync(childPath).isDirectory()) {
-      const subCandidate = path.join(childPath, "dist");
-      if (fs.existsSync(path.join(subCandidate, "index.html"))) {
-        return subCandidate;
-      }
-    }
-  }
-  return null;
 }
 
 function execAdd(packages: string[], cwd?: string) {
@@ -489,16 +334,33 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       const target = cmdArgs[0];
 
       if (target === "all") {
-        // 更新所有 mioku- 包
+        // 先并发检查所有包的更新
         const packages = await getInstalledPackages(cwd);
         if (packages.length === 0) {
           consola.info("未找到 mioku 相关依赖");
           process.exitCode = 0;
           return;
         }
-        for (const pkg of packages) {
-          await updatePackage(pkg, cwd);
+
+        const updates = await checkUpdates(packages, cwd);
+        if (updates.length === 0) {
+          consola.info("所有 mioku 依赖已是最新版本");
+          process.exitCode = 0;
+          return;
         }
+
+        console.log("\n可用更新:");
+        updates.forEach((u) => consola.warn(`  ${u}`));
+
+        const confirm = await confirm(`确认更新以上 ${updates.length} 个包？`);
+        if (!confirm) {
+          gracefullyExit();
+        }
+
+        // 并发更新所有包
+        await Promise.all(
+          packages.map((pkg) => updatePackage(pkg, cwd)),
+        );
         process.exitCode = 0;
         return;
       }
@@ -607,10 +469,6 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         placeholder: "请输入",
       });
 
-      const installWebui = await confirm("是否安装 WebUI？(建议安装)", {
-        initial: true,
-      });
-
       ensurePackageManager();
 
       const pkgJson = dedent(`
@@ -677,20 +535,20 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         data: {},
       };
 
-      await createNewProject(name, fileTree);
+      const installWebui = await confirm("是否安装 WebUI 管理面板？（建议安装）", {
+        initial: true,
+      });
 
-      if (installWebui) {
-        await installWebUIDist(path.join(process.cwd(), name));
-      }
+      await createNewProject(name, fileTree, installWebui);
 
-      console.log("\n接下来的操作：");
+      console.log("\n若需启动机器人，请运行：");
       console.log("  cd", name);
       console.log("  bun run start");
     }
   }
 })();
 
-async function createNewProject(name: string, fileTree: Record<string, any>) {
+async function createNewProject(name: string, fileTree: Record<string, any>, installWebui = false) {
   const projectName = name;
   const projectPath = withRoot(`./${projectName}`);
 
@@ -721,7 +579,8 @@ async function createNewProject(name: string, fileTree: Record<string, any>) {
 
   console.log(`项目 ${projectName} 创建成功！`);
 
-  const [cmd, args] = getAddCommand(DEFAULT_PACKAGES);
+  const packages = installWebui ? DEFAULT_PACKAGES : DEFAULT_PACKAGES.filter(p => p !== "mioku-service-webui");
+  const [cmd, args] = getAddCommand(packages);
   console.log(`正在安装 Mioku 依赖: ${cmd} ${args.join(" ")}`);
   run(cmd, args, {
     cwd: projectPath,
