@@ -74,17 +74,71 @@ interface CliOptions {
   "use-npm-mirror"?: boolean;
 }
 
-function ensurePackageManager() {
-  // Try to run bun, if it doesn't exist then install it
+function hasCommand(cmd: string): boolean {
   try {
-    run("bun", ["--version"]);
-    return;
+    execFileSync(cmd, ["--version"], {
+      stdio: "ignore",
+      shell: process.platform === "win32",
+    });
+    return true;
   } catch {
-    // bun not found, install it
+    return false;
+  }
+}
+
+function findNpmPath(): string | null {
+  if (process.platform !== "win32") {
+    return "npm";
   }
 
+  const candidates = [
+    "npm.cmd",
+    "npm.exe",
+    path.join(process.env.ProgramFiles || "", "nodejs", "npm.cmd"),
+    path.join(process.env["ProgramFiles(x86)"] || "", "nodejs", "npm.cmd"),
+    path.join(process.env.APPDATA || "", "npm", "npm.cmd"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      execFileSync(candidate, ["--version"], {
+        stdio: "ignore",
+        shell: true,
+      });
+      return candidate;
+    } catch {}
+  }
+
+  try {
+    const result = execFileSync("where", ["npm"], {
+      encoding: "utf-8",
+      shell: true,
+    });
+
+    const lines = result
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const cmdPath = lines.find((line) => line.endsWith(".cmd"));
+    return cmdPath || lines[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function ensurePackageManager() {
+  if (hasCommand("bun")) return;
+
   console.log("安装 bun...");
-  run("npm", ["install", "-g", "bun"]);
+
+  const npmPath = findNpmPath();
+  if (!npmPath) {
+    consola.error("未找到 npm，请确保 Node.js 已安装并包含 npm");
+    process.exit(1);
+  }
+
+  run(npmPath, ["install", "-g", "bun"]);
 }
 
 function getAddCommand(packages: string[]): [string, string[]] {
