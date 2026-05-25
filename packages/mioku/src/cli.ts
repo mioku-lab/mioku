@@ -9,6 +9,7 @@ import dedent from "dedent";
 import consola from "consola";
 import { version } from "../package.json";
 import { readFileSync } from "node:fs";
+import AdmZip from "adm-zip";
 
 const DEFAULT_PACKAGES = [
   "mioku",
@@ -258,7 +259,8 @@ async function installWebUIDist(projectPath: string) {
 
     consola.info("正在解压 WebUI...");
 
-    run("bun", ["x", "unzip", tmpZip, "-d", tmpUnpack]);
+    const zip = new AdmZip(tmpZip);
+    zip.extractAllTo(tmpUnpack, true);
 
     consola.success("解压完成");
 
