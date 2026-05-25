@@ -145,11 +145,15 @@ export async function start(options: MiokuStartOptions = {}): Promise<void> {
     logger.warn(`发现缺失服务: ${missingServices.join(", ")}`);
   }
 
-  // Merge discovered plugin names into botConfig.plugins so mioki loads them
-  const discoveredPluginNames = linkedPluginNames;
-  for (const name of discoveredPluginNames) {
-    if (!botConfig.plugins.includes(name)) {
-      botConfig.plugins.push(name);
+  // Only auto-load discovered plugins if the user has not specified a plugins list.
+  // "not specified" means plugins key is undefined in mioki config.
+  // If plugins is explicitly set (even to empty array []), only load what's in the list.
+  const userSpecifiedPlugins = miokuConfig.plugins !== undefined;
+  if (!userSpecifiedPlugins) {
+    for (const name of linkedPluginNames) {
+      if (!botConfig.plugins.includes(name)) {
+        botConfig.plugins.push(name);
+      }
     }
   }
 

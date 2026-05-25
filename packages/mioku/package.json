@@ -1,7 +1,7 @@
 {
   "name": "mioku",
   "type": "module",
-  "version": "0.8.9",
+  "version": "0.8.16",
   "packageManager": "bun@1.2.0",
   "description": "Mioku - Plugin framework extended from mioki for NapCat OneBot v11",
   "keywords": [
@@ -59,7 +59,8 @@
     "pretty-ms": "^9.3.0",
     "string2argv": "^1.0.2",
     "systeminformation": "^5.30.7",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "adm-zip": "^0.5.16"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.0",
