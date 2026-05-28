@@ -327,58 +327,27 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
     case "update": {
       ensurePackageManager();
       const cwd = process.cwd();
+      const target = cmdArgs[0];
 
-      if (!cmdArgs.length || cmdArgs[0] === "check") {
-        // 检查更新
-        const packages = await getInstalledPackages(cwd);
-        const updates = await checkUpdates(packages, cwd);
-        if (updates.length === 0) {
-          consola.info("所有 mioku 依赖已是最新版本");
-        } else {
-          console.log("\n可用更新:");
-          updates.forEach((u) => consola.warn(`  ${u}`));
-          console.log("\n运行 npx mioku update all 更新所有包");
-        }
+      if (!target || target === "check") {
+        // mioku update / mioku update check — 交互式更新
+        run("bun", ["update", "-i"], { cwd });
         process.exitCode = 0;
         return;
       }
 
-      const target = cmdArgs[0];
-
       if (target === "all") {
-        // 先并发检查所有包的更新
-        const packages = await getInstalledPackages(cwd);
-        if (packages.length === 0) {
-          consola.info("未找到 mioku 相关依赖");
-          process.exitCode = 0;
-          return;
-        }
-
-        const updates = await checkUpdates(packages, cwd);
-        if (updates.length === 0) {
-          consola.info("所有 mioku 依赖已是最新版本");
-          process.exitCode = 0;
-          return;
-        }
-
-        console.log("\n可用更新:");
-        updates.forEach((u) => consola.warn(`  ${u}`));
-
-        const confirmed = await confirm(`确认更新以上 ${updates.length} 个包？`);
-        if (!confirmed) {
-          gracefullyExit();
-        }
-
-        // 并发更新所有包
-        await Promise.all(
-          packages.map((pkg) => updatePackage(pkg, cwd)),
-        );
+        // mioku update all — 强制更新所有包到最新
+        console.log("执行: bun update --latest");
+        run("bun", ["update", "--latest"], { cwd });
         process.exitCode = 0;
         return;
       }
 
       if (target === "self") {
-        await updatePackage("mioku", cwd);
+        // mioku update self — 更新 mioku 自身
+        console.log("执行: bun update mioku --latest");
+        run("bun", ["update", "mioku", "--latest"], { cwd });
         process.exitCode = 0;
         return;
       }
@@ -396,28 +365,23 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
             process.exitCode = 0;
             return;
           }
-          for (const pkg of filtered) {
-            await updatePackage(pkg, cwd);
-          }
+          console.log(`执行: bun update ${filtered.join(" ")} --latest`);
+          run("bun", ["update", ...filtered, "--latest"], { cwd });
         } else {
           const prefix = target === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
           const normalized = name.startsWith(prefix)
             ? name
             : `${prefix}${name}`;
-          await updatePackage(normalized, cwd);
+          console.log(`执行: bun update ${normalized} --latest`);
+          run("bun", ["update", normalized, "--latest"], { cwd });
         }
         process.exitCode = 0;
         return;
       }
 
-      // update xxx - 更新指定包，自动识别前缀
-      const packages = await getInstalledPackages(cwd);
-      if (packages.includes(target)) {
-        await updatePackage(target, cwd);
-      } else {
-        const normalized = normalizePackageName(target);
-        await updatePackage(normalized, cwd);
-      }
+      // update xxx - 更新指定包
+      console.log(`执行: bun update ${target} --latest`);
+      run("bun", ["update", target, "--latest"], { cwd });
       process.exitCode = 0;
       return;
     }
