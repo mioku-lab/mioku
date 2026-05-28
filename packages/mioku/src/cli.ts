@@ -203,30 +203,42 @@ async function updatePackage(name: string, cwd?: string) {
 }
 
 async function checkUpdates(packages: string[], cwd?: string) {
-  try {
-    const output = execFileSync("bun", ["pm", "outdated", "--json"], {
-      cwd,
-      encoding: "utf-8",
-      stdio: "pipe",
-      shell: process.platform === "win32",
-    });
-    if (!output.trim()) {
-      consola.info("所有依赖已是最新版本");
-      return [];
-    }
-    const outdated = JSON.parse(output);
-    const updates: string[] = [];
-    for (const pkg of packages) {
-      if (outdated[pkg]) {
-        updates.push(
-          `${pkg}: ${outdated[pkg].current} → ${outdated[pkg].latest}`,
-        );
+  const updates: string[] = [];
+  for (const pkg of packages) {
+    try {
+      const latest = execFileSync("bun", ["info", pkg, "version"], {
+        cwd,
+        encoding: "utf-8",
+        stdio: "pipe",
+        shell: process.platform === "win32",
+      }).trim();
+      if (!latest) continue;
+
+      const current = execFileSync("bun", ["info", pkg, "json"], {
+        cwd,
+        encoding: "utf-8",
+        stdio: "pipe",
+        shell: process.platform === "win32",
+      }).trim();
+      let currentVersion = "unknown";
+      try {
+        const parsed = JSON.parse(current);
+        currentVersion = parsed.version || "unknown";
+      } catch {
+        currentVersion = current || "unknown";
       }
+
+      if (currentVersion !== latest) {
+        updates.push(`${pkg}: ${currentVersion} → ${latest}`);
+      }
+    } catch {
+      // skip packages that can't be looked up
     }
-    return updates;
-  } catch {
-    return [];
   }
+  if (updates.length === 0) {
+    consola.info("所有依赖已是最新版本");
+  }
+  return updates;
 }
 
 async function getInstalledPackages(cwd: string): Promise<string[]> {
@@ -352,8 +364,8 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
         console.log("\n可用更新:");
         updates.forEach((u) => consola.warn(`  ${u}`));
 
-        const confirm = await confirm(`确认更新以上 ${updates.length} 个包？`);
-        if (!confirm) {
+        const confirmed = await confirm(`确认更新以上 ${updates.length} 个包？`);
+        if (!confirmed) {
           gracefullyExit();
         }
 
@@ -603,7 +615,7 @@ type OmitTypeWithRequired<T> = Omit<T, "type" | "required"> & {
 async function confirm(
   message: string,
   options?: OmitTypeWithRequired<{ initial?: boolean }>,
-) {
+): Promise<boolean> {
   return consola.prompt(message, {
     type: "confirm",
     cancel: "reject",
@@ -614,7 +626,7 @@ async function confirm(
 async function input(
   message: string,
   options?: OmitTypeWithRequired<{ default?: string; placeholder?: string }>,
-) {
+): Promise<string> {
   const result = await consola.prompt(message, {
     type: "text",
     cancel: "reject",
