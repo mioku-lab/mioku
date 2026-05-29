@@ -82,7 +82,13 @@ async function ensurePluginLink(
     return false;
   }
 
-  await fs.symlink(relativeSymlinkTarget(linkPath, targetPath), linkPath, "dir");
+  // Use junction on Windows (no admin needed), symlink on Unix
+  if (process.platform === "win32") {
+    // Junctions require absolute paths
+    await fs.symlink(targetPath, linkPath, "junction");
+  } else {
+    await fs.symlink(relativeSymlinkTarget(linkPath, targetPath), linkPath, "dir");
+  }
   return true;
 }
 
