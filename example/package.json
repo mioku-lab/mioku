@@ -39,7 +39,8 @@
       "admin",
       "media",
       "music",
-      "meme"
+      "meme",
+      "mc"
     ],
     "log_level": "info",
     "napcat": [
