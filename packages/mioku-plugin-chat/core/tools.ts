@@ -685,7 +685,7 @@ function createWebSearchTool(toolCtx: ToolContext): AITool {
   return {
     name: "web_search",
     description:
-      "Search the web using SearXNG. Use this for current events, external facts, documentation, or anything not in chat history.",
+      "Search the web using SearXNG. Use this for current events, external facts, documentation, or anything not in chat history. This tool can only be called a limited number of times per conversation.",
     parameters: {
       type: "object",
       properties: {

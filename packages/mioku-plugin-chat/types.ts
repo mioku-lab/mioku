@@ -60,7 +60,6 @@ export interface PlannerConfig {
   idleCheckBotIds: number[];
 }
 
-
 /**
  * 表情包系统配置
  */
@@ -110,6 +109,8 @@ export interface SearxngConfig {
   defaultLimit: number;
   // 最大上限
   maxLimit: number;
+  // 允许的最大搜索次数
+  maxSearchCount: number;
 }
 
 /**

@@ -108,6 +108,7 @@ export async function runChat(
   const directImageUrls = toolCtx.config.isMultimodal
     ? toolCtx.pendingImageUrls
     : undefined;
+  const webSearchState = { count: 0 };
   const usageId = `chat:${toolCtx.sessionId}:${Date.now()}:${Math.random()
     .toString(36)
     .slice(2, 10)}`;
@@ -212,6 +213,7 @@ export async function runChat(
           skillManager.getTools(toolCtx.sessionId),
           toolCtx,
           runtimeOptions?.extraTools,
+          webSearchState,
         ),
       temperature: toolCtx.config.temperature,
       maxIterations: toolCtx.config.maxIterations,
@@ -239,6 +241,12 @@ export async function runChat(
   }
 
   const allToolCalls = response.allToolCalls || [];
+
+  const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
+  if (maxSearchCount > 0 && webSearchState.count >= maxSearchCount) {
+    const limitMsg = `[system] Maximum search limit (${maxSearchCount}) reached. Web search tool is now disabled. `;
+    response.content = limitMsg + (response.content || "");
+  }
 
   if (toolCtx.config.debug && response.reasoning) {
     logger.info(`[chat-engine] AI reasoning: ${response.reasoning}`);
@@ -456,16 +464,26 @@ function buildSessionTools(
   skillTools: Map<string, AITool>,
   toolCtx: ToolContext,
   extraTools: AITool[] = [],
+  webSearchState?: { count: number },
 ): SessionToolDefinition[] {
+  const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
+  const limitReached =
+    maxSearchCount > 0 && webSearchState && webSearchState.count >= maxSearchCount;
   const tools: SessionToolDefinition[] = [];
   const runtimeContext = createExternalSkillRuntimeContext(toolCtx);
 
   for (const tool of chatTools) {
+    if (tool.name === "web_search" && limitReached) continue;
     tools.push({
       name: tool.name,
       tool: {
         ...tool,
-        handler: (args: any) => tool.handler(args, runtimeContext),
+        handler: (args: any) => {
+          if (tool.name === "web_search" && webSearchState) {
+            webSearchState.count++;
+          }
+          return tool.handler(args, runtimeContext);
+        },
       },
     });
   }
