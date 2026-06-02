@@ -1110,7 +1110,7 @@ export function getHelpTheme(isNightMode: boolean): HelpTheme {
       panelBorder: "rgba(105, 196, 194, 0.16)",
       panelShadow: "0 18px 42px rgba(0, 0, 0, 0.22)",
       panelTitle: "#f0fdff",
-      panelDesc: "#98babc",
+      panelDesc: "#a8cdd0",
       commandBg: "rgba(18, 41, 50, 0.92)",
       commandBorder: "rgba(108, 185, 182, 0.14)",
       commandTitle: "#83f0e1",
@@ -1296,6 +1296,5 @@ export const HELP_BACKGROUND_IMAGE_URL =
   "https://uapis.cn/api/v1/random/image?category=acg&type=mb";
 
 export function getStatusTheme(isNightMode: boolean): HelpTheme {
-  // 状态页与帮助页共享完全相同的青绿色主题，便于视觉一致。
   return getHelpTheme(isNightMode);
 }

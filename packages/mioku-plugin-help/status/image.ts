@@ -4,11 +4,16 @@ import { collectSnapshot } from "./data-collector";
 import { renderStatusHtml } from "./html-generator";
 import type { StatusIntent } from "./types";
 
+const FORCE_NIGHT_MODE = false;
+
 const RENDER_TIMEOUT_MS = 12_000;
 
 function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("status_render_timeout")), ms);
+    const timer = setTimeout(
+      () => reject(new Error("status_render_timeout")),
+      ms,
+    );
     p.then(
       (v) => {
         clearTimeout(timer);
@@ -52,7 +57,7 @@ export async function generateStatusImage(
 
   try {
     const snapshot = await collectSnapshot(ctx, {
-      isNightMode: checkNightMode(),
+      isNightMode: FORCE_NIGHT_MODE || checkNightMode(),
     });
     const html = renderStatusHtml(snapshot);
     const imagePath = await withTimeout(

@@ -130,7 +130,7 @@ function renderPieChart(percent: number, theme: ReturnType<typeof getStatusTheme
         stroke-dasharray="${filled.toFixed(2)} ${rest.toFixed(2)}"
         stroke-linecap="round"
         transform="rotate(-90 55 55)"/>
-      <text x="55" y="62" text-anchor="middle" dominant-baseline="middle"
+      <text x="55" y="55" text-anchor="middle" dominant-baseline="central"
         font-size="26" font-weight="800" font-family="SF Mono, monospace"
         fill="${theme.panelTitle}">${escapeHtml(text)}</text>
     </svg>
@@ -619,10 +619,13 @@ function renderAISection(
       `,
     )
     .join("");
+  const toolsColor = theme.isNightMode
+    ? "linear-gradient(90deg, #38bdf8, #7ee7dd)"
+    : "linear-gradient(90deg, #22d3ee, #38bdf8)";
   const toolsHtml = renderRankingBars(
     ai.topTools.map((t) => ({ name: t.name, value: t.count })),
     (n) => fmtNumber(n),
-    "linear-gradient(90deg, #22d3ee, #38bdf8)",
+    toolsColor,
   );
   return `
     ${sectionTitle("AI 统计 · 近 7 天")}
@@ -645,7 +648,7 @@ function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
         gap: 14px;
         background: ${theme.pageBg};
         color: ${theme.panelTitle};
-        font-family: "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        font-family: "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Hiragino Sans GB", sans-serif;
         overflow: hidden;
       }
       .status-sheet::before,
@@ -735,7 +738,7 @@ function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
         padding: 10px 0;
         /* Light-green hairline separator between accounts. The first account
          * stays flush (no top line); each subsequent one gets the divider. */
-        border-top: 1px solid ${theme.isNightMode ? "rgba(126, 231, 221, 0.32)" : "rgba(15, 118, 110, 0.32)"};
+        border-top: 1px solid ${theme.isNightMode ? "rgba(126, 231, 221, 0.45)" : "rgba(15, 118, 110, 0.45)"};
       }
       .status-hero__account:first-child {
         border-top: 0;
@@ -756,16 +759,18 @@ function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
       }
       .status-hero__account-avatar-wrap {
         position: relative;
-        width: 68px;
-        height: 68px;
+        width: 88px;
+        height: 88px;
+        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: center;
       }
       .status-hero__account-avatar {
-        width: 64px;
-        height: 64px;
-        border-radius: 999px;
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        aspect-ratio: 1 / 1;
         object-fit: cover;
         border: 2px solid ${theme.tagBorder};
         background: ${theme.panelBg};
@@ -774,10 +779,10 @@ function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
       }
       .status-hero__account-avatar-dot {
         position: absolute;
-        right: 3px;
-        bottom: 3px;
-        width: 16px;
-        height: 16px;
+        right: 4px;
+        bottom: 4px;
+        width: 20px;
+        height: 20px;
         border-radius: 999px;
         border: 2px solid ${theme.panelBg};
         box-sizing: border-box;

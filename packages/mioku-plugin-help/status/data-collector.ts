@@ -166,8 +166,6 @@ async function collectBots(): Promise<BotAccountStatus[]> {
 async function collectBotStatuses(
   bots: ExtendedNapCat[],
 ): Promise<BotAccountStatus[]> {
-
-  // 一次性拿 mioki 内置的 per-bot send/receive 计数（OneBot API 没有这个）
   let perBotCounts = new Map<number, { send: number; receive: number }>();
   try {
     const miokiStatus = await withTimeout(
@@ -195,7 +193,7 @@ async function collectBotStatuses(
     const framework = String(bot?.app_name || "unknown");
     const avatarUrl = `https://q1.qlogo.cn/g?b=qq&nk=${uin}&s=160`;
 
-    // 并行拿 OneBot API 的 status / group / friend / version（每项独立超时）
+    // 并行拿 OneBot API 的 status / group / friend / version
     let online = true;
     let onlineDurationMs = 0;
     let groupCount = 0;
@@ -222,8 +220,6 @@ async function collectBotStatuses(
     if (statusResult.status === "fulfilled" && statusResult.value) {
       const status = statusResult.value;
       // napcat-sdk 的 api() 已经把 OneBot v11 响应的 data 字段解包出来，
-      // 所以 start_time 在 status.stat.start_time（不再有外层 .data 包装）。
-      // 兼容 go-cqhttp / LLOneBot 等不同实现。
       const startTs = safeNumber(status?.stat?.start_time);
       if (startTs > 0) {
         // OneBot 约定：start_time 是 unix 秒；> 1e12 视为毫秒
@@ -246,10 +242,16 @@ async function collectBotStatuses(
         protocolVersion = v.protocol_version.trim();
       }
     }
-    if (groupsResult.status === "fulfilled" && Array.isArray(groupsResult.value)) {
+    if (
+      groupsResult.status === "fulfilled" &&
+      Array.isArray(groupsResult.value)
+    ) {
       groupCount = groupsResult.value.length;
     }
-    if (friendsResult.status === "fulfilled" && Array.isArray(friendsResult.value)) {
+    if (
+      friendsResult.status === "fulfilled" &&
+      Array.isArray(friendsResult.value)
+    ) {
       friendCount = friendsResult.value.length;
     }
 
@@ -284,8 +286,7 @@ async function collectFramework(
     }
   }
 
-  // 从 mioki 内部服务读 plugins / versions。注意：getMiokiStatus 是异步的，
-  // 但 collectFramework 也是异步的。失败时降级为 0。
+  // 从 mioki 内部服务读 plugins / versions
   let miokiStatus: MiokiStatus | null = null;
   try {
     miokiStatus = await withTimeout(
@@ -300,7 +301,8 @@ async function collectFramework(
   return {
     miokuVersion,
     miokiVersion: miokiStatus?.versions?.mioki ?? "unknown",
-    napcatVersion: miokiStatus?.versions?.napcat ?? botStatuses[0]?.framework ?? "unknown",
+    napcatVersion:
+      miokiStatus?.versions?.napcat ?? botStatuses[0]?.framework ?? "unknown",
     pluginCount: safeNumber(miokiStatus?.plugins?.total),
     pluginEnabled: safeNumber(miokiStatus?.plugins?.enabled),
     adapterCount: adapters.size,
@@ -315,14 +317,30 @@ async function collectResources(): Promise<ResourceStatus> {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const usedMem = Math.max(0, totalMem - freeMem);
-  const memPercent =
-    totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+  const memPercent = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
 
   const cpus = os.cpus();
   const cpuInfo = cpus[0];
   const cpuModel = cpuInfo?.model || "unknown";
   const cpuCores = cpus.length;
-  const speedMhz = safeNumber(cpuInfo?.speed);
+  let speedMhz = safeNumber(cpuInfo?.speed);
+  // Apple Silicon (M1/M2/M3) reports 0 from os.cpus()[0].speed because
+  // Apple doesn't expose the frequency. Fall back to systeminformation's
+  // cpuCurrentSpeed() which reads it from sysctl on macOS.
+  if (speedMhz <= 0) {
+    try {
+      const cur = (await withTimeout(systemInfo.cpuCurrentSpeed())) as
+        | { avg?: number; min?: number; max?: number }
+        | null
+        | undefined;
+      const ghz = safeNumber(cur?.avg);
+      if (ghz > 0) {
+        speedMhz = Math.round(ghz * 1000);
+      }
+    } catch {
+      // keep 0; renderer will show "0 MHz"
+    }
+  }
   const cpuModelShort =
     cpuModel.length > 22 ? `${cpuModel.slice(0, 21)}…` : cpuModel;
   const cpuSpeedGHz =
@@ -337,7 +355,7 @@ async function collectResources(): Promise<ResourceStatus> {
   const cpuTotalUsec = cpuUser.user + cpuUser.system;
   const cpuPercent = Math.min(
     100,
-    (cpuTotalUsec / 1e6 / Math.max(1, process.uptime())) * 100 / cpuCores,
+    ((cpuTotalUsec / 1e6 / Math.max(1, process.uptime())) * 100) / cpuCores,
   );
 
   // systeminformation.mem() gives buffcache and swap fields that os can't.
@@ -349,8 +367,12 @@ async function collectResources(): Promise<ResourceStatus> {
   try {
     const memInfo = await withTimeout(systemInfo.mem());
     if (memInfo && typeof memInfo === "object") {
-      const buffcache = safeNumber((memInfo as { buffcache?: number }).buffcache);
-      const swaptotal = safeNumber((memInfo as { swaptotal?: number }).swaptotal);
+      const buffcache = safeNumber(
+        (memInfo as { buffcache?: number }).buffcache,
+      );
+      const swaptotal = safeNumber(
+        (memInfo as { swaptotal?: number }).swaptotal,
+      );
       const swapused = safeNumber((memInfo as { swapused?: number }).swapused);
       memBuffCacheGB = Number((buffcache / 1024 ** 3).toFixed(2));
       swapTotalGB = Number((swaptotal / 1024 ** 3).toFixed(2));
@@ -416,7 +438,9 @@ async function collectDisk(): Promise<DiskStatus> {
       const total = safeNumber(entry?.size);
       const used = safeNumber(entry?.used);
       const percent =
-        total > 0 ? Number(((used / total) * 100).toFixed(1)) : safeNumber(entry?.use, 0);
+        total > 0
+          ? Number(((used / total) * 100).toFixed(1))
+          : safeNumber(entry?.use, 0);
       return {
         mount: String(entry?.mount || entry?.fs || "unknown"),
         usedGB: Number((used / 1024 ** 3).toFixed(2)),
@@ -433,16 +457,23 @@ async function collectDisk(): Promise<DiskStatus> {
 async function collectSystem(): Promise<SystemInfo> {
   // Seven systeminformation calls. Each gets its own 2s timeout so a single
   // slow probe (e.g. memLayout on macOS) doesn't block the rest.
-  const [osInfo, graphics, cpuData, memLayout, biosData, systemData, diskLayout] =
-    await Promise.all([
-      withTimeout(systemInfo.osInfo()).catch(() => null),
-      withTimeout(systemInfo.graphics()).catch(() => null),
-      withTimeout(systemInfo.cpu()).catch(() => null),
-      withTimeout(systemInfo.memLayout()).catch(() => []),
-      withTimeout(systemInfo.bios()).catch(() => null),
-      withTimeout(systemInfo.system()).catch(() => null),
-      withTimeout(systemInfo.diskLayout()).catch(() => []),
-    ]);
+  const [
+    osInfo,
+    graphics,
+    cpuData,
+    memLayout,
+    biosData,
+    systemData,
+    diskLayout,
+  ] = await Promise.all([
+    withTimeout(systemInfo.osInfo()).catch(() => null),
+    withTimeout(systemInfo.graphics()).catch(() => null),
+    withTimeout(systemInfo.cpu()).catch(() => null),
+    withTimeout(systemInfo.memLayout()).catch(() => []),
+    withTimeout(systemInfo.bios()).catch(() => null),
+    withTimeout(systemInfo.system()).catch(() => null),
+    withTimeout(systemInfo.diskLayout()).catch(() => []),
+  ]);
 
   // OS: prefer the human-readable distro (e.g. "macOS Sequoia", "Ubuntu
   // 24.04 LTS") with arch appended. Fall back to `os.platform() arch` if
@@ -460,9 +491,10 @@ async function collectSystem(): Promise<SystemInfo> {
     const release = String(info.release || "").trim();
     const arch = String(info.arch || os.arch()).trim();
     if (distro) {
-      osLabel = release && release !== "0" && release !== distro
-        ? `${distro} ${release} (${arch})`
-        : `${distro} (${arch})`;
+      osLabel =
+        release && release !== "0" && release !== distro
+          ? `${distro} ${release} (${arch})`
+          : `${distro} (${arch})`;
     } else if (release) {
       osLabel = `${release} (${arch})`;
     } else {
@@ -521,21 +553,33 @@ async function collectSystem(): Promise<SystemInfo> {
   }
 
   // BIOS / UEFI. On macOS / WSL this returns empty strings — surface as "N/A".
-  const bios: BiosInfo = biosData && typeof biosData === "object"
-    ? {
-        vendor: String((biosData as { vendor?: unknown }).vendor || "N/A").trim() || "N/A",
-        version: String((biosData as { version?: unknown }).version || "N/A").trim() || "N/A",
-        releaseDate: String((biosData as { releaseDate?: unknown }).releaseDate || "").trim(),
-      }
-    : { vendor: "N/A", version: "N/A", releaseDate: "" };
+  const bios: BiosInfo =
+    biosData && typeof biosData === "object"
+      ? {
+          vendor:
+            String((biosData as { vendor?: unknown }).vendor || "N/A").trim() ||
+            "N/A",
+          version:
+            String(
+              (biosData as { version?: unknown }).version || "N/A",
+            ).trim() || "N/A",
+          releaseDate: String(
+            (biosData as { releaseDate?: unknown }).releaseDate || "",
+          ).trim(),
+        }
+      : { vendor: "N/A", version: "N/A", releaseDate: "" };
 
   // Chassis: "Manufacturer Model" (e.g. "Supermicro H12SSL-NT", "Dell Inc.
   // PowerEdge R750"). On macOS the system() call returns empty strings;
   // fall back to the model identifier (e.g. "Mac15,9").
   let chassis = "N/A";
   if (systemData && typeof systemData === "object") {
-    const manufacturer = String((systemData as { manufacturer?: unknown }).manufacturer || "").trim();
-    const model = String((systemData as { model?: unknown }).model || "").trim();
+    const manufacturer = String(
+      (systemData as { manufacturer?: unknown }).manufacturer || "",
+    ).trim();
+    const model = String(
+      (systemData as { model?: unknown }).model || "",
+    ).trim();
     if (manufacturer && model) {
       chassis = `${manufacturer} ${model}`;
     } else if (model) {
