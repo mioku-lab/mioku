@@ -1,8 +1,10 @@
 import {
   escapeHtml,
-  getStatusTheme,
+} from "../utils";
+import {
+  getHelpTheme,
   HELP_BACKGROUND_IMAGE_URL,
-} from "../shared";
+} from "../theme";
 import type {
   AIUsageStatsLite,
   BotAccountStatus,
@@ -91,7 +93,7 @@ function progressBar(percent: number, color: string): string {
   return `<div class="status-bar"><div class="status-bar__fill" style="width:${clamped}%;background:${color};"></div></div>`;
 }
 
-function progressColor(percent: number, theme: ReturnType<typeof getStatusTheme>): string {
+function progressColor(percent: number, theme: ReturnType<typeof getHelpTheme>): string {
   if (percent >= 85) {
     return "linear-gradient(90deg, #ef4444, #f97316)";
   }
@@ -101,7 +103,7 @@ function progressColor(percent: number, theme: ReturnType<typeof getStatusTheme>
   return `linear-gradient(90deg, ${theme.eyebrow}, ${theme.commandTitle})`;
 }
 
-function pieColor(percent: number, theme: ReturnType<typeof getStatusTheme>): string {
+function pieColor(percent: number, theme: ReturnType<typeof getHelpTheme>): string {
   if (percent >= 85) {
     return "#ef4444";
   }
@@ -111,7 +113,7 @@ function pieColor(percent: number, theme: ReturnType<typeof getStatusTheme>): st
   return theme.eyebrow;
 }
 
-function renderPieChart(percent: number, theme: ReturnType<typeof getStatusTheme>): string {
+function renderPieChart(percent: number, theme: ReturnType<typeof getHelpTheme>): string {
   const clamped = Math.max(0, Math.min(100, percent));
   const filled = (clamped / 100) * PIE_CIRCUMFERENCE;
   const rest = PIE_CIRCUMFERENCE - filled;
@@ -139,7 +141,7 @@ function renderPieChart(percent: number, theme: ReturnType<typeof getStatusTheme
 
 function renderHero(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const bots = snapshot.bots;
 
@@ -199,7 +201,7 @@ function renderResourceCard(
   label: string,
   percent: number,
   lines: string[],
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const linesHtml = lines
     .map(
@@ -218,7 +220,7 @@ function renderResourceCard(
 
 function renderResourcesSection(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const r = snapshot.resources;
   const hasSwap = r.swapTotalGB > 0;
@@ -257,7 +259,7 @@ function renderResourcesSection(
 
 function renderRuntimeSection(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const r = snapshot.runtime;
   const runtimeName = snapshot.framework.runtime;
@@ -406,7 +408,7 @@ function renderNetworkChart(history: NetworkSample[]): string {
 
 function renderNetworkSection(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const n = snapshot.network;
   const cells = [
@@ -433,7 +435,7 @@ function renderNetworkSection(
 
 function renderDiskSection(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const disk = snapshot.disk;
   if (!disk.entries || disk.entries.length === 0) {
@@ -463,7 +465,7 @@ function renderDiskSection(
 
 function renderSystemSection(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const s = snapshot.system;
   const r = snapshot.resources;
@@ -593,7 +595,7 @@ function renderRankingBars(
 
 function renderAISection(
   ai: AIUsageStatsLite,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   if (!ai.available) {
     return `
@@ -637,7 +639,7 @@ function renderAISection(
   `;
 }
 
-function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
+function buildStyle(theme: ReturnType<typeof getHelpTheme>): string {
   return `
     <style>
       .status-sheet {
@@ -1142,7 +1144,7 @@ function buildStyle(theme: ReturnType<typeof getStatusTheme>): string {
 
 function renderFooter(
   snapshot: StatusSnapshot,
-  theme: ReturnType<typeof getStatusTheme>,
+  theme: ReturnType<typeof getHelpTheme>,
 ): string {
   const fw = snapshot.framework;
   const runtimeLabel = `${fw.runtime} ${fw.runtimeVersion}`;
@@ -1174,7 +1176,7 @@ function renderFooter(
 }
 
 export function renderStatusHtml(snapshot: StatusSnapshot): string {
-  const theme = getStatusTheme(snapshot.isNightMode);
+  const theme = getHelpTheme(snapshot.isNightMode);
   const body = [
     renderResourcesSection(snapshot, theme),
     renderNetworkSection(snapshot, theme),

@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -9,6 +8,7 @@ import {
   type MiokiStatus,
 } from "mioki";
 import type { AIService, MiokiContext } from "mioku";
+import { getRenderVersions } from "../utils";
 import { perfMonitor } from "./performance-monitor";
 import { networkSampler } from "./network-sampler";
 import type {
@@ -73,41 +73,6 @@ function detectRuntime(): { name: string; version: string } {
     return { name: "Bun", version: process.versions.bun };
   }
   return { name: "Node", version: process.versions.node };
-}
-
-/**
- * Read the installed `mioku` version from `node_modules/mioku/package.json`.
- *
- * Resolves the path from `process.cwd()` (the user's bot project), so it
- * reflects the *actually installed* version rather than whatever version
- * string is declared in the host project's own `package.json`. Falls back
- * to "unknown" silently if the file can't be read. Result is memoized
- * because the version doesn't change at runtime.
- */
-let miokuVersionCache: string | null = null;
-async function readMiokuVersion(): Promise<string> {
-  if (miokuVersionCache !== null) {
-    return miokuVersionCache;
-  }
-  const candidates = [
-    path.join(process.cwd(), "node_modules", "mioku", "package.json"),
-    // Bun sometimes symlinks the workspace root; try one level up as well.
-    path.join(process.cwd(), "..", "node_modules", "mioku", "package.json"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      const content = await fs.readFile(candidate, "utf-8");
-      const pkg = JSON.parse(content) as { name?: string; version?: string };
-      if (pkg?.name === "mioku" && pkg.version) {
-        miokuVersionCache = pkg.version;
-        return miokuVersionCache;
-      }
-    } catch {
-      // try the next candidate
-    }
-  }
-  miokuVersionCache = "unknown";
-  return miokuVersionCache;
 }
 
 function formatBytes(n: number): string {
@@ -297,10 +262,13 @@ async function collectFramework(
   }
 
   const runtime = detectRuntime();
-  const miokuVersion = await readMiokuVersion();
+  // Read both versions from the same `getRenderVersions` helper that the
+  // help panel uses, so the status footer and the help footer agree even
+  // when `mioki` is only installed under `mioku/node_modules`.
+  const { miokiVersion, miokuVersion } = await getRenderVersions();
   return {
     miokuVersion,
-    miokiVersion: miokiStatus?.versions?.mioki ?? "unknown",
+    miokiVersion,
     napcatVersion:
       miokiStatus?.versions?.napcat ?? botStatuses[0]?.framework ?? "unknown",
     pluginCount: safeNumber(miokiStatus?.plugins?.total),

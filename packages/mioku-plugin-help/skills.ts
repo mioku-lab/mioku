@@ -4,10 +4,10 @@ import type { ScreenshotService } from "mioku";
 import {
   buildHelpInfoText,
   generateHelpImage,
-  getHelpRenderVersions,
   resolveHelpBotProfile,
   sendImageFromSkillContext,
-} from "./shared";
+} from "./help";
+import { getRenderVersions } from "./utils";
 import { generateStatusImage } from "./status";
 
 const helpSkill: AISkill = {
@@ -50,7 +50,7 @@ const helpSkill: AISkill = {
         const screenshotService = ctx?.services?.screenshot as
           | ScreenshotService
           | undefined;
-        const { miokiVersion, miokuVersion } = await getHelpRenderVersions();
+        const { miokiVersion, miokuVersion } = await getRenderVersions();
 
         if (!screenshotService) {
           return "screenshot 服务未加载，无法生成帮助图片";

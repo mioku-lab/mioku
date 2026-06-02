@@ -1,5 +1,5 @@
 import type { MiokiContext, ScreenshotService } from "mioku";
-import { checkNightMode } from "../shared";
+import { checkNightMode } from "../utils";
 import { collectSnapshot } from "./data-collector";
 import { renderStatusHtml } from "./html-generator";
 import type { StatusIntent } from "./types";

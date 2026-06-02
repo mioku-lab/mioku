@@ -6,11 +6,11 @@ import * as path from "path";
 import { HELP_DEMO_CONFIG } from "./demo-config";
 import {
   generateHelpImage,
-  getPackageVersion,
   replyWithImage,
   resolveHelpBotProfile,
   resolveHelpImageIntent,
-} from "./shared";
+} from "./help";
+import { getRenderVersions } from "./utils";
 import { resetHelpRuntimeState, setHelpRuntimeState } from "./runtime";
 import {
   generateStatusImage,
@@ -66,19 +66,7 @@ const helpPlugin = definePlugin({
       ],
     });
 
-    const miokiVersion = await getPackageVersion(
-      path.join(
-        process.cwd(),
-        "node_modules",
-        "mioku",
-        "node_modules",
-        "mioki",
-        "package.json",
-      ),
-    );
-    const miokuVersion = await getPackageVersion(
-      path.join(process.cwd(), "node_modules", "mioku", "package.json"),
-    );
+    const { miokiVersion, miokuVersion } = await getRenderVersions();
 
     setHelpRuntimeState({
       miokiVersion,
