@@ -71,6 +71,7 @@ interface HelpRenderableEntry {
 }
 
 interface HelpTheme {
+  isNightMode: boolean;
   pageBg: string;
   shellBg: string;
   pageAccent: string;
@@ -129,10 +130,25 @@ export async function getHelpRenderVersions(): Promise<{
   miokiVersion: string;
   miokuVersion: string;
 }> {
+  // Both versions must be read from the installed packages in node_modules
+  // — not from the host project's own `package.json`, which is usually a
+  // workspace consumer (`"mioku": "workspace:*"`) and has no `version`
+  // field of its own.
   const miokiVersion = await getPackageVersion(
     `${process.cwd()}/node_modules/mioki/package.json`,
   );
-  const miokuVersion = await getPackageVersion(`${process.cwd()}/package.json`);
+  const miokuCandidates = [
+    `${process.cwd()}/node_modules/mioku/package.json`,
+    `${process.cwd()}/../node_modules/mioku/package.json`,
+  ];
+  let miokuVersion = "unknown";
+  for (const candidate of miokuCandidates) {
+    const v = await getPackageVersion(candidate);
+    if (v !== "unknown") {
+      miokuVersion = v;
+      break;
+    }
+  }
 
   return {
     miokiVersion,
@@ -425,8 +441,7 @@ export function generateHelpHtml(
   const isDetailMode = Boolean(selectedEntry);
   const logoPath = "../../plugins/help/source/miku.png";
   const avatarSrc = botAvatarUrl || logoPath;
-  const backgroundImageUrl =
-    "https://uapis.cn/api/v1/random/image?category=acg&type=mb";
+  const backgroundImageUrl = HELP_BACKGROUND_IMAGE_URL;
   const theme = getHelpTheme(isNightMode);
 
   const pluginsHtml = isDetailMode
@@ -1066,9 +1081,10 @@ function renderRoleBadge(role: CommandRole, isNightMode: boolean): string {
   return `<span class="help-role" style="background: ${background}; border-color: ${border}; color: ${color};">${config.label}</span>`;
 }
 
-function getHelpTheme(isNightMode: boolean): HelpTheme {
+export function getHelpTheme(isNightMode: boolean): HelpTheme {
   if (isNightMode) {
     return {
+      isNightMode: true,
       pageBg: "linear-gradient(180deg, #07141c 0%, #0b1c25 52%, #102730 100%)",
       shellBg: "rgba(6, 19, 25, 0.34)",
       pageAccent:
@@ -1112,6 +1128,7 @@ function getHelpTheme(isNightMode: boolean): HelpTheme {
   }
 
   return {
+    isNightMode: false,
     pageBg: "linear-gradient(180deg, #eef6f7 0%, #f6fbfb 48%, #edf5f7 100%)",
     shellBg: "rgba(255, 255, 255, 0.42)",
     pageAccent:
@@ -1238,7 +1255,7 @@ function normalizeForMatch(value: string): string {
   return parts ? parts.join("") : "";
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     "&": "&amp;",
     "<": "&lt;",
@@ -1249,7 +1266,7 @@ function escapeHtml(text: string): string {
   return String(text || "").replace(/[&<>"']/g, (match) => map[match]);
 }
 
-function normalizeImageSource(file: string): string {
+export function normalizeImageSource(file: string): string {
   const value = String(file || "").trim();
   if (!value) {
     return value;
@@ -1273,4 +1290,12 @@ function normalizeImageSource(file: string): string {
 
 function isLocalFilePath(value: string): boolean {
   return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+export const HELP_BACKGROUND_IMAGE_URL =
+  "https://uapis.cn/api/v1/random/image?category=acg&type=mb";
+
+export function getStatusTheme(isNightMode: boolean): HelpTheme {
+  // 状态页与帮助页共享完全相同的青绿色主题，便于视觉一致。
+  return getHelpTheme(isNightMode);
 }
