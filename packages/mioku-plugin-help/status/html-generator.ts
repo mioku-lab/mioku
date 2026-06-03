@@ -71,23 +71,6 @@ function fmtBps(bps: number): string {
   return `${fmtBytes(bps)}/s`;
 }
 
-function fmtUptime(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) {
-    return "—";
-  }
-  const sec = Math.floor(ms / 1000);
-  const days = Math.floor(sec / 86400);
-  const hours = Math.floor((sec % 86400) / 3600);
-  const minutes = Math.floor((sec % 3600) / 60);
-  if (days > 0) {
-    return `${days}天${String(hours).padStart(2, "0")}时${String(minutes).padStart(2, "0")}分`;
-  }
-  if (hours > 0) {
-    return `${hours}时${String(minutes).padStart(2, "0")}分`;
-  }
-  return `${minutes}分`;
-}
-
 function progressBar(percent: number, color: string): string {
   const clamped = Math.max(0, Math.min(100, percent));
   return `<div class="status-bar"><div class="status-bar__fill" style="width:${clamped}%;background:${color};"></div></div>`;
@@ -162,7 +145,6 @@ function renderHero(
             { text: statusText, kind: bot.online ? "ok" : "danger" },
             { text: `好友 ${fmtNumber(bot.friendCount)}`, kind: "data" },
             { text: `群聊 ${fmtNumber(bot.groupCount)}`, kind: "data" },
-            { text: `运行时长 ${fmtUptime(bot.onlineDurationMs)}`, kind: "data" },
             { text: `收 ${fmtNumber(bot.receive)}`, kind: "data" },
             { text: `发 ${fmtNumber(bot.send)}`, kind: "data" },
             { text: frameworkText, kind: "data" },

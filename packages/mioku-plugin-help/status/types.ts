@@ -19,8 +19,6 @@ export interface BotAccountStatus {
   online: boolean;
   groupCount: number;
   friendCount: number;
-  /** Computed from `bot.api("get_status").stat.start_time`. 0 if unavailable. */
-  onlineDurationMs: number;
   send: number;
   receive: number;
 }
@@ -37,18 +35,13 @@ export interface OneBotVersionInfoData {
 
 /**
  * OneBot v11 `get_status` payload (already unwrapped by napcat-sdk).
- * Different implementations expose different subsets:
- * - NapCat / go-cqhttp: `online`, `good`, `stat.start_time`
- * - LLOneBot: same shape
+ * Per napcat 官方文档: `{ online, good, stat }` —— `stat` 是空对象，
+ * 不包含 `start_time` 或任何统计字段。本接口只声明文档承诺的字段。
  */
 export interface OneBotStatusData {
-  online?: boolean;
-  good?: boolean;
-  stat?: {
-    start_time?: number;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
+  online: boolean;
+  good: boolean;
+  stat: Record<string, never>;
 }
 
 /** Subset of mioku's `AIService.getUsageSummary` payload that we actually render. */

@@ -225,7 +225,6 @@ async function collectBotStatuses(
 
     // 并行拿 OneBot API 的 status / group / friend / version
     let online = true;
-    let onlineDurationMs = 0;
     let groupCount = 0;
     let friendCount = 0;
     let appVersion = "unknown";
@@ -248,20 +247,7 @@ async function collectBotStatuses(
         ).catch(() => null),
       ]);
     if (statusResult.status === "fulfilled" && statusResult.value) {
-      const status = statusResult.value;
-      // napcat-sdk 的 api() 已经把 OneBot v11 响应的 data 字段解包出来，
-      const startTs = safeNumber(status?.stat?.start_time);
-      if (startTs > 0) {
-        // OneBot 约定：start_time 是 unix 秒；> 1e12 视为毫秒
-        const startMs = startTs > 1e12 ? startTs : startTs * 1000;
-        onlineDurationMs = Math.max(0, Date.now() - startMs);
-      }
-      if (typeof status?.online === "boolean") {
-        online = status.online;
-      } else if (typeof status?.good === "boolean") {
-        // go-cqhttp / LLOneBot 用 good 表示总体健康
-        online = status.good;
-      }
+      online = statusResult.value.online;
     }
     if (versionResult.status === "fulfilled" && versionResult.value) {
       const v = versionResult.value;
@@ -297,7 +283,6 @@ async function collectBotStatuses(
       online,
       groupCount,
       friendCount,
-      onlineDurationMs,
       send: counts.send,
       receive: counts.receive,
     });
