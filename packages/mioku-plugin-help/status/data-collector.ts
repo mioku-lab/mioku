@@ -67,6 +67,71 @@ function safeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Snapshot of the system's CPU tick counters at a point in time. The
+ * sum covers every core, so a 4-core box that's fully loaded registers
+ * `total = 4 * elapsed_in_ticks`. `idle` is the slice spent idle.
+ */
+interface CpuTickSample {
+  idle: number;
+  total: number;
+  ts: number;
+}
+
+function sampleCpuTicks(): CpuTickSample {
+  let idle = 0;
+  let total = 0;
+  for (const cpu of os.cpus()) {
+    const t = cpu.times;
+    idle += t.idle;
+    total += t.user + t.nice + t.sys + t.idle + t.irq;
+  }
+  return { idle, total, ts: Date.now() };
+}
+
+/**
+ * Baseline sample taken at module load. We seed the cache eagerly so the
+ * first `#状态` call (whenever it happens) already has a comparison
+ * point — without this, the first call after a long idle period would
+ * show 0% even if the system is under load.
+ */
+let prevCpuTicks: CpuTickSample = sampleCpuTicks();
+
+/**
+ * If the gap between two samples is larger than this, the previous
+ * sample is too stale to produce a meaningful delta (e.g. the user
+ * called `#状态` once, then came back an hour later). Discard and
+ * start a fresh baseline.
+ */
+const CPU_SAMPLE_MAX_GAP_MS = 30_000;
+
+/**
+ * System-wide average CPU utilization between the previous sample and
+ * now. Returns 0 on the first call after a baseline reset, and a value
+ * in [0, 100] on subsequent calls.
+ *
+ * `os.cpus()` already sums ticks across all cores, so the result is
+ * the per-core average — no need to divide by `cpuCores` (the old
+ * `process.cpuUsage()` math did that because it summed its own usage
+ * across cores; same destination, different source).
+ */
+function computeSystemCpuPercent(): number {
+  const current = sampleCpuTicks();
+  const gap = current.ts - prevCpuTicks.ts;
+  if (gap > CPU_SAMPLE_MAX_GAP_MS || gap <= 0) {
+    prevCpuTicks = current;
+    return 0;
+  }
+  const idleDiff = current.idle - prevCpuTicks.idle;
+  const totalDiff = current.total - prevCpuTicks.total;
+  prevCpuTicks = current;
+  if (totalDiff <= 0) {
+    return 0;
+  }
+  const percent = 100 - (idleDiff / totalDiff) * 100;
+  return Math.max(0, Math.min(100, percent));
+}
+
 /** Detect the active JS runtime and its version. */
 function detectRuntime(): { name: string; version: string } {
   if (process.versions.bun) {
@@ -315,16 +380,11 @@ async function collectResources(): Promise<ResourceStatus> {
     speedMhz >= 1000
       ? `${(speedMhz / 1000).toFixed(1)} GHz`
       : `${Math.round(speedMhz)} MHz`;
-  // CPU% requires a 2nd sample; we compute the delta from a previous tick.
-  // Keep it simple here: estimate from process.cpuUsage() relative to
-  // wall-clock since start. The webui module re-samples with sleep; for the
-  // status panel we accept a less precise reading.
-  const cpuUser = process.cpuUsage();
-  const cpuTotalUsec = cpuUser.user + cpuUser.system;
-  const cpuPercent = Math.min(
-    100,
-    ((cpuTotalUsec / 1e6 / Math.max(1, process.uptime())) * 100) / cpuCores,
-  );
+  // System-wide CPU% from a 2-sample delta. `collectSnapshot` has a 2s
+  // TTL, so under normal use we'll have a fresh reading each call. The
+  // first call after a baseline reset returns 0 (sentinel) — see
+  // `computeSystemCpuPercent` for the gap-discard policy.
+  const cpuPercent = computeSystemCpuPercent();
 
   // systeminformation.mem() gives buffcache and swap fields that os can't.
   // Wrap in withTimeout so a single slow call doesn't stall the snapshot.
