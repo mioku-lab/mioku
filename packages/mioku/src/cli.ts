@@ -337,9 +337,16 @@ async function getInstalledPackages(cwd: string): Promise<string[]> {
       }
 
       if (target === "all") {
-        // mioku update all — 强制更新所有包到最新
-        console.log("执行: bun update --latest");
-        run("bun", ["update", "--latest"], { cwd });
+        // mioku update all — 仅升级所有 mioku- 包到最新
+        const packages = await getInstalledPackages(cwd);
+        const filtered = packages.filter((p) => p.startsWith("mioku-"));
+        if (filtered.length === 0) {
+          consola.info("未找到 mioku- 相关依赖");
+          process.exitCode = 0;
+          return;
+        }
+        console.log(`执行: bun update ${filtered.join(" ")} --latest`);
+        run("bun", ["update", ...filtered, "--latest"], { cwd });
         process.exitCode = 0;
         return;
       }

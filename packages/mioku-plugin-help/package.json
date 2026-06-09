@@ -1,7 +1,7 @@
 {
   "name": "mioku-plugin-help",
-  "version": "2.0.0",
-  "description": "帮助插件，使用截图服务生成美观的帮助图片",
+  "version": "2.1.1",
+  "description": "帮助插件，使用截图服务生成美观的帮助图片，并提供 #状态 指令",
   "main": "index.ts",
   "type": "module",
   "keywords": [
@@ -15,7 +15,8 @@
     "services": [
       "help",
       "screenshot",
-      "config"
+      "config",
+      "ai"
     ]
   },
   "peerDependencies": {
