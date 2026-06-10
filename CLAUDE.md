@@ -203,12 +203,15 @@ A few specifics that fall out of this:
 - DB / lowdb wiring lives in `db.ts` (or `core/db.ts`); the rest of the plugin talks to a small `db` object, not `lowdb` directly.
 - One shared `types.ts` per plugin, exporting only what other files in that plugin import — don't duplicate types from `mioku`/`mioki`.
 
-### Comments: terse, only the "why"
+### Comments: don't add them
 
-- Most well-named code needs zero comments. Don't restate what the code says.
-- The one case for a comment is a non-obvious *why*: a workaround, a subtle invariant, a constraint the next reader can't see. One line is almost always enough; multi-line JSDoc blocks are not the local style.
-- No "added for ticket #123", "called by X", or "TODO: refactor" — those rot and belong in commit messages / TODOs in the project tracker, not the source.
-- Type definitions don't need a docstring — the type name should carry the meaning. If it doesn't, rename the type, don't paper over it with prose.
+**Default to no comments.** Well-named code is self-explanatory. Do not restate what the code says.
+
+- Simple/obvious logic: no comment.
+- Complex or non-obvious code: a short one-liner is fine, but only if it captures the *why* (a workaround, a subtle invariant, a hidden constraint) — never the *what*.
+- JSDoc / multi-line comment blocks: not the local style. Don't.
+- No "added for #123", "called by X", or "TODO: refactor" — those belong in commit messages / issue tracker, not source.
+- Type definitions don't need docstrings. If the name doesn't carry the meaning, rename it; don't paper over it with prose.
 
 ### Logging: log the boundaries, not the body
 

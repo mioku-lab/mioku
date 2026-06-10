@@ -509,11 +509,21 @@ function buildSessionTools(
       continue;
     }
 
+    // builtin feature 走 loadSkill 后名前缀,也要受 maxSearchCount 限制。
+    if (name === "web_search.web_search" && limitReached) {
+      continue;
+    }
+
     tools.push({
       name,
       tool: {
         ...tool,
-        handler: (args: any) => tool.handler(args, runtimeContext),
+        handler: (args: any) => {
+          if (name === "web_search.web_search" && webSearchState) {
+            webSearchState.count++;
+          }
+          return tool.handler(args, runtimeContext);
+        },
       },
     });
   }
