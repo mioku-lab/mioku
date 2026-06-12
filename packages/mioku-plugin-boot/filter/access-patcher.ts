@@ -2,7 +2,10 @@ import { type MiokiContext, pluginManager } from "mioku";
 import type { AccessControlConfig } from "mioku";
 import { resolveAccessForCandidates } from "./access-rules";
 import { collectAccessHooks, matchAll } from "./matcher-registry";
-import { isAccessControlledEventName } from "./message-filter";
+import {
+  isAccessControlledEventName,
+  isMessageEventName,
+} from "./message-filter";
 
 export function shouldAllow(
   event: any,
@@ -34,8 +37,11 @@ export function createAccessControlPatcher(
         return original(eventName, handler);
       }
       return original(eventName, (event: any) => {
-        const text = String(ctx.text?.(event) ?? event?.raw_message ?? "").trim();
-        if (!shouldAllow(event, String(eventName), text, getRules())) {
+        const name = String(eventName);
+        const text = isMessageEventName(name)
+          ? String(ctx.text?.(event) ?? event?.raw_message ?? "").trim()
+          : "";
+        if (!shouldAllow(event, name, text, getRules())) {
           return;
         }
         return handler(event);

@@ -503,7 +503,7 @@ ctx.handle("message", async (event) => {
 
 `event` 字段是**前缀匹配**：写 `request` 同时命中 `request.friend` 和 `request.group.invite`；写 `notice.group.increase` 只精确命中这一条。
 
-未声明的入口不会被 access control 拦截（access control 不知道该消息/事件「是不是」给你的，所以默认放行）。完整的访问控制规则、作用域优先级、WebUI 配法见 [访问控制](../guide/access-control.md)。
+未声明的入口不会被 access control 拦截（access control 不知道该消息/事件「是不是」给你的，所以默认放行）。完整的访问控制规则、作用域优先级、WebUI 配法见 访问控制。
 
 ## 定义插件帮助信息
 
