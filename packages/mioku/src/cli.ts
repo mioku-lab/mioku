@@ -180,11 +180,38 @@ async function installPackage(name: string, cwd?: string) {
   try {
     execAdd([normalized], cwd);
     consola.success(`已安装 ${normalized}`);
+
+    if (type === "plugin" && cwd) {
+      const enabled = appendToMiokiPlugins(cwd, normalized);
+      if (enabled) {
+        consola.success(`已在 mioki.plugins 中启用 ${normalized.slice(PLUGIN_PREFIX.length)}`);
+      } else {
+        consola.info(`${normalized.slice(PLUGIN_PREFIX.length)} 已在 mioki.plugins 中，跳过`);
+      }
+    }
     return true;
   } catch {
     consola.error(`安装失败: ${normalized}`);
     return false;
   }
+}
+
+function appendToMiokiPlugins(cwd: string, pkgName: string): boolean {
+  if (!pkgName.startsWith(PLUGIN_PREFIX)) return false;
+  const shortName = pkgName.slice(PLUGIN_PREFIX.length);
+
+  const packageJsonPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return false;
+
+  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+  const mioki = pkg.mioki ?? {};
+  const plugins = Array.isArray(mioki.plugins) ? [...mioki.plugins] : [];
+  if (plugins.includes(shortName)) return false;
+
+  plugins.push(shortName);
+  pkg.mioki = { ...mioki, plugins };
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  return true;
 }
 
 async function updatePackage(name: string, cwd?: string) {

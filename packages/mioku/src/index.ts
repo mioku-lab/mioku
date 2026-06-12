@@ -38,6 +38,11 @@ export type {
   PluginPackageConfig,
   PluginHelp,
   CommandRole,
+  AccessHook,
+  AccessAction,
+  AccessRuleEntry,
+  AccessScopeConfig,
+  AccessControlConfig,
 } from "./types";
 
 // Service types from service-types.ts

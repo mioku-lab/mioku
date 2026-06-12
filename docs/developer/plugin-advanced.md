@@ -465,6 +465,46 @@ ctx.handle("message", async (event) => {
 });
 ```
 
+## 声明 access hooks
+
+如果希望 bot 的访问控制能按命令/插件/事件类型维度拦截你的插件，需要在 `package.json` 的 `mioku.accessHooks` 列出所有可被外部触发的入口。分两类：
+
+### 文本型 hook（消息事件）
+
+```json
+{
+  "mioku": {
+    "accessHooks": [
+      { "id": "60s", "match": "60s" },
+      { "id": "油价", "match": "/(.+)油价$/" },
+      { "id": "whois", "match": "/^\\/whois\\s+/" }
+    ]
+  }
+}
+```
+
+`match` 字段支持两种格式：
+
+- 普通字符串：`text === match` 或 `text.startsWith(match)` 二者命中其一
+- `/正则/` 形式：用 `RegExp.test(text)` 判定（不支持 flag，需要大小写不敏感时用 `[Hh][Ee][Ll][Pp]` 这种字符类）
+
+### 事件型 hook（请求/通知事件）
+
+```json
+{
+  "mioku": {
+    "accessHooks": [
+      { "id": "auto-friend", "event": "request.friend" },
+      { "id": "welcome", "event": "notice.group.increase" }
+    ]
+  }
+}
+```
+
+`event` 字段是**前缀匹配**：写 `request` 同时命中 `request.friend` 和 `request.group.invite`；写 `notice.group.increase` 只精确命中这一条。
+
+未声明的入口不会被 access control 拦截（access control 不知道该消息/事件「是不是」给你的，所以默认放行）。完整的访问控制规则、作用域优先级、WebUI 配法见 [访问控制](../guide/access-control.md)。
+
 ## 定义插件帮助信息
 
 Mioku 会自动读取 `package.json` 中定义的帮助字段，自动生成帮助图片，无需插件实现截图逻辑

@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-chat",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "AI 智能聊天插件",
   "main": "index.ts",
   "type": "module",
@@ -17,6 +17,13 @@
       "config",
       "help",
       "screenshot"
+    ],
+    "accessHooks": [
+      {
+        "id": "戳一戳触发对话",
+        "event": "notice.group.poke",
+        "description": "群内戳一戳 bot"
+      }
     ],
     "help": {
       "title": "AI 聊天",
