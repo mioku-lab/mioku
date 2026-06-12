@@ -50,6 +50,13 @@ export interface PluginHelp {
   }>;
 }
 
+export interface AccessHook {
+  id: string;
+  match?: string;
+  event?: string;
+  description?: string;
+}
+
 /**
  * 插件包配置
  * package.json 中的 mioku 字段
@@ -57,6 +64,7 @@ export interface PluginHelp {
 export interface PluginPackageConfig {
   services?: string[];
   help?: PluginHelp;
+  accessHooks?: AccessHook[];
 }
 
 /**

@@ -238,6 +238,13 @@ export interface ServiceMetadata {
   packageJson: any;
 }
 
+export interface AccessHook {
+  id: string;
+  match?: string;
+  event?: string;
+  description?: string;
+}
+
 /**
  * 插件包配置
  * package.json 中的 mioku 字段
@@ -247,6 +254,25 @@ export interface PluginPackageConfig {
   services?: string[];
   // 帮助信息
   help?: PluginHelp;
+  accessHooks?: AccessHook[];
+}
+
+export type AccessAction = "allow" | "block";
+
+export interface AccessRuleEntry {
+  action: AccessAction;
+}
+
+export interface AccessScopeConfig {
+  plugins?: Record<string, AccessRuleEntry>;
+  commands?: Record<string, Record<string, AccessRuleEntry>>;
+}
+
+export interface AccessControlConfig {
+  version: 1;
+  global: AccessScopeConfig;
+  groups: Record<string, AccessScopeConfig>;
+  users: Record<string, AccessScopeConfig>;
 }
 
 /**
