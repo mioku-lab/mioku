@@ -244,7 +244,7 @@ export async function runChat(
 
   const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
   if (maxSearchCount > 0 && webSearchState.count >= maxSearchCount) {
-    const limitMsg = `[system] Maximum search limit (${maxSearchCount}) reached. Web search tool is now disabled. `;
+    const limitMsg = `[system] Web search/read-page limit (${maxSearchCount}) reached for this conversation. `;
     response.content = limitMsg + (response.content || "");
   }
 
@@ -459,6 +459,12 @@ function buildCurrentMessages(
   return messages;
 }
 
+const RATE_LIMITED_TOOL_NAMES = new Set(["web_search", "web_read_page"]);
+const RATE_LIMITED_BUILTIN_NAMES = new Set([
+  "web_search.web_search",
+  "web_search.web_read_page",
+]);
+
 function buildSessionTools(
   chatTools: AITool[],
   skillTools: Map<string, AITool>,
@@ -467,20 +473,30 @@ function buildSessionTools(
   webSearchState?: { count: number },
 ): SessionToolDefinition[] {
   const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
-  const limitReached =
-    maxSearchCount > 0 && webSearchState && webSearchState.count >= maxSearchCount;
   const tools: SessionToolDefinition[] = [];
   const runtimeContext = createExternalSkillRuntimeContext(toolCtx);
+  const rateLimitError = () => ({
+    success: false,
+    error: `Web search/read-page limit (${maxSearchCount}) reached for this conversation. Answer based on existing information instead of calling web tools again.`,
+  });
+  const isRateLimited = (name: string) =>
+    maxSearchCount > 0 &&
+    Boolean(webSearchState) &&
+    webSearchState!.count >= maxSearchCount &&
+    (RATE_LIMITED_TOOL_NAMES.has(name) || RATE_LIMITED_BUILTIN_NAMES.has(name));
 
   for (const tool of chatTools) {
-    if (tool.name === "web_search" && limitReached) continue;
+    const isRateLimitedTool = RATE_LIMITED_TOOL_NAMES.has(tool.name);
     tools.push({
       name: tool.name,
       tool: {
         ...tool,
         handler: (args: any) => {
-          if (tool.name === "web_search" && webSearchState) {
+          if (isRateLimitedTool && webSearchState) {
             webSearchState.count++;
+          }
+          if (isRateLimitedTool && isRateLimited(tool.name)) {
+            return rateLimitError();
           }
           return tool.handler(args, runtimeContext);
         },
@@ -509,18 +525,17 @@ function buildSessionTools(
       continue;
     }
 
-    // builtin feature 走 loadSkill 后名前缀,也要受 maxSearchCount 限制。
-    if (name === "web_search.web_search" && limitReached) {
-      continue;
-    }
-
+    const isRateLimitedName = RATE_LIMITED_BUILTIN_NAMES.has(name);
     tools.push({
       name,
       tool: {
         ...tool,
         handler: (args: any) => {
-          if (name === "web_search.web_search" && webSearchState) {
+          if (isRateLimitedName && webSearchState) {
             webSearchState.count++;
+          }
+          if (isRateLimitedName && isRateLimited(name)) {
+            return rateLimitError();
           }
           return tool.handler(args, runtimeContext);
         },
