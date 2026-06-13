@@ -30,6 +30,7 @@ import type {
   ChatRuntimeResult,
   ChatRuntimeInformationRequestOptions,
 } from "mioku";
+import type { ChatMessage } from "./types";
 
 /**
  * Core plugin context - bundles all managers and core services.
@@ -74,6 +75,10 @@ export interface ChatPluginContext {
   buildToolContext: BuildToolContext;
   buildStructuredUserInputFromTarget: BuildStructuredUserInputFromTarget;
   runChat: RunChat;
+  recordGroupMessageForLearning: (
+    userMsg: ChatMessage,
+    groupSessionId: string,
+  ) => Promise<void>;
 }
 
 /**

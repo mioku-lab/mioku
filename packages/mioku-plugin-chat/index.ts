@@ -42,8 +42,13 @@ import { CooldownManager } from "./manage/cooldown";
 import { IdleCheckManager } from "./manage/idle-check";
 import { QueueProcessor } from "./manage/queue-processor";
 import {
+  ChatDatabaseCleanup,
+  DEFAULT_CLEANUP_CONFIG,
+} from "./manage/cleanup";
+import {
   GroupStructuredHistoryManager,
   type StructuredUserInput,
+  buildStructuredUserMessages,
 } from "./manage/group-structured-history";
 import type {
   RunRateLimitGuard,
@@ -102,6 +107,28 @@ function buildStructuredUserInputFromEvent(
     messageId: event?.message_id,
     timestamp:
       typeof event?.time === "number" ? event.time * 1000 : fallbackTimestamp,
+  };
+}
+
+function buildChatMessageFromEvent(
+  e: any,
+  text: string,
+  isGroup: boolean,
+  groupId: number | undefined,
+): ChatMessage {
+  const userId: number = e.user_id || e.sender?.user_id;
+  return {
+    sessionId: groupId ? `group:${groupId}` : `personal:${userId}`,
+    role: "user" as const,
+    content: text,
+    userId,
+    userName: e.sender?.card || e.sender?.nickname || String(userId),
+    userRole: e.sender?.role || "member",
+    userTitle: (e.sender as any)?.title || undefined,
+    groupId,
+    groupName: isGroup ? e.group_name : undefined,
+    timestamp: Date.now(),
+    messageId: e.message_id,
   };
 }
 
@@ -516,6 +543,11 @@ const chatPlugin = definePlugin({
       () => skillManager.cleanup(),
       10 * 60_000,
     );
+    const dbCleanup = new ChatDatabaseCleanup(
+      db,
+      config.retention ?? DEFAULT_CLEANUP_CONFIG,
+    );
+    dbCleanup.start();
     idleCheckManager.start();
 
     // Create plugin context for passing to functions
@@ -548,6 +580,24 @@ const chatPlugin = definePlugin({
       buildToolContext,
       buildStructuredUserInputFromTarget,
       runChat,
+      async recordGroupMessageForLearning(userMsg, groupSessionId) {
+        db.saveMessage(userMsg);
+        await Promise.all([
+          humanize.expressionLearner.onMessage(userMsg),
+          humanize.topicTracker.onMessage(groupSessionId),
+        ]);
+        if (userMsg.groupId) {
+          groupStructuredHistory.append(
+            groupSessionId,
+            buildStructuredUserMessages([
+              buildStructuredUserInputFromTarget(
+                userMsg as unknown as TargetMessage,
+              ),
+            ]),
+            config.groupStructuredHistoryTtlMs,
+          );
+        }
+      },
     };
 
     const runtimeState: ChatRuntimeState = {
@@ -1144,6 +1194,27 @@ const chatPlugin = definePlugin({
         }
       }
 
+      if (isGroup && groupId) {
+        const _learnSessionId = `group:${groupId}`;
+        const _learnMsg = buildChatMessageFromEvent(e, text, true, groupId);
+        const _hasText = !!_learnMsg.content?.trim();
+        const _hasMultimodal =
+          !!cfg.isMultimodal && !!cfg.multimodalWorkingModel;
+        if (_hasText || _hasMultimodal) {
+          pluginCtx
+            .recordGroupMessageForLearning(_learnMsg, _learnSessionId)
+            .catch((err) =>
+              ctx.logger.error(`[learning] always-on record failed: ${err}`),
+            );
+        } else {
+          pluginCtx.humanize.topicTracker
+            .onMessage(_learnSessionId)
+            .catch((err) =>
+              ctx.logger.error(`[topic] window advance failed: ${err}`),
+            );
+        }
+      }
+
       const atBot = shouldTrigger(e, text, cfg, ctx);
       const quotedBot = isGroup ? await isQuotingBot(e, ctx) : null;
       const mentionedNickname =
@@ -1416,6 +1487,7 @@ const chatPlugin = definePlugin({
       db.close();
       rateLimiter.dispose();
       clearInterval(cleanupInterval);
+      dbCleanup.stop();
       cooldownManager.dispose();
       idleCheckManager.dispose();
       queueProcessor.dispose();
@@ -1621,24 +1693,6 @@ async function processChat(
       extraContext = parts.join(" ");
     }
     if (extraContext) messageContent = extraContext + " " + messageContent;
-
-    const userMsg = {
-      sessionId: groupSessionId,
-      role: "user" as const,
-      content: messageContent,
-      userId,
-      userName: e.sender?.card || e.sender?.nickname || String(userId),
-      userRole: e.sender?.role || "member",
-      userTitle: (e.sender as any)?.title || undefined,
-      groupId,
-      groupName: isGroup ? e.group_name : undefined,
-      timestamp: Date.now(),
-      messageId: e.message_id,
-    };
-    pluginCtx.db.saveMessage(userMsg);
-
-    pluginCtx.humanize.expressionLearner.onMessage(userMsg).then();
-    pluginCtx.humanize.topicTracker.onMessage(groupSessionId).then();
 
     const rawHistory = groupId
       ? await getGroupHistory(

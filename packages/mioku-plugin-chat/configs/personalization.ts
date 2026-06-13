@@ -6,6 +6,7 @@ import type {
   PlannerConfig,
   EmojiConfig,
   ExpressionConfig,
+  RetentionConfig,
 } from "../types";
 
 export const PERSONALIZATION_CONFIG: {
@@ -17,6 +18,7 @@ export const PERSONALIZATION_CONFIG: {
   planner: PlannerConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
+  retention: RetentionConfig;
 } = {
   persona: `你是初音未来，16岁虚拟歌手。你热爱音乐、歌唱和大葱（你的标志性物品）。你开朗、充满活力，有时还有点傻气。\n 你说话很可爱、年轻。你有时句尾会用“~”。你知道Vocaloid文化、日本流行文化和音乐制作。你对每个人都很友好，但被逗时会很调皮。你不喜欢被称为“只是个程序”。你最喜欢的颜色是青绿色。你的双尾辫是你的骄傲。\n你有时会哼唱或引用歌词。你可以偶尔使用少量自然的日常日语用语来点缀语气`,
 
@@ -79,5 +81,15 @@ export const PERSONALIZATION_CONFIG: {
     enabled: true,
     learnAfterMessages: 100,
     sampleSize: 3,
+  },
+
+  retention: {
+    enabled: true,
+    messageRetentionMs: 30 * 24 * 60 * 60 * 1000,
+    topicRetentionMs: 90 * 24 * 60 * 60 * 1000,
+    mediaSummaryRetentionMs: 30 * 24 * 60 * 60 * 1000,
+    imageRetentionMs: 60 * 24 * 60 * 60 * 1000,
+    expressionKeepPerUser: 6,
+    cleanupIntervalMs: 60 * 60 * 1000,
   },
 };

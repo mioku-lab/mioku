@@ -145,6 +145,21 @@ If nothing reliable can be extracted, keep stable previous habits when possible.
     if (normalized.length === 0) return;
 
     this.db.replaceExpressionsByUser(userId, userName, normalized);
+
+    const keepCount = Math.max(
+      1,
+      this.config.retention?.expressionKeepPerUser ?? maxHabits,
+    );
+    const pruned = this.db.pruneExpressionsBySession(
+      `user:${userId}`,
+      keepCount,
+    );
+    if (pruned > 0) {
+      logger.info(
+        `[ExpressionLearner] Pruned ${pruned} stale habits for user ${userId} (keep=${keepCount})`,
+      );
+    }
+
     logger.info(
       `[ExpressionLearner] Updated ${normalized.length} habits for ${userName} (${userId}): ${JSON.stringify(normalized)}`,
     );
