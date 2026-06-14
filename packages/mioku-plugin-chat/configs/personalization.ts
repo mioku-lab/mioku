@@ -54,7 +54,7 @@ export const PERSONALIZATION_CONFIG: {
 
   memory: {
     enabled: true,
-    groupHistoryLimit: 300,
+    groupHistoryLimit: 800,
     userHistoryLimit: 100,
   },
 
