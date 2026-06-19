@@ -30,6 +30,15 @@ export { default as pluginManager } from "./core/plugin-manager";
 export { default as serviceManager } from "./core/service-manager";
 export { registerPluginArtifacts } from "./core/plugin-artifact-registry";
 
+// Service config helpers
+export {
+  registerServiceConfig,
+  getServiceConfig,
+  updateServiceConfig,
+  getServiceConfigs,
+  deleteServiceConfig,
+} from "./core/service-config";
+
 // Types from types.ts
 export type {
   MiokuService,

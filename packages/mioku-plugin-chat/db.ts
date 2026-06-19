@@ -73,6 +73,11 @@ export interface ChatDatabase {
   ): void;
   getExpressionCount(sessionId: string): number;
   deleteOldestExpressions(sessionId: string, keepCount: number): void;
+  pruneExpressionsBySession(sessionId: string, keepCount: number): number;
+  pruneMessagesOlderThan(timestamp: number): number;
+  pruneTopicsOlderThan(timestamp: number): number;
+  pruneMediaSummariesOlderThan(timestamp: number): number;
+  pruneImagesOlderThan(timestamp: number): number;
   // 图片记录
   saveImage(image: ImageRecord): void;
   getImageByHash(hash: string): ImageRecord | null;
@@ -309,6 +314,21 @@ export async function initDatabase(): Promise<ChatDatabase> {
       DELETE FROM expressions WHERE session_id = $sessionId AND id NOT IN (
         SELECT id FROM expressions WHERE session_id = $sessionId ORDER BY created_at DESC LIMIT $keepCount
       )
+    `),
+    pruneMessages: db.prepare(`
+      DELETE FROM messages WHERE timestamp < $before
+    `),
+    pruneTopics: db.prepare(`
+      DELETE FROM topics WHERE created_at < $before
+    `),
+    pruneMediaSummaries: db.prepare(`
+      DELETE FROM media_summaries WHERE created_at < $before
+    `),
+    pruneMediaSummarySources: db.prepare(`
+      DELETE FROM media_summary_sources WHERE created_at < $before
+    `),
+    pruneImages: db.prepare(`
+      DELETE FROM images WHERE created_at < $before
     `),
     // 图片记录
     insertImage: db.prepare(`
@@ -736,6 +756,35 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     deleteOldestExpressions(sessionId: string, keepCount: number): void {
       stmts.deleteOldestExpressions.run({ $sessionId: sessionId, $keepCount: keepCount });
+    },
+
+    pruneExpressionsBySession(sessionId: string, keepCount: number): number {
+      const result = stmts.deleteOldestExpressions.run({
+        $sessionId: sessionId,
+        $keepCount: keepCount,
+      });
+      return Number(result.changes || 0);
+    },
+
+    pruneMessagesOlderThan(timestamp: number): number {
+      const result = stmts.pruneMessages.run({ $before: timestamp });
+      return Number(result.changes || 0);
+    },
+
+    pruneTopicsOlderThan(timestamp: number): number {
+      const result = stmts.pruneTopics.run({ $before: timestamp });
+      return Number(result.changes || 0);
+    },
+
+    pruneMediaSummariesOlderThan(timestamp: number): number {
+      const summaries = stmts.pruneMediaSummaries.run({ $before: timestamp });
+      const sources = stmts.pruneMediaSummarySources.run({ $before: timestamp });
+      return Number(summaries.changes || 0) + Number(sources.changes || 0);
+    },
+
+    pruneImagesOlderThan(timestamp: number): number {
+      const result = stmts.pruneImages.run({ $before: timestamp });
+      return Number(result.changes || 0);
     },
 
     saveImage(image: ImageRecord): void {

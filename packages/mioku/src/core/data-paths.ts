@@ -44,10 +44,10 @@ export function getPluginConfigDir(pluginName: string): string {
 
 /**
  * Get the config directory for a service
- * Returns: {cwd}/config/{serviceName}
+ * Returns: {cwd}/config/service/{serviceName}
  */
 export function getServiceConfigDir(serviceName: string): string {
-  const configDir = path.join(process.cwd(), "config", serviceName);
+  const configDir = path.join(process.cwd(), "config", "service", serviceName);
   return configDir;
 }
 

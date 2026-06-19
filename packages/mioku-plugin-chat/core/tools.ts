@@ -25,7 +25,7 @@ import {
   buildRecallMemoryFeatureSection,
 } from "./prompt";
 
-const DEFAULT_GROUP_RECALL_LIMIT = 300;
+const DEFAULT_GROUP_RECALL_LIMIT = 800;
 const DEFAULT_USER_HISTORY_LIMIT = 100;
 
 type ConstraintStrength = "low" | "medium" | "high";

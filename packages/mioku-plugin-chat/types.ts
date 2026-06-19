@@ -83,6 +83,25 @@ export interface ExpressionConfig {
 }
 
 /**
+ * 数据库定期清理配置
+ */
+export interface RetentionConfig {
+  enabled: boolean;
+  // 群聊/私聊消息保留时长
+  messageRetentionMs: number;
+  // 话题摘要保留时长
+  topicRetentionMs: number;
+  // 媒体/卡片/转发摘要保留时长
+  mediaSummaryRetentionMs: number;
+  // 图片描述记录保留时长
+  imageRetentionMs: number;
+  // 单个用户表达学习结果保留的最大条数
+  expressionKeepPerUser: number;
+  // 清理任务执行间隔
+  cleanupIntervalMs: number;
+}
+
+/**
  * 动态延迟配置
  * 根据互动人数动态调整回复延迟
  */
@@ -196,6 +215,7 @@ export interface ChatConfig {
   planner: PlannerConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
+  retention: RetentionConfig;
 }
 
 /**

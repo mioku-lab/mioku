@@ -16,6 +16,7 @@
     "mioku-service-60s": "workspace:*",
     "mioku-service-ai": "workspace:*",
     "mioku-service-applemusic": "workspace:*",
+    "mioku-service-netease": "workspace:*",
     "mioku-service-config": "workspace:*",
     "mioku-service-help": "workspace:*",
     "mioku-service-screenshot": "workspace:*",

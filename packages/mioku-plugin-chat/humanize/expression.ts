@@ -35,7 +35,9 @@ export class ExpressionLearner {
     const sampleSize = this.config.expression?.sampleSize ?? 8;
     const expressions = this.db.getExpressionsByUser(userId, sampleSize);
     if (expressions.length === 0) {
-      logger.info(`[ExpressionLearner] No expression habits found for user ${userName} (${userId})`);
+      logger.info(
+        `[ExpressionLearner] No expression habits found for user ${userName} (${userId})`,
+      );
       return "";
     }
     const selected = expressions.slice(0, sampleSize);
@@ -46,7 +48,9 @@ export class ExpressionLearner {
     );
 
     const context = `## Expression Habits\nExpression habits learned from ${userName}. If you are replying to this user, you may naturally reference these habits:\n${habits.join("\n")}`;
-    logger.info(`[ExpressionLearner] Expression context for ${userName} (${userId}): ${habits.length} habits`);
+    logger.info(
+      `[ExpressionLearner] Expression context for ${userName} (${userId}): ${habits.length} habits`,
+    );
     return context;
   }
 
@@ -58,7 +62,9 @@ export class ExpressionLearner {
       this.config.expression?.learnAfterMessages ?? 100,
     );
     const pending = this.pendingMessagesByUser.get(userId) ?? [];
-    logger.info(`[ExpressionLearner] User ${userId} has ${pending.length}/${threshold} pending messages (threshold=${threshold})`);
+    logger.debug(
+      `[ExpressionLearner] User ${userId} has ${pending.length}/${threshold} pending messages (threshold=${threshold})`,
+    );
     if (pending.length < threshold) return;
 
     this.learningUsers.add(userId);
@@ -72,7 +78,9 @@ export class ExpressionLearner {
         await this.learnForUser(userId, batch);
       }
     } catch (err) {
-      logger.warn(`[ExpressionLearner] Learning failed for user ${userId}: ${err}`);
+      logger.warn(
+        `[ExpressionLearner] Learning failed for user ${userId}: ${err}`,
+      );
     } finally {
       this.learningUsers.delete(userId);
     }
@@ -136,15 +144,29 @@ If nothing reliable can be extracted, keep stable previous habits when possible.
         style: String(expr?.style ?? "").trim(),
         example: String(expr?.example ?? "").trim(),
       }))
-      .filter(
-        (expr: { situation: string; style: string; example: string }) =>
-          Boolean(expr.situation && expr.style && expr.example),
+      .filter((expr: { situation: string; style: string; example: string }) =>
+        Boolean(expr.situation && expr.style && expr.example),
       )
       .slice(0, maxHabits);
 
     if (normalized.length === 0) return;
 
     this.db.replaceExpressionsByUser(userId, userName, normalized);
+
+    const keepCount = Math.max(
+      1,
+      this.config.retention?.expressionKeepPerUser ?? maxHabits,
+    );
+    const pruned = this.db.pruneExpressionsBySession(
+      `user:${userId}`,
+      keepCount,
+    );
+    if (pruned > 0) {
+      logger.info(
+        `[ExpressionLearner] Pruned ${pruned} stale habits for user ${userId} (keep=${keepCount})`,
+      );
+    }
+
     logger.info(
       `[ExpressionLearner] Updated ${normalized.length} habits for ${userName} (${userId}): ${JSON.stringify(normalized)}`,
     );
