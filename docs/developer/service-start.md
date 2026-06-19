@@ -202,6 +202,40 @@ const service: MiokuService = {
 
 Mioku 使用 `npx mioku` 命令或 WebUI 安装服务后，会自动从 `node_modules` 发现服务。
 
+## 服务自管配置
+
+需要持久化配置的服务，用 mioku 导出的 `registerServiceConfig` / `getServiceConfig`，配置文件落在 `config/service/{serviceName}/`。
+
+```typescript
+import { registerServiceConfig, getServiceConfig } from "mioku";
+
+const service: MiokuService = {
+  name: "demo",
+  api: {} as DemoServiceApi,
+
+  async init() {
+    // 注册默认配置
+    registerServiceConfig("demo", "base", {
+      apiUrl: "https://example.com",
+      timeoutMs: 10000,
+    });
+    // 读取配置并初始化
+    const config = getServiceConfig("demo", "base");
+    this.api = new DemoServiceImpl(config);
+  },
+};
+```
+
+| 函数                                            | 说明                            |
+|-----------------------------------------------|-------------------------------|
+| `registerServiceConfig(name, file, defaults)` | 注册默认配置，文件不存在时写入               |
+| `getServiceConfig(name, file)`                | 读取配置，返回 `Record<string, any>` |
+| `getServiceConfigs(name)`                     | 读取该服务所有 JSON 配置               |
+| `updateServiceConfig(name, file, value)`      | 覆盖写入配置文件                      |
+| `deleteServiceConfig(name, file)`             | 删除配置文件，返回 `boolean`           |
+
+添加 `config.md` 后，WebUI「服务配置」页面会自动渲染。格式与插件 `config.md` 一致。
+
 ## 在插件里使用服务
 
 服务写好以后，插件先在 `package.json` 里声明依赖：

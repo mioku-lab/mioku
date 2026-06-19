@@ -1,17 +1,26 @@
 # Config Page
 
-配置界面渲染服务，支持插件自定义配置页面。
+配置界面渲染服务，支持插件和服务自定义配置页面。
 
 ## 配置页面格式
 
-插件通过 `config.md` 文件定义配置界面，使用 YAML frontmatter 定义字段，Markdown 编写界面说明。
+插件和服务都可以通过 `config.md` 文件定义配置界面，使用 YAML frontmatter 定义字段，Markdown 编写界面说明。
 
 ```
+# 插件
 plugins/<plugin_name>/
 ├── index.ts          # 插件入口
 ├── config.md        # 配置文件
 └── ...
+
+# 服务
+packages/mioku-service-<name>/
+├── index.ts          # 服务入口
+├── config.md        # 配置文件
+└── ...
 ```
+
+插件配置在「插件配置」页面展示，服务配置在「服务配置」页面展示，两者字段格式完全一致。
 
 ## Frontmatter 字段定义
 
