@@ -589,7 +589,7 @@ async function createNewProject(name: string, fileTree: Record<string, any>, ins
 
   console.log(`项目 ${projectName} 创建成功！`);
 
-  const packages = installWebui ? DEFAULT_PACKAGES : DEFAULT_PACKAGES.filter(p => p !== "mioku-service-webui");
+  const packages = installWebui ? [...DEFAULT_PACKAGES, "mioku-service-webui"] : DEFAULT_PACKAGES;
   const [cmd, args] = getAddCommand(packages);
   console.log(`正在安装 Mioku 依赖: ${cmd} ${args.join(" ")}`);
   run(cmd, args, {
