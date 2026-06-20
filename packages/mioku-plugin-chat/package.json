@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-chat",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "AI 智能聊天插件",
   "main": "index.ts",
   "type": "module",

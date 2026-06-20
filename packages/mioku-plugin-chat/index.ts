@@ -614,7 +614,7 @@ const chatPlugin = definePlugin({
       }
       // If no event or event has no message property (synthetic event like group_member_increase),
       // return the default prompt
-      if (!event || !event.message) {
+      if (!event || !event.message || !Array.isArray(event.message)) {
         return "[No new user message in this turn. Reply naturally based on the runtime instruction and recent context.]";
       }
       const text = ctx.text(event)?.trim() || "";
@@ -1038,6 +1038,8 @@ const chatPlugin = definePlugin({
     ctx.handle("message", async (e: any) => {
       const cfg = await getConfig();
       if (!cfg.apiKey) return;
+
+      if (!e?.message || !Array.isArray(e.message)) return;
 
       const text = ctx.text(e) || "";
       const isGroup = e.message_type === "group";
