@@ -16,7 +16,7 @@
  */
 
 import * as fs from "node:fs/promises";
-import type { HelpService, ScreenshotService } from "mioku";
+import type { CommandRole, HelpService, ScreenshotService } from "mioku";
 import { checkNightMode } from "../utils";
 import { generateHelpHtml } from "./html-generator";
 
@@ -52,6 +52,10 @@ export function normalizeImageSource(file: string): string {
  * Build the help image and write it to disk via the screenshot service.
  * Returns the resulting file path, or `null` if any required service is
  * missing.
+ *
+ * `viewerRole` controls which commands are rendered — the image only
+ * shows commands the requester is allowed to invoke, so members don't
+ * see admin/master-only commands cluttering the panel.
  */
 export async function generateHelpImage(options: {
   helpService?: HelpService;
@@ -61,6 +65,7 @@ export async function generateHelpImage(options: {
   botNickname?: string;
   botAvatarUrl?: string;
   targetPluginName?: string;
+  viewerRole?: CommandRole;
 }): Promise<string | null> {
   const {
     helpService,
@@ -70,6 +75,7 @@ export async function generateHelpImage(options: {
     botNickname,
     botAvatarUrl,
     targetPluginName,
+    viewerRole,
   } = options;
   if (!helpService || !screenshotService) {
     return null;
@@ -87,6 +93,7 @@ export async function generateHelpImage(options: {
     botNickname,
     botAvatarUrl,
     hasTarget ? targetPluginName : undefined,
+    viewerRole,
   );
 
   return screenshotService.screenshot(htmlContent, {

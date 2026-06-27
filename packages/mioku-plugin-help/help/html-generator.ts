@@ -109,6 +109,9 @@ function renderPluginDetail(
  * Build the full help image HTML. `targetPluginName` switches the
  * renderer to detail mode for that plugin (no-op if the name doesn't
  * match anything in `helpMap`).
+ *
+ * `viewerRole` filters out commands the requesting user can't invoke,
+ * so the image only surfaces what they can actually run.
  */
 export function generateHelpHtml(
   helpMap: Map<string, PluginHelp>,
@@ -118,8 +121,9 @@ export function generateHelpHtml(
   botNickname: string = "Mioku Bot",
   botAvatarUrl?: string,
   targetPluginName?: string,
+  viewerRole: CommandRole = "master",
 ): string {
-  const entries = getRenderableEntries(helpMap);
+  const entries = getRenderableEntries(helpMap, viewerRole);
   const selectedEntry = targetPluginName
     ? entries.find((entry) => entry.pluginName === targetPluginName)
     : undefined;
