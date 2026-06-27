@@ -395,54 +395,38 @@ export async function sendMessage(
         // 有 @ 用户时，构建消息保持原始位置
         // 先将原始行按 @ 标记分割，然后重新构建
         let remaining = line;
-        // 支持三种格式: [[[at:xxx]]], (((at:xxx))), (((xxx)))
-        const atPatterns = [
-          /\[\[\[at:(\d+)\]\]\]/g,
-          /\(\(\(at:(\d+)\)\)\)/g,
-          /\(\(\((\d+)\)\)\)/g,
-        ];
+        const atPattern = /\[at:(\d+)\]/g;
 
         let lastIndex = 0;
         let match;
 
-        // 依次处理每种格式
-        for (const atPattern of atPatterns) {
-          atPattern.lastIndex = 0; // 重置正则
-          while ((match = atPattern.exec(remaining)) !== null) {
-            // 添加 @ 之前的文本
-            const beforeAt = remaining.slice(lastIndex, match.index);
-            if (beforeAt) {
-              // 清理 reply 和 poke 标记残留
-              const cleaned = beforeAt
-                .replace(/\[\[\[reply:-?\d+\]\]\]/g, "")
-                .replace(/\(\(\(reply:-?\d+\)\)\)/g, "")
-                .replace(/\[\[\[poke:\d+\]\]\]/g, "")
-                .replace(/\(\(\(poke:\d+\)\)\)/g, "")
-                .replace(/\[audio:[^\]]+\]/gi, "")
-                .trim();
-              if (cleaned) {
-                segments.push({ type: "text", text: cleaned });
-              }
+        while ((match = atPattern.exec(remaining)) !== null) {
+          const beforeAt = remaining.slice(lastIndex, match.index);
+          if (beforeAt) {
+            const cleaned = beforeAt
+              .replace(/\[reply:-?\d+\]/g, "")
+              .replace(/\[poke:\d+\]/g, "")
+              .replace(/\[audio:[^\]]+\]/gi, "")
+              .trim();
+            if (cleaned) {
+              segments.push({ type: "text", text: cleaned });
             }
-
-            const atId = match[1];
-            // 跳过 @ 机器人自己的情况
-            if (String(atId) !== String(selfId)) {
-              segments.push(ctx.segment.at(atId));
-            }
-
-            lastIndex = match.index + match[0].length;
           }
+
+          const atId = match[1];
+          if (String(atId) !== String(selfId)) {
+            segments.push(ctx.segment.at(atId));
+          }
+
+          lastIndex = match.index + match[0].length;
         }
 
         // 添加 @ 之后的文本
         const afterAt = remaining.slice(lastIndex);
         if (afterAt) {
           const cleaned = afterAt
-            .replace(/\[\[\[reply:-?\d+\]\]\]/g, "")
-            .replace(/\(\(\(reply:-?\d+\)\)\)/g, "")
-            .replace(/\[\[\[poke:\d+\]\]\]/g, "")
-            .replace(/\(\(\(poke:\d+\)\)\)/g, "")
+            .replace(/\[reply:-?\d+\]/g, "")
+            .replace(/\[poke:\d+\]/g, "")
             .replace(/\[audio:[^\]]+\]/gi, "")
             .trim();
           if (cleaned) {
@@ -534,7 +518,7 @@ function expandOutgoingLines(text: string): string[] {
 
 function normalizeActionLineBreaks(text: string): string {
   return String(text || "").replace(
-    /\\\s*(?=(?:\[meme:[^\]]+\]|\[audio:[^\]]+\]|\[\[\[reply:-?\d+\]\]\]|\(\(\(reply:-?\d+\)\)\)))/gi,
+    /\\\s*(?=(?:\[meme:[^\]]+\]|\[emotion:[^\]]+\]|\[audio:[^\]]+\]|\[reply:-?\d+\]))/gi,
     "\n",
   );
 }

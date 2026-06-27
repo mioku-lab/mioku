@@ -106,6 +106,7 @@ export type PromptCtxForRunChat = {
   topicContext?: string;
   expressionContext?: string;
   activeSkillsInfo?: string;
+  currentEmotion?: string;
   plannerThoughts?: string;
   replyContext?: {
     type: "reply" | "comment" | "idle" | "review" | "poked";

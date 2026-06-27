@@ -354,13 +354,13 @@ function parseCharset(contentType: string | null): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function createTextDecoder(charset: string | null) {
+function createTextDecoder(charset: string | null): TextDecoder {
   if (!charset) {
     return new TextDecoder("utf-8");
   }
 
   try {
-    return new TextDecoder(charset);
+    return new TextDecoder(charset as ConstructorParameters<typeof TextDecoder>[0]);
   } catch {
     return new TextDecoder("utf-8");
   }

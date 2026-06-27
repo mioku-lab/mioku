@@ -1599,7 +1599,7 @@ async function handleIdleCheckDebug(
             botRole: toolCtx.botRole,
             aiService: ctx.services!.ai as AIService,
             isGroup: true,
-            plannerThoughts: `You stumbled upon some message in this group and decided to reply.\nQuote messages from group friends appropriately (using [[[reply:message ID]]] format).\nDon't mention your intentions like "I'm here to answer".`,
+            plannerThoughts: `You stumbled upon some message in this group and decided to reply.\nQuote messages from group friends appropriately (using [reply:message ID] format).\nDon't mention your intentions like "I'm here to answer".`,
             replyContext: { type: "idle" },
           },
           humanize,
