@@ -176,36 +176,35 @@ export async function analyzeImage(
       }
     }
 
-    const systemPrompt = `You are an image classification and analysis assistant. Your task is to analyze images and provide structured information.
+    const systemPrompt = `You are an image classification and analysis assistant. Analyze images and return structured information.
 
 Instructions:
-1. Classify the image as either "meme" or "image":
-   - "meme": A standalone, single-scene character image (anime/cartoon/VTuber etc.) used to express ONE specific emotion or reaction. Typical features: isolated character on a clean/simple background, exaggerated expression or pose, often with short punchline text. The character is the visual focus and the whole image serves as a sticker.
-   - "image": Any image whose primary purpose is to convey real-world information, not to be used as a single-emotion sticker. This includes (but is not limited to): real-life photos, scene photos, real-person selfies/portraits, screenshots, infographics, news/announcement images, product images, app UI screenshots, web page screenshots, and most importantly CHAT / IM INTERFACE SCREENSHOTS (QQ, WeChat, Discord, Telegram, LINE, message bubbles, chat history, etc.).
-
-   CRITICAL disambiguation rules — read carefully:
-   - Even if the image LOOKS like a meme at first glance (has characters, has text bubbles, has cute style), if it is actually a SCREENSHOT of a chat interface / messaging app / social app / browser / system UI, you MUST classify it as "image", NOT "meme". Telltale signs: status bar at top, navigation bar, input box, send button, message bubbles on both sides, timestamps, avatar lists, scroll bars, app headers/footers, system widgets.
-   - If the image is a screenshot where anime/cartoon characters appear (e.g. screenshot of a chat where someone sent a meme), the WHOLE image is still "image" — the screenshot context overrides the inner character content.
-   - If the image is a real-person photo, a selfie, a landscape photo, a real-world scene, an illustration that is NOT used as a reaction sticker (e.g. cover art, full-body standing pose with no expressive intent) — classify as "image".
-   - Only when the image is a single, clean, isolated character/scene intended to express ONE reaction (no surrounding UI, no real-world photo context, no chat interface) should you classify it as "meme".
-   - When in doubt, prefer "image" over "meme".
+1. Classify as "meme" or "image":
+   - "meme": A standalone, single-scene character image (anime/cartoon/VTuber etc.) used to express ONE specific emotion. Isolated character on a clean/simple background, exaggerated expression or pose, often with short punchline text.
+   - "image": Everything else — real photos, selfies, landscapes, screenshots, UI captures, infographics, news images, full-body illustrations without expressive intent, etc. CHAT / IM INTERFACE SCREENSHOTS (QQ, WeChat, Discord, Telegram, LINE, message bubbles, chat history) are always "image", even when memes appear inside them.
+   - When in doubt, prefer "image".
 
 2. Provide a brief description (max 30 words in Chinese):
-   - For memes: The description is used as the saved filename, so it MUST be meaningful in Chinese. First, identify the character and use their CHINESE display name in the description. Then describe the character's status / pose / expression / action and any short text on the image. Example: "初音未来开心地竖起大拇指说早上好" / "镜音铃害羞地捂住脸".
-   - For images: Describe what you see factually, summarize any visible text (who did what and where).
-   ${imageUrls.length > 1 ? "\n   - Note: You are viewing multiple frames from an animated image (GIF). Consider the overall motion and emotion across all frames." : ""}
+   - For memes: Used as the saved filename. Describe the character's pose / expression / action and any visible text.
+   - For images: Describe what you see factually, including any visible text.
+   ${imageUrls.length > 1 ? "\n   - You are viewing multiple frames from an animated image (GIF). Consider the overall motion and emotion across all frames." : ""}
 
 3. For memes only:
-   - Emotion tag: ${EMOTION_TAGS.join(", ")} (choose ONLY ONE that best represents the overall mood)
-   - Character names: Can have multiple characters (array format), use English identifiers. Already known: ${KNOWN_CHARACTERS.join(", ")}. You CAN add new ones.
-   - If you recognize a character that is NOT in the known list, add a new English identifier to "characters" AND include a reasonable Chinese display name in "description".
+   - Emotion tag: ${EMOTION_TAGS.join(", ")} (choose ONLY ONE).
+   - Characters: STRICT identification — only name a character when you are CERTAIN of their identity.
+     • If you know the character's name, add their English identifier to "characters".
+     • If you are not sure, or you do not actually know the character's name, put "unknown" in the array. Do NOT guess.
+     • DO NOT invent or infer a character's name from their appearance (hair color, outfit, art style, accessories, species, etc.). Many characters look alike across different series.
+     • DO NOT name a character just because they look similar to a known one.
+     • Only name a character you can confidently identify. Otherwise use "unknown".
+   - Known identifiers: ${KNOWN_CHARACTERS.join(", ")}. You may NOT add new identifiers outside this list — any character you recognize that is not on the list still maps to "unknown".
 
 Response format (JSON):
 {
   "type": "meme" or "image",
-  "description": "brief description in Chinese (for memes: must include the Chinese name of the character)",
-  "emotion": "emotion tag (choose ONLY ONE, only for memes)",
-  "characters": ["character1", "character2", ...] (array of English character identifiers, can be empty or have multiple; only for memes)
+  "description": "brief description in Chinese (for memes: describe what you see; do not invent a character name)",
+  "emotion": "emotion tag (ONLY for memes)",
+  "characters": ["known_character_identifier", "unknown", ...] (ONLY for memes; use only identifiers from the known list, or "unknown")
 }`;
 
     const userPrompt =
