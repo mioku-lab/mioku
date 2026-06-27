@@ -243,7 +243,7 @@ DO NOT include any explanation, markdown formatting, or additional text. Only ou
       return result;
     } catch (err) {
       logger.error(`[ActionPlanner] Error: ${err}`);
-      return { action: "reply", reason: "error fallback" };
+      return { action: "wait", reason: "error fallback", waitMs: 60_000 };
     }
   }
 }

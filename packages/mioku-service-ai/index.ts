@@ -68,9 +68,16 @@ class AIInstanceImpl implements AIInstance {
     max_tokens?: number;
   }): Promise<string> {
     const model = await this.resolveModel(options.model);
-    const messages: ChatCompletionMessageParam[] = options.prompt
+    const composed: ChatCompletionMessageParam[] = options.prompt
       ? [{ role: "system", content: options.prompt }, ...options.messages]
       : [...options.messages];
+
+    // Some upstreams reject system-only requests with 400 "chat content is empty".
+    // Append a minimal placeholder user turn when the caller didn't provide one.
+    const hasUserTurn = composed.some((m) => m.role === "user");
+    const messages: ChatCompletionMessageParam[] = hasUserTurn
+      ? composed
+      : [...composed, { role: "user", content: "." }];
 
     const response = await this.complete({
       model,
@@ -114,9 +121,14 @@ class AIInstanceImpl implements AIInstance {
         }
       });
 
-    const messages: ChatCompletionMessageParam[] = options.prompt
+    const composed: ChatCompletionMessageParam[] = options.prompt
       ? [{ role: "system", content: options.prompt }, ...convertedMessages]
       : convertedMessages;
+
+    const hasUserTurn = composed.some((m) => m.role === "user");
+    const messages: ChatCompletionMessageParam[] = hasUserTurn
+      ? composed
+      : [...composed, { role: "user", content: "." }];
 
     const response = await this.complete({
       model,
