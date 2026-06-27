@@ -80,7 +80,7 @@ interface PluginHelpCommand {
 }
 ```
 
-> - `cmd`: 命令格式
+> - `cmd`: 命令格式 如果其中含有"?"字符串，框架截图时将会解析成mioki配置中默认前缀
 > - `desc`: 命令描述
 > - `usage?`: 使用示例
 > - `role?`: 使用权限

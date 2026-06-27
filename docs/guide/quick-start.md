@@ -47,6 +47,23 @@ cd <项目名称>
 bun run start
 ```
 
+## 系统指令(需主人权限)
+
+- `状态` 查看bot的运行状态
+- `#日志` 查看最近100条运行日志
+- `#退出` 结束bot的进程
+- `#重启` 重启bot 进入后台运行
+- `#插件市场` 查看可以安装的插件
+- `#服务市场` 查看可以安装的服务
+- `#install plugin/service xxx` 安装xxx插件/服务
+- `#uninstall plugin/service xxx` 卸载xxx插件/服务
+- `#update` 查看可选插件/服务更新并选择性更新
+- `#update all/self` 更新全部/更新框架自身
+
+> 如果不想用命令，也可以在项目根目录直接使用bun管理软件包
+> 
+> 例如 `bun add mioku-plugin-60s` 或 `bunx mioku update`
+
 ## 下一步
 
 - [WebUI 的安装与使用](/guide/webui)

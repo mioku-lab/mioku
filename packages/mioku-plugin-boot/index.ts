@@ -13,6 +13,16 @@ import {
 } from "./configs/base";
 import { registerLikeCommand } from "./commands/like";
 import { registerWelcomeHandler } from "./commands/welcome";
+import { registerUpdateCommands } from "./commands/update";
+import { registerInstallCommands } from "./commands/install";
+import { registerMarketCommands } from "./commands/market";
+import { registerRestartCommand } from "./commands/restart";
+import { registerLogCommand } from "./commands/log";
+import {
+  cleanupStaleRestartScripts,
+  consumeRestartMarker,
+  notifyRestartComplete,
+} from "./system/restart";
 import { registerAutoApprove } from "./notify/auto-approve";
 import { ensureAccessControlConfig } from "./filter/access-legacy-shim";
 import { createAccessControlPatcher } from "./filter/access-patcher";
@@ -71,9 +81,22 @@ export default definePlugin({
 
     await registerPluginArtifacts(ctx);
 
+    cleanupStaleRestartScripts();
+    const restartMarker = consumeRestartMarker();
+    if (restartMarker) {
+      notifyRestartComplete(ctx, restartMarker).catch((err) => {
+        ctx.logger.error(`[boot] 重启完成通知失败: ${err}`);
+      });
+    }
+
     disposers.push(registerLikeCommand(ctx, () => baseConfig));
     disposers.push(registerAutoApprove(ctx, () => baseConfig));
     disposers.push(registerWelcomeHandler(ctx, aiService, () => baseConfig));
+    disposers.push(registerUpdateCommands(ctx));
+    disposers.push(registerInstallCommands(ctx));
+    disposers.push(registerMarketCommands(ctx));
+    disposers.push(registerRestartCommand(ctx));
+    disposers.push(registerLogCommand(ctx));
 
     logger.info("========================================");
     logger.info("          Mioku 服务初始化完成");
