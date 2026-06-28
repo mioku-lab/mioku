@@ -7,7 +7,8 @@
  * plugin names, titles, command aliases, and Chinese/English substrings.
  */
 
-import type { PluginHelp } from "mioku";
+import type { CommandRole, PluginHelp } from "mioku";
+import { canInvokeCommand } from "./role";
 import { STOPWORDS } from "./role-config";
 import type {
   HelpImageIntent,
@@ -89,15 +90,27 @@ function extractCommandAlias(command: string): string | null {
  * rendered entries are the source of truth for both keyword scoring
  * (in this file) and the HTML renderer's overview list. Exported so
  * `html-generator.ts` can reuse it instead of duplicating the logic.
+ *
+ * `viewerRole` filters out commands above the requester's permission
+ * level so the overview/detail views don't show commands they can't
+ * invoke. Defaults to `"master"` so callers that don't yet know the
+ * viewer (e.g. AI skill listings) keep the full registry.
  */
 export function getRenderableEntries(
   helpMap: Map<string, PluginHelp>,
+  viewerRole: CommandRole = "master",
 ): HelpRenderableEntry[] {
   return Array.from(helpMap.entries())
     .map(([pluginName, help]) => {
       const title = String(help.title || pluginName).trim() || pluginName;
       const description = String(help.description || "").trim();
-      const commands = Array.isArray(help.commands) ? help.commands : [];
+      const allCommands = Array.isArray(help.commands) ? help.commands : [];
+      const commands = allCommands.filter((command) =>
+        canInvokeCommand(
+          viewerRole,
+          command.role as CommandRole | undefined,
+        ),
+      );
       const normalizedPluginName = normalizeForMatch(pluginName);
       const normalizedTitle = normalizeForMatch(title);
 
@@ -113,7 +126,7 @@ export function getRenderableEntries(
         keys.add(token);
       }
 
-      const commandAliases = commands
+      const commandAliases = allCommands
         .map((command) => extractCommandAlias(command.cmd))
         .filter((value): value is string => Boolean(value));
       for (const alias of commandAliases) {

@@ -157,7 +157,7 @@ export class IdleCheckManager {
           const result = await this.runWithRateLimitGuard(
             () => this.runChat(this.aiInstance, toolCtx, history, targetMessage, {
               config: cfg, botNickname, botRole: toolCtx.botRole, aiService: this.aiService, isGroup: true,
-              plannerThoughts: "You stumbled upon some message in this group and decided to reply.\nQuote messages from group friends appropriately (using [[[reply:message ID]]] format).\nDon't mention your intentions like \"I'm here to answer\".",
+              plannerThoughts: "You stumbled upon some message in this group and decided to reply.\nQuote messages from group friends appropriately (using [reply:message ID] format).\nDon't mention your intentions like \"I'm here to answer\".",
               replyContext: { type: "idle" },
             }, this.humanize, this.skillManager),
             { groupId, label: "idle-check" },

@@ -72,12 +72,19 @@ export async function runChat(
       return isSkillAllowedForRole(skill, toolCtx.triggerSkillRole);
     },
   );
+  const emotionState = await humanize.emotionAgent.refreshIfNeeded({
+    sessionId: toolCtx.sessionId,
+    botNickname: promptCtx.botNickname,
+    chatHistory: history,
+    targetMessage,
+  });
   const prompt = buildSystemPrompt({
     ...promptCtx,
     triggerSkillRole: toolCtx.triggerSkillRole,
     activeSkillsInfo: activeSkillsInfo || undefined,
     chatHistory: history,
     targetMessage,
+    currentEmotion: emotionState.current,
     emojiAgent: humanize.emojiAgent,
     skillManager,
     sessionId: toolCtx.sessionId,
@@ -153,6 +160,7 @@ export async function runChat(
   ): Promise<void> => {
     const text = cleanMarkers(segment)
       .replace(/\[meme:[^\]]+\]/gi, "")
+      .replace(/\[emotion:[^\]]+\]/gi, "")
       .replace(/\r/g, "")
       .trim();
     if (!text || text === "---") {
@@ -304,6 +312,14 @@ export async function runChat(
       targetMessage,
       failedToolCalls,
     );
+  }
+
+  if (cleanedText.trim()) {
+    const emotionIntent = humanize.emotionAgent.parseEmotionIntent(cleanedText);
+    if (emotionIntent) {
+      humanize.emotionAgent.setEmotion(toolCtx.sessionId, emotionIntent);
+    }
+    cleanedText = humanize.emotionAgent.cleanEmotionMarkers(cleanedText).trim();
   }
 
   let emojiPath: string | null = null;

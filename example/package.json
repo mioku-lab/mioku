@@ -8,7 +8,9 @@
     "mioku-plugin-admin": "workspace:*",
     "mioku-plugin-boot": "workspace:*",
     "mioku-plugin-chat": "workspace:*",
+    "mioku-plugin-deerpipe": "workspace:*",
     "mioku-plugin-help": "workspace:*",
+    "mioku-plugin-impact": "workspace:*",
     "mioku-plugin-mc": "workspace:*",
     "mioku-plugin-media": "workspace:*",
     "mioku-plugin-meme": "workspace:*",
@@ -41,7 +43,9 @@
       "media",
       "music",
       "meme",
-      "mc"
+      "mc",
+      "deerpipe",
+      "impact"
     ],
     "log_level": "info",
     "napcat": [

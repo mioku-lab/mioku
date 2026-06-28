@@ -9,6 +9,7 @@ import {
   replyWithImage,
   resolveHelpBotProfile,
   resolveHelpImageIntent,
+  resolveViewerRole,
 } from "./help";
 import { getRenderVersions } from "./utils";
 import { resetHelpRuntimeState, setHelpRuntimeState } from "./runtime";
@@ -130,6 +131,7 @@ const helpPlugin = definePlugin({
 
       try {
         const { botNickname, botAvatarUrl } = resolveHelpBotProfile(ctx, event);
+        const viewerRole = await resolveViewerRole(ctx, event);
         const imagePath = await generateHelpImage({
           helpService,
           screenshotService,
@@ -139,6 +141,7 @@ const helpPlugin = definePlugin({
           botAvatarUrl,
           targetPluginName:
             intent.type === "detail" ? intent.pluginName : undefined,
+          viewerRole,
         });
 
         if (!imagePath) {

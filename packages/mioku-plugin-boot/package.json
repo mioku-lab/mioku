@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-boot",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Mioku 引导与系统功能插件",
   "main": "index.ts",
   "type": "module",
@@ -14,7 +14,8 @@
   "mioku": {
     "services": [
       "config",
-      "ai"
+      "ai",
+      "screenshot"
     ],
     "accessHooks": [
       {
@@ -22,7 +23,53 @@
         "match": "赞我",
         "description": "匹配 boot.likeCommand.keyword 触发的点赞指令"
       }
-    ]
+    ],
+    "help": {
+      "title": "系统",
+      "description": "Mioku 引导与系统功能插件，提供更新、安装、市场、重启等主人指令",
+      "commands": [
+        {
+          "cmd": "赞我",
+          "desc": "给你点个大大的赞",
+          "role": "member"
+        },
+        {
+          "cmd": "?update <all>",
+          "desc": "检查并选择插件/服务更新",
+          "role": "master"
+        },
+        {
+          "cmd": "?update <plugin|service> <名称>",
+          "desc": "更新指定插件/服务",
+          "role": "master"
+        },
+        {
+          "cmd": "?install <plugin|service> <名称>",
+          "desc": "从 npm 安装插件/服务",
+          "role": "master"
+        },
+        {
+          "cmd": "?uninstall <plugin|service> <名称>",
+          "desc": "卸载插件/服务",
+          "role": "master"
+        },
+        {
+          "cmd": "?<插件|服务>市场",
+          "desc": "查看可安装的插件/服务市场",
+          "role": "master"
+        },
+        {
+          "cmd": "?<重启|restart>",
+          "desc": "重启机器人进程",
+          "role": "master"
+        },
+        {
+          "cmd": "?日志",
+          "desc": "查看最近100条日志",
+          "role": "master"
+        }
+      ]
+    }
   },
   "peerDependencies": {
     "mioku": "^0.8.0",

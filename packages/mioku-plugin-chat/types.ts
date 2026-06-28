@@ -3,14 +3,14 @@ import type { MiokiContext } from "mioki";
 import type { AITool, AIService, SkillPermissionRole } from "mioku";
 import type { ChatDatabase } from "./db";
 
-/**
- * 人格状态配置
- */
-export interface PersonalityConfig {
-  // 状态列表
-  states: string[];
-  // 切换到其他状态的概率 (0-1)
-  stateProbability: number;
+export interface EmotionEntryConfig {
+  examples: string[];
+}
+
+export interface EmotionConfig {
+  defaultEmotion: string;
+  updateIntervalMs: number;
+  emotions: Record<string, EmotionEntryConfig>;
 }
 
 /**
@@ -208,7 +208,7 @@ export interface ChatConfig {
   cooldownAfterReplyMs: number;
   aiRequestLimits: AIRequestLimitConfig;
   dynamicDelay: DynamicDelayConfig;
-  personality: PersonalityConfig;
+  emotion: EmotionConfig;
   replyStyle: ReplyStyleConfig;
   memory: MemoryConfig;
   topic: TopicConfig;

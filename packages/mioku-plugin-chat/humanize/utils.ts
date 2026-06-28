@@ -13,16 +13,3 @@ export function pickReplyStyle(config: ChatConfig): string {
   }
   return base;
 }
-
-export function pickPersonalityState(config: ChatConfig): string | null {
-  const { personality } = config;
-  if (!personality) return null;
-
-  const states = personality.states || [];
-  const prob = personality.stateProbability ?? 0;
-
-  if (states.length > 0 && prob > 0 && Math.random() < prob) {
-    return states[Math.floor(Math.random() * states.length)];
-  }
-  return null;
-}

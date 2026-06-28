@@ -5,7 +5,7 @@ export const SETTINGS_CONFIG = {
     timeoutMs: 8000,
     defaultLimit: 5,
     maxLimit: 8,
-    maxSearchCount: 2,
+    maxSearchCount: 4,
   },
   webReader: {
     enabled: true,

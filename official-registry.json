@@ -7,7 +7,10 @@
     "media": { "npm": "mioku-plugin-media" },
     "chat": { "npm": "mioku-plugin-chat" },
     "help": { "npm": "mioku-plugin-help" },
-    "boot": { "npm": "mioku-plugin-boot" }
+    "boot": { "npm": "mioku-plugin-boot" },
+    "me": { "npm": "mioku-plugin-mc" },
+    "deerpipe": { "npm": "mioku-plugin-deerpipe" },
+    "impact": { "npm": "mioku-plugin-impact" }
   },
   "services": {
     "60s": { "npm": "mioku-service-60s" },

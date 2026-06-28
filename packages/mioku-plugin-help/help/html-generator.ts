@@ -12,11 +12,20 @@
  */
 
 import type { CommandRole, PluginHelp } from "mioku";
+import { botConfig } from "mioki";
 import { escapeHtml } from "../utils";
 import { getHelpTheme, HELP_BACKGROUND_IMAGE_URL } from "../theme";
 import { getRenderableEntries } from "./intent";
 import { ROLE_CONFIG } from "./role-config";
 import type { HelpRenderableEntry } from "./types";
+
+function resolvePrefixPlaceholder(cmd: string): string {
+  const value = String(cmd || "");
+  if (value.startsWith("?")) {
+    return `${botConfig.prefix ?? "#"}${value.slice(1)}`;
+  }
+  return value;
+}
 
 function renderRoleBadge(
   role: CommandRole,
@@ -38,7 +47,7 @@ function renderPluginOverview(entry: HelpRenderableEntry): string {
   const commandTags = entry.commands
     .map(
       (command) =>
-        `<span class="help-command-tag" title="${escapeHtml(command.desc || "")}" >${escapeHtml(command.cmd)}</span>`,
+        `<span class="help-command-tag" title="${escapeHtml(command.desc || "")}" >${escapeHtml(resolvePrefixPlaceholder(command.cmd))}</span>`,
     )
     .join("");
 
@@ -73,7 +82,7 @@ function renderPluginDetail(
       return `
         <div class="help-command">
           <div class="help-command__top">
-            <div class="help-command__name">${escapeHtml(command.cmd)}</div>
+            <div class="help-command__name">${escapeHtml(resolvePrefixPlaceholder(command.cmd))}</div>
             ${roleBadge}
           </div>
           <div class="help-command__desc">${escapeHtml(command.desc || "")}</div>
@@ -109,6 +118,9 @@ function renderPluginDetail(
  * Build the full help image HTML. `targetPluginName` switches the
  * renderer to detail mode for that plugin (no-op if the name doesn't
  * match anything in `helpMap`).
+ *
+ * `viewerRole` filters out commands the requesting user can't invoke,
+ * so the image only surfaces what they can actually run.
  */
 export function generateHelpHtml(
   helpMap: Map<string, PluginHelp>,
@@ -118,8 +130,9 @@ export function generateHelpHtml(
   botNickname: string = "Mioku Bot",
   botAvatarUrl?: string,
   targetPluginName?: string,
+  viewerRole: CommandRole = "master",
 ): string {
-  const entries = getRenderableEntries(helpMap);
+  const entries = getRenderableEntries(helpMap, viewerRole);
   const selectedEntry = targetPluginName
     ? entries.find((entry) => entry.pluginName === targetPluginName)
     : undefined;

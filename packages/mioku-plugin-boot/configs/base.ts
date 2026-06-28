@@ -15,6 +15,7 @@ export interface BootPluginConfig {
       mode: "ai" | "text";
       text: string;
       aiPrompt: string;
+      batchWindowMs: number;
     };
   };
 }
@@ -36,6 +37,7 @@ export const BOOT_DEFAULT_CONFIG: BootPluginConfig = {
       mode: "ai",
       text: "欢迎新人～",
       aiPrompt: "",
+      batchWindowMs: 20000,
     },
   },
 };
@@ -45,7 +47,7 @@ export function cloneConfig<T>(value: T): T {
 }
 
 export function normalizeBootConfig(config: BootPluginConfig | any): BootPluginConfig {
-  return {
+  const merged: BootPluginConfig = {
     ...cloneConfig(BOOT_DEFAULT_CONFIG),
     ...(config || {}),
     likeCommand: {
@@ -64,5 +66,10 @@ export function normalizeBootConfig(config: BootPluginConfig | any): BootPluginC
         ...(config?.group?.welcome || {}),
       },
     },
-  } satisfies BootPluginConfig;
+  };
+  const raw = Number(merged.group.welcome.batchWindowMs);
+  merged.group.welcome.batchWindowMs = Number.isFinite(raw) && raw >= 0
+    ? Math.floor(raw)
+    : BOOT_DEFAULT_CONFIG.group.welcome.batchWindowMs;
+  return merged;
 }
