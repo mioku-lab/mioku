@@ -62,3 +62,28 @@ export function matchAll(
   }
   return out;
 }
+
+export interface MessageCommandMatch {
+  plugin: string;
+  command: string;
+}
+
+export function matchMessageCommands(
+  plugins: PluginMetadata[],
+  text: string,
+): MessageCommandMatch[] {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return [];
+  const out: MessageCommandMatch[] = [];
+  for (const p of plugins) {
+    const hooks = p.config?.accessHooks;
+    if (!hooks || hooks.length === 0) continue;
+    for (const hook of hooks) {
+      if (!hook.match) continue;
+      if (matchTextHook(trimmed, hook)) {
+        out.push({ plugin: p.name, command: hook.id });
+      }
+    }
+  }
+  return out;
+}

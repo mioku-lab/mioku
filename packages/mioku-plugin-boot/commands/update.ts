@@ -38,8 +38,8 @@ function conversationKey(event: any): string {
 }
 
 function typeLabel(type: string): string {
-  if (type === "plugin") return "插件";
-  if (type === "service") return "服务";
+  if (type === "plugin") return "plugin";
+  if (type === "service") return "service";
   return "框架";
 }
 
@@ -49,14 +49,17 @@ function renderUpdateList(items: UpdateAvailable[]): string {
     return `${idx + 1}. [${label}] ${item.shortName}  ${item.current} → ${item.latest}`;
   });
   return [
-    "检测到以下可更新项：",
+    "以下包存在可用更新",
     ...lines,
     "",
-    "回复编号（空格分隔）选择要更新的项，回复 all 更新全部。超时将自动取消。",
+    "用空格隔开需要更新的包编号，回复 all 更新全部",
   ].join("\n");
 }
 
-function parseSelection(text: string, total: number): { all: boolean; indices: number[] } {
+function parseSelection(
+  text: string,
+  total: number,
+): { all: boolean; indices: number[] } {
   const normalized = text.trim().toLowerCase();
   if (normalized === "all" || normalized === "全部") {
     return { all: true, indices: [] };
@@ -99,21 +102,16 @@ async function performUpdateAndReport(
   const unchanged = diffs.filter((d) => !d.changed);
 
   if (changed.length === 0) {
-    await replyText(event, "更新完成，所有包均已是最新版本。");
+    await replyText(event, "更新完成，所有包均已是最新版本");
     return;
   }
 
-  const lines = changed.map(
-    (d) => `• ${d.name}: ${d.before} → ${d.after}`,
-  );
-  const parts = [
-    `更新完成，共 ${changed.length} 个包已升级：`,
-    ...lines,
-  ];
+  const lines = changed.map((d) => `• ${d.name}: ${d.before} → ${d.after}`);
+  const parts = [`更新完成，共 ${changed.length} 个包已升级：`, ...lines];
   if (unchanged.length > 0) {
-    parts.push("", `另有 ${unchanged.length} 个包已是最新。`);
+    parts.push("", `另有 ${unchanged.length} 个包已是最新`);
   }
-  parts.push("", "重启后生效。");
+  parts.push("", "重启后生效");
   await replyText(event, parts.join("\n"));
 }
 
@@ -137,7 +135,7 @@ export function registerUpdateCommands(ctx: MiokiContext): () => void {
     if (arg === "all") {
       const managed = await updateAllManaged();
       if (managed.names.length === 0) {
-        await replyText(event, "未找到可更新的 mioku 包。");
+        await replyText(event, "未找到可更新的 mioku 包");
         return;
       }
       await performUpdateAndReport(ctx, event, managed.names);
@@ -164,8 +162,10 @@ export function registerUpdateCommands(ctx: MiokiContext): () => void {
     }
 
     if (arg !== "") {
-      await replyText(event,
-        "用法：\n/update  检查并选择更新\n/update all  更新全部\n/update mioku  更新框架\n/update plugin <名称>\n/update service <名称>");
+      await replyText(
+        event,
+        "用法：\n/update  检查并选择更新\n/update all  更新全部\n/update mioku  更新框架\n/update plugin <名称>\n/update service <名称>",
+      );
       return;
     }
 
@@ -193,7 +193,7 @@ export function registerUpdateCommands(ctx: MiokiContext): () => void {
     }
 
     if (items.length === 0) {
-      await replyText(event, "所有插件与服务均已是最新版本。");
+      await replyText(event, "所有插件与服务均已是最新版本");
       return;
     }
 
@@ -221,10 +221,14 @@ export function registerUpdateCommands(ctx: MiokiContext): () => void {
         : parsed.indices.map((i) => sel.items[i]).filter(Boolean);
 
       if (chosen.length === 0) {
-        await replyText(event, "未选择任何有效项，已取消。");
+        await replyText(event, "未选择任何有效项，已取消");
         return;
       }
-      await performUpdateAndReport(ctx, event, chosen.map((i) => i.name));
+      await performUpdateAndReport(
+        ctx,
+        event,
+        chosen.map((i) => i.name),
+      );
     });
 
     const timer = setTimeout(async () => {
@@ -232,7 +236,7 @@ export function registerUpdateCommands(ctx: MiokiContext): () => void {
       if (!sel) return;
       sel.disposer();
       pending.delete(key);
-      await replyText(event, "选择超时，已取消更新。");
+      await replyText(event, "操作超时，已取消更新");
     }, timeoutMs);
 
     pending.set(key, { disposer: listenerDispose, timer, items });

@@ -1,6 +1,7 @@
 import type { AIInstance, AIService } from "mioku";
 import type { ConfigService } from "mioku";
 import type { ScreenshotService } from "mioku";
+import { getPluginRuntimeState } from "mioku";
 import { definePlugin, MiokiContext } from "mioki";
 import type { ChatConfig, ChatMessage, TargetMessage } from "./types";
 import { initDatabase } from "./db";
@@ -41,10 +42,7 @@ import {
 import { CooldownManager } from "./manage/cooldown";
 import { IdleCheckManager } from "./manage/idle-check";
 import { QueueProcessor } from "./manage/queue-processor";
-import {
-  ChatDatabaseCleanup,
-  DEFAULT_CLEANUP_CONFIG,
-} from "./manage/cleanup";
+import { ChatDatabaseCleanup, DEFAULT_CLEANUP_CONFIG } from "./manage/cleanup";
 import {
   GroupStructuredHistoryManager,
   type StructuredUserInput,
@@ -1035,6 +1033,15 @@ const chatPlugin = definePlugin({
     aiService.registerChatRuntime(runtime);
 
     // ==================== 消息处理 ====================
+    const bootState = getPluginRuntimeState("boot") as
+      | {
+          matchMessageCommands?: (
+            text: string,
+          ) => Array<{ plugin: string; command: string }>;
+        }
+      | undefined;
+    const matchMessageCommands = bootState?.matchMessageCommands;
+
     ctx.handle("message", async (e: any) => {
       const cfg = await getConfig();
       if (!cfg.apiKey) return;
@@ -1047,6 +1054,10 @@ const chatPlugin = definePlugin({
       const userId: number = e.user_id || e.sender?.user_id;
 
       if (userId === e.self_id) return;
+
+      if (matchMessageCommands && matchMessageCommands(text).length > 0) {
+        return;
+      }
 
       // 命令处理
       if (text.startsWith("/空闲检查 ")) {

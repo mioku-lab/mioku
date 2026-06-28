@@ -1,7 +1,10 @@
 import { definePlugin, logger, type MiokiContext } from "mioki";
 import {
+  pluginManager,
   registerPluginArtifacts,
   serviceManager,
+  setPluginRuntimeState,
+  getPluginRuntimeState,
   type ConfigService,
 } from "mioku";
 import {
@@ -26,6 +29,7 @@ import { registerAutoApprove } from "./notify/auto-approve";
 import { ensureAccessControlConfig } from "./filter/access-legacy-shim";
 import { createAccessControlPatcher } from "./filter/access-patcher";
 import { normalizeAccessConfig } from "./configs/access-base";
+import { matchMessageCommands } from "./filter/matcher-registry";
 import type { AccessControlConfig } from "mioku";
 
 export default definePlugin({
@@ -78,6 +82,11 @@ export default definePlugin({
     logger.info(`访问控制已挂载: ${(ctx.bots || []).length} 个 bot`);
 
     await registerPluginArtifacts(ctx);
+
+    const bootState = getPluginRuntimeState("boot");
+    bootState.matchMessageCommands = (text: string) =>
+      matchMessageCommands(pluginManager.getAllMetadata(), text);
+    setPluginRuntimeState("boot", bootState);
 
     cleanupStaleRestartScripts();
     const restartMarker = consumeRestartMarker();
