@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-boot",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Mioku 引导与系统功能插件",
   "main": "index.ts",
   "type": "module",
@@ -22,6 +22,36 @@
         "id": "赞我",
         "match": "赞我",
         "description": "匹配 boot.likeCommand.keyword 触发的点赞指令"
+      },
+      {
+        "id": "update",
+        "match": "/^[#~\\/]update/",
+        "description": "匹配 #/~//update 系列更新指令"
+      },
+      {
+        "id": "install",
+        "match": "/^[#~\\/]install/",
+        "description": "匹配 #/~//install plugin|service <名称> 安装指令"
+      },
+      {
+        "id": "uninstall",
+        "match": "/^[#~\\/]uninstall/",
+        "description": "匹配 #/~//uninstall plugin|service <名称> 卸载指令"
+      },
+      {
+        "id": "market",
+        "match": "/^[#~\\/](插件市场|服务市场|plugin-market|service-market)$/",
+        "description": "匹配插件/服务市场查看指令"
+      },
+      {
+        "id": "restart",
+        "match": "/^[#~\\/](重启|restart)$/",
+        "description": "匹配 #/~//重启 / restart 重启指令"
+      },
+      {
+        "id": "log",
+        "match": "/^[#~\\/](日志|log)$/",
+        "description": "匹配 #/~//日志 / log 日志查看指令"
       }
     ],
     "help": {

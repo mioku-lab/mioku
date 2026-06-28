@@ -2,7 +2,6 @@ import { definePlugin, logger, type MiokiContext } from "mioki";
 import {
   registerPluginArtifacts,
   serviceManager,
-  type AIService,
   type ConfigService,
 } from "mioku";
 import {
@@ -12,7 +11,7 @@ import {
   type BootPluginConfig,
 } from "./configs/base";
 import { registerLikeCommand } from "./commands/like";
-import { registerWelcomeHandler } from "./commands/welcome";
+import { registerMinMemberCheck } from "./commands/min-member";
 import { registerUpdateCommands } from "./commands/update";
 import { registerInstallCommands } from "./commands/install";
 import { registerMarketCommands } from "./commands/market";
@@ -42,7 +41,6 @@ export default definePlugin({
     await serviceManager.loadAllServices(ctx);
 
     const configService = ctx.services?.config as ConfigService | undefined;
-    const aiService = ctx.services?.ai as AIService | undefined;
     let baseConfig: BootPluginConfig = cloneConfig(BOOT_DEFAULT_CONFIG);
     const disposers: Array<() => void> = [];
 
@@ -91,7 +89,7 @@ export default definePlugin({
 
     disposers.push(registerLikeCommand(ctx, () => baseConfig));
     disposers.push(registerAutoApprove(ctx, () => baseConfig));
-    disposers.push(registerWelcomeHandler(ctx, aiService, () => baseConfig));
+    disposers.push(registerMinMemberCheck(ctx, () => baseConfig));
     disposers.push(registerUpdateCommands(ctx));
     disposers.push(registerInstallCommands(ctx));
     disposers.push(registerMarketCommands(ctx));

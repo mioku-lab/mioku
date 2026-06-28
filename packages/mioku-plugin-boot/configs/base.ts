@@ -10,13 +10,6 @@ export interface BootPluginConfig {
   };
   group: {
     minMemberCount: number;
-    welcome: {
-      enabled: boolean;
-      mode: "ai" | "text";
-      text: string;
-      aiPrompt: string;
-      batchWindowMs: number;
-    };
   };
 }
 
@@ -32,13 +25,6 @@ export const BOOT_DEFAULT_CONFIG: BootPluginConfig = {
   },
   group: {
     minMemberCount: 0,
-    welcome: {
-      enabled: true,
-      mode: "ai",
-      text: "欢迎新人～",
-      aiPrompt: "",
-      batchWindowMs: 20000,
-    },
   },
 };
 
@@ -61,15 +47,10 @@ export function normalizeBootConfig(config: BootPluginConfig | any): BootPluginC
     group: {
       ...cloneConfig(BOOT_DEFAULT_CONFIG.group),
       ...(config?.group || {}),
-      welcome: {
-        ...cloneConfig(BOOT_DEFAULT_CONFIG.group.welcome),
-        ...(config?.group?.welcome || {}),
-      },
+      minMemberCount:
+        Number(config?.group?.minMemberCount) ||
+        BOOT_DEFAULT_CONFIG.group.minMemberCount,
     },
   };
-  const raw = Number(merged.group.welcome.batchWindowMs);
-  merged.group.welcome.batchWindowMs = Number.isFinite(raw) && raw >= 0
-    ? Math.floor(raw)
-    : BOOT_DEFAULT_CONFIG.group.welcome.batchWindowMs;
   return merged;
 }
