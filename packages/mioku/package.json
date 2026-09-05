@@ -1,7 +1,7 @@
 {
   "name": "mioku",
   "type": "module",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "packageManager": "bun@1.2.0",
   "description": "Mioku - A plugin-based QQ bot framework",
   "keywords": [

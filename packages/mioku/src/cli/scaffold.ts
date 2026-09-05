@@ -143,6 +143,7 @@ export async function scaffoldCommand(version: string): Promise<number> {
     dependencies: {
       mioku: "latest",
       ...Object.fromEntries(allAdapterNames.map((p) => [p, "latest"])),
+      ...Object.fromEntries(SYSTEM_PLUGINS.map((p) => [p, "latest"])),
     },
     mioku: {
       prefix: ".",
