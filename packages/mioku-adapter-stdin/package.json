@@ -1,7 +1,7 @@
 {
   "name": "mioku-adapter-stdin",
   "type": "module",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Stdin adapter for mioku: drive your bot directly from the terminal.",
   "keywords": [
     "mioku"
