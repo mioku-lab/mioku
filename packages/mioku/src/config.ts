@@ -20,7 +20,7 @@ export interface MiokuConfig {
   status_permission?: "all" | "admin-only";
   /** 去重选项 */
   dedup?: {
-    /** 跨适配器指纹去重 */
+    /** 跨适配器事件关联去重 */
     cross_adapter?: boolean;
   };
   adapters?: Record<string, unknown>;

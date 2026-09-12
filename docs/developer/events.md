@@ -93,7 +93,7 @@ ctx.handle("message", async (event) => {
   event.user_id;      // 发送者
   event.group_id;     // 群号（群消息时）
   event.sender;       // 发送者信息（昵称、角色）
-  event.is_to_me;     // 是否 at 了机器人
+  event.is_to_me;     // 适配器原生判断：是否 at 了「这条事件自己那台 bot」
   event.quote_id;     // 引用的消息 id（有引用时）
 
   // 回复这条消息
@@ -103,6 +103,10 @@ ctx.handle("message", async (event) => {
   await event.recall();
 });
 ```
+
+> 多适配器 / 多 bot 场景下，「是否 @ 到了本运行时的某台 bot」应该用 `ctx.mentionedBots(event)`，
+> 「该由哪台 bot 回应」应该用 `ctx.pickReplyBot(event)`。`is_to_me` 只描述「这条事件自己那台 bot」，
+> 跨适配器去重后它可能并不是被 @ 的那一台。详见[消息与事件去重](/advanced/event-dedup)。
 
 ### 通知事件（notice）
 

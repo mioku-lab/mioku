@@ -32,7 +32,7 @@ import type { TaskContext } from 'node-cron'
 import type { CapabilityRegistry } from '../adapter'
 import type { BotRegistry } from './bots'
 import type { Message, MessageInput } from '../adapter'
-import { CrossAdapterEventDeduplicator } from './cross-adapter-dedup'
+import type { CorrelationRecord, CorrelationStats, EventCorrelator } from './event-correlator'
 
 /** 插件管理器：插件列表查询与运行时启停 */
 export interface PluginManager {
@@ -56,7 +56,8 @@ export interface ContextOptions {
   readonly listAdapters: () => readonly Adapter[]
   readonly onUpdateConfig: (updater: (config: MiokuConfig) => void | Promise<void>) => Promise<void>
   readonly pluginManager: PluginManager
-  readonly dedup?: boolean
+  /** runtime 级事件关联器；缺省时不做跨适配器去重 */
+  readonly correlator?: EventCorrelator
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -207,6 +208,67 @@ export class MiokuContext {
   }
 
   /**
+   * 取事件所属的跨适配器关联记录。
+   * 同一条逻辑消息被多个适配器/bot 投递时，可从这里读到全部参与方。
+   */
+  correlation(event: Event): CorrelationRecord | undefined {
+    return this.#options.correlator?.observationOf(event)?.record
+  }
+
+  /**
+   * 观察到该事件的全部已连接 bot（首个即 primary）。
+   * 跨适配器去重后，被标记为重复的投递不会进入普通 handler，
+   * 但这里依然能看到全部参与方。
+   */
+  botsForEvent(event: Event): Bot[] {
+    const record = this.correlation(event)
+    if (!record) {
+      const bot = (event as { bot?: Bot }).bot
+      return bot ? [bot] : []
+    }
+    const resolved: Bot[] = []
+    for (const participant of record.participants) {
+      const bot = participant.botId
+        ? (this.#options.bots.find(participant.adapter, participant.botId) ??
+          this.#options.bots.pick(participant.botId))
+        : undefined
+      if (bot && !resolved.includes(bot)) resolved.push(bot)
+    }
+    return resolved
+  }
+
+  /** 事件里被 @ 到的、且本运行时已连接的 bot */
+  mentionedBots(event: Event): Bot[] {
+    if (event.kind !== 'message') return []
+    const targets = new Set<string>()
+    for (const segment of event.message) {
+      if (segment.type !== 'at') continue
+      const data = segment.data ?? {}
+      const target = (data as { qq?: unknown; target?: unknown }).qq ?? (data as { target?: unknown }).target
+      if (target != null && String(target) !== '') targets.add(String(target))
+    }
+    if (targets.size === 0) return []
+    return this.#options.bots.all().filter((bot) => targets.has(String(bot.bot_id)))
+  }
+
+  /**
+   * 这条消息应当由哪个 bot 回应：优先「被 @ 的 bot」，其次是关联组里首个到达的 bot。
+   * 插件可用它替代隐式的 `event.bot`，从而不受适配器到达顺序影响。
+   */
+  pickReplyBot(event: Event): Bot | undefined {
+    const mentioned = this.mentionedBots(event)
+    if (mentioned.length > 0) return mentioned[0]
+    const participants = this.botsForEvent(event)
+    if (participants.length > 0) return participants[0]
+    return (event as { bot?: Bot }).bot
+  }
+
+  /** 事件关联/去重的运行统计 */
+  correlationStats(): CorrelationStats | undefined {
+    return this.#options.correlator?.stats()
+  }
+
+  /**
    * 获取事件引用回复的消息内容。
    * 返回 null 表示没有引用、拿不到对应 bot 或消息已失效。
    */
@@ -247,10 +309,10 @@ export class MiokuContext {
     const routes = inputRoutes.map((item) => item.startsWith('!') ? item.slice(1) : item)
     const source = `plugin:${this.#options.pluginName}`
     const handledEvents = new WeakSet<Event>()
-    const dedup = bypassDedup || this.#options.dedup === false ? null : new CrossAdapterEventDeduplicator()
+    const correlator = bypassDedup ? undefined : this.#options.correlator
     const wrappedHandler = async (event: Event): Promise<void> => {
       if (handledEvents.has(event)) return
-      if (dedup?.isDuplicate(event)) return
+      if (correlator?.isDuplicate(event)) return
       handledEvents.add(event)
       await handler(event as RouteEvent<R>)
     }

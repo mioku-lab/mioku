@@ -146,7 +146,8 @@ function buildMessageEvent(bot: EchoBot, line: string): MessageEvent {
 
 - **`kind`**：事件大类，消息事件就是 `"message"`。框架靠它分发到对应的类型守卫
 - **`routes`**：用 `buildRoutes(adapter, ...parts)` 生成——它会从细到粗构造一整套路由（`echo:message.private`、`echo:message`、`echo`、`message.private`、`message`），插件监听任意一层都能收到
-- **`identity`**：事件的全局标识，日志和去重都靠它
+- **`identity`**：事件级标识（适配器、bot、事件类型、平台消息 id、时间戳）。核心的跨适配器关联去重从这里取 `event_type` / `timestamp` / `message_id`
+- **`at` 段**：把平台的 @ 归一化成 `at` 段（`data.qq` 或 `data.target`）。核心的 `ctx.mentionedBots` 依赖它来判断「@ 到了哪台 bot」
 - **`bot` / `self_id`**：指向触发事件的 bot
 - **`reply` / `recall`**：便捷方法，内部转发到 bot 的能力
 

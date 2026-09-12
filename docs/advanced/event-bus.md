@@ -58,4 +58,4 @@ off(); // 取消注册
 
 ## 事件去重
 
-`ctx.handle` 除了用 WeakSet 防止同一个事件对象重复执行，还会对不同 Bot/适配器构造出的等价事件做指纹去重。需要逐条处理时，可以用 `ctx.handle("!message", handler)` 绕过指纹去重。完整规则见[消息与事件去重](/advanced/event-dedup)。
+`ctx.handle` 除了用 WeakSet 防止同一个事件对象重复执行，还会跳过被核心关联器标记为「跨 Bot/适配器重复」的投递。适配器只负责无损投递并填好 `identity`，去重策略完全由核心持有；需要逐条处理时，可以用 `ctx.handle("!message", handler)` 绕过过滤，并用 `ctx.botsForEvent(event)` 拿到全部参与方。完整规则见[消息与事件去重](/advanced/event-dedup)。

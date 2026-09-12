@@ -1,68 +1,78 @@
-import type { Bot, BotContext } from '../adapter'
-import type { Capability } from '../adapter'
-import type { AdapterContext, AdapterGateway, AdapterResource, BotLifecycleEvent, CapabilityTarget } from '../adapter'
-import type { Driver } from '../driver'
-import type { Event } from '../adapter'
-import type { CapabilityRegistry } from '../adapter'
-import type { EventBus } from './bus'
-import type { Logger } from '../logger'
-import type { BotRegistry } from './bots'
-import type { Adapter } from '../adapter'
+import type { Bot, BotContext } from "../adapter";
+import type { Capability } from "../adapter";
+import type {
+  AdapterContext,
+  AdapterGateway,
+  AdapterResource,
+  BotLifecycleEvent,
+  CapabilityTarget,
+} from "../adapter";
+import type { Driver } from "../driver";
+import type { Event } from "../adapter";
+import type { CapabilityRegistry } from "../adapter";
+import type { EventBus } from "./bus";
+import type { Logger } from "../logger";
+import type { BotRegistry } from "./bots";
+import type { Adapter } from "../adapter";
+import type { EventCorrelator } from "./event-correlator";
 
 export class AdapterRegistrationConflictError extends Error {
   constructor(key: string) {
-    super(`Bot already registered for ${key}`)
-    this.name = 'AdapterRegistrationConflictError'
+    super(`Bot already registered for ${key}`);
+    this.name = "AdapterRegistrationConflictError";
   }
 }
 
 export interface RuntimeAdapterState {
-  readonly definition: import('../adapter/types').AdapterDefinition<unknown>
-  instance: Adapter | null
-  context: AdapterContextImpl | null
-  gateways: AdapterGateway[] | null
-  resources: AdapterResource[] | null
-  started: boolean
+  readonly definition: import("../adapter/types").AdapterDefinition<unknown>;
+  instance: Adapter | null;
+  context: AdapterContextImpl | null;
+  gateways: AdapterGateway[] | null;
+  resources: AdapterResource[] | null;
+  started: boolean;
 }
 
 export class AdapterContextImpl implements AdapterContext {
-  readonly #state: RuntimeAdapterState
-  readonly #bots: BotRegistry
-  readonly #bus: EventBus
-  readonly #driver: Driver
-  readonly #capabilities: CapabilityRegistry
-  readonly #logger: Logger
-  readonly #emit: (event: BotLifecycleEvent) => Promise<void>
-  readonly #pendingStarts = new Set<Promise<void>>()
+  readonly #state: RuntimeAdapterState;
+  readonly #bots: BotRegistry;
+  readonly #bus: EventBus;
+  readonly #driver: Driver;
+  readonly #capabilities: CapabilityRegistry;
+  readonly #logger: Logger;
+  readonly #emit: (event: BotLifecycleEvent) => Promise<void>;
+  readonly #correlator: EventCorrelator | undefined;
+  readonly #pendingStarts = new Set<Promise<void>>();
 
   constructor(options: {
-    state: RuntimeAdapterState
-    bots: BotRegistry
-    bus: EventBus
-    driver: Driver
-    capabilities: CapabilityRegistry
-    logger: Logger
-    emit: (event: BotLifecycleEvent) => Promise<void>
+    state: RuntimeAdapterState;
+    bots: BotRegistry;
+    bus: EventBus;
+    driver: Driver;
+    capabilities: CapabilityRegistry;
+    logger: Logger;
+    emit: (event: BotLifecycleEvent) => Promise<void>;
+    correlator?: EventCorrelator;
   }) {
-    this.#state = options.state
-    this.#bots = options.bots
-    this.#bus = options.bus
-    this.#driver = options.driver
-    this.#capabilities = options.capabilities
-    this.#logger = options.logger
-    this.#emit = options.emit
+    this.#state = options.state;
+    this.#bots = options.bots;
+    this.#bus = options.bus;
+    this.#driver = options.driver;
+    this.#capabilities = options.capabilities;
+    this.#logger = options.logger;
+    this.#emit = options.emit;
+    this.#correlator = options.correlator;
   }
 
   registerBot(bot: Bot): BotContext {
-    return this.#bots.register(bot)
+    return this.#bots.register(bot);
   }
 
   unregisterBot(bot_id: string): void {
-    this.#bots.unregister(bot_id, this.#state.definition.name)
+    this.#bots.unregister(bot_id, this.#state.definition.name);
   }
 
   getDriver(): Driver {
-    return this.#driver
+    return this.#driver;
   }
 
   registerCapability<I, O>(
@@ -73,111 +83,121 @@ export class AdapterContextImpl implements AdapterContext {
     const finalTarget: CapabilityTarget = {
       ...target,
       adapter: target.adapter ?? this.#state.definition.name,
-    }
-    return this.#capabilities.register(capability, finalTarget, handler)
+    };
+    return this.#capabilities.register(capability, finalTarget, handler);
   }
 
   getCapabilityRegistry(): CapabilityRegistry {
-    return this.#capabilities
+    return this.#capabilities;
   }
 
   registerGateway(gateway: AdapterGateway): () => void {
     if (!this.#state.gateways) {
-      throw new Error('registerGateway called outside of adapter start()')
+      throw new Error("registerGateway called outside of adapter start()");
     }
     if (this.#state.gateways.find((g) => g.name === gateway.name)) {
-      throw new Error(`Gateway "${gateway.name}" already registered for adapter "${this.#state.definition.name}"`)
+      throw new Error(
+        `Gateway "${gateway.name}" already registered for adapter "${this.#state.definition.name}"`,
+      );
     }
-    this.#state.gateways.push(gateway)
+    this.#state.gateways.push(gateway);
     const startPromise = Promise.resolve(gateway.start()).then(
       () => undefined,
       (err: unknown) => {
-        this.#logger.error(`Gateway "${gateway.name}" failed to start`, err)
-        throw err
+        this.#logger.error(`Gateway "${gateway.name}" failed to start`, err);
+        throw err;
       },
-    )
-    this.#pendingStarts.add(startPromise)
+    );
+    this.#pendingStarts.add(startPromise);
     void startPromise.then(
       () => this.#pendingStarts.delete(startPromise),
       () => this.#pendingStarts.delete(startPromise),
-    )
+    );
     return () => {
-      const idx = this.#state.gateways?.indexOf(gateway) ?? -1
+      const idx = this.#state.gateways?.indexOf(gateway) ?? -1;
       if (idx >= 0 && this.#state.gateways) {
-        this.#state.gateways.splice(idx, 1)
-        void Promise.resolve(gateway.stop('unregistered')).catch(() => undefined)
+        this.#state.gateways.splice(idx, 1);
+        void Promise.resolve(gateway.stop("unregistered")).catch(
+          () => undefined,
+        );
       }
-    }
+    };
   }
 
   async waitForStarts(): Promise<void> {
-    await Promise.all(this.#pendingStarts)
+    await Promise.all(this.#pendingStarts);
   }
 
   registerResource(resource: AdapterResource): () => void {
     if (!this.#state.resources) {
-      throw new Error('registerResource called outside of adapter start()')
+      throw new Error("registerResource called outside of adapter start()");
     }
-    if (resource.scope === 'gateway' && !resource.gateway) {
-      throw new Error('Resource with scope "gateway" requires gateway name')
+    if (resource.scope === "gateway" && !resource.gateway) {
+      throw new Error('Resource with scope "gateway" requires gateway name');
     }
-    if (resource.scope === 'bot' && !resource.bot_id) {
-      throw new Error('Resource with scope "bot" requires bot_id')
+    if (resource.scope === "bot" && !resource.bot_id) {
+      throw new Error('Resource with scope "bot" requires bot_id');
     }
-    if (resource.scope === 'gateway') {
-      const gateway = this.#state.gateways?.find((g) => g.name === resource.gateway)
+    if (resource.scope === "gateway") {
+      const gateway = this.#state.gateways?.find(
+        (g) => g.name === resource.gateway,
+      );
       if (!gateway) {
-        throw new Error(`Resource references unknown gateway "${resource.gateway}"`)
+        throw new Error(
+          `Resource references unknown gateway "${resource.gateway}"`,
+        );
       }
     }
-    if (resource.scope === 'bot') {
-      const key = `${this.#state.definition.name}:${resource.bot_id}`
+    if (resource.scope === "bot") {
+      const key = `${this.#state.definition.name}:${resource.bot_id}`;
       if (!this.#bots.has(key)) {
-        throw new Error(`Resource references unknown bot "${resource.bot_id}"`)
+        throw new Error(`Resource references unknown bot "${resource.bot_id}"`);
       }
     }
-    this.#state.resources.push(resource)
+    this.#state.resources.push(resource);
     return () => {
-      const idx = this.#state.resources?.indexOf(resource) ?? -1
+      const idx = this.#state.resources?.indexOf(resource) ?? -1;
       if (idx >= 0 && this.#state.resources) {
-        this.#state.resources.splice(idx, 1)
-        void Promise.resolve(resource.dispose('unregistered')).catch(() => undefined)
+        this.#state.resources.splice(idx, 1);
+        void Promise.resolve(resource.dispose("unregistered")).catch(
+          () => undefined,
+        );
       }
-    }
+    };
   }
 
   async dispatch(event: Event): Promise<void> {
-    if (event.kind === 'message') {
-      // 发送者是本运行时里另一台已连接 bot（如同群的其它 bot 实例）时，
-      // 不进入任何 handler，切断 bot 互相触发导致的循环。
-      // 发送者恰为接收 bot 自身 id 的消息（自身回显、stdin 控制台用户）保持原行为，
-      // 由插件层的 self 过滤与 owner 体系处理。
-      const senderId = event.user_id
+    this.#correlator?.observe(event);
+    if (event.kind === "message") {
+      const senderId = event.user_id;
       if (senderId != null) {
-        const senderBot = this.#bots.pick(senderId)
+        const senderBot = this.#bots.pick(senderId);
         if (senderBot && senderBot.bot_id !== event.self_id) {
           this.#logger.debug(
             `拦截来自其他已连接 bot 的消息: sender=${senderId} self=${event.self_id}`,
-          )
-          return
+          );
+          return;
         }
       }
     }
-    await this.#bus.dispatch(event)
+    await this.#bus.dispatch(event);
   }
 
-  listen(route: string, handler: (event: Event) => void | Promise<void>): () => void {
+  listen(
+    route: string,
+    handler: (event: Event) => void | Promise<void>,
+  ): () => void {
     return this.#bus.register(route, handler, {
       source: `adapter:${this.adapterName}`,
       priority: 0,
-    })
+    });
   }
 
   emitLifecycle(event: BotLifecycleEvent): Promise<void> {
-    return this.#emit(event)
+    return this.#emit(event);
   }
 
   get adapterName(): string {
-    return this.#state.definition.name
+    return this.#state.definition.name;
   }
 }

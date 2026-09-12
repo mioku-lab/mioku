@@ -22,6 +22,7 @@ export * from "./capabilities";
 export * from "./runtime/bus";
 export * from "./runtime/bots";
 export * from "./runtime/context";
+export * from "./runtime/event-correlator";
 export * from "./runtime/lifecycle";
 export * from "./runtime/mioku-context";
 export * from "./runtime/runtime";

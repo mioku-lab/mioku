@@ -20,6 +20,7 @@ import { EventBus } from "./bus";
 import { AdapterContextImpl } from "./context";
 import type { RuntimeAdapterState } from "./context";
 import { MiokuContext } from "./mioku-context";
+import { EventCorrelator } from "./event-correlator";
 import { BUILTIN_PLUGINS as DEFAULT_BUILTIN_PLUGINS } from "../builtin";
 import {
   createImportContext,
@@ -49,9 +50,9 @@ export interface CreateRuntimeOptions {
   readonly logger: Logger;
   readonly builtinPlugins?: readonly MiokuPlugin[];
   readonly driverFactory?: () => Driver;
-  /** 去重选项；缺省全部开启 */
+  /** 去重选项；缺省开启 */
   readonly dedup?: {
-    /** 跨适配器指纹去重 */
+    /** 跨适配器事件关联去重 */
     readonly crossAdapter?: boolean;
   };
 }
@@ -85,7 +86,7 @@ export class MiokuRuntime {
   >();
   readonly #driverFactory: () => Driver;
   readonly #builtinPlugins: readonly MiokuPlugin[];
-  readonly #dedupEnabled: boolean;
+  readonly #correlator: EventCorrelator | undefined;
   #started = false;
   #stopped = false;
 
@@ -95,7 +96,10 @@ export class MiokuRuntime {
     this.#driverFactory =
       options.driverFactory ?? (() => createDefaultDriver());
     this.#builtinPlugins = options.builtinPlugins ?? BUILTIN_PLUGINS;
-    this.#dedupEnabled = options.dedup?.crossAdapter !== false;
+    this.#correlator =
+      options.dedup?.crossAdapter === false
+        ? undefined
+        : new EventCorrelator({ logger: this.#logger.child({ scope: "dedup" }) });
     this.#driver = this.#driverFactory();
     this.#bus = new EventBus();
     this.#bus.setLogger((level, message, detail) => {
@@ -121,6 +125,11 @@ export class MiokuRuntime {
 
   get bus(): EventBus {
     return this.#bus;
+  }
+
+  /** 事件关联器（跨适配器去重）；为 undefined 时表示已禁用 */
+  get correlator(): EventCorrelator | undefined {
+    return this.#correlator;
   }
 
   get bots(): readonly Bot[] {
@@ -258,6 +267,7 @@ export class MiokuRuntime {
       capabilities: this.#capabilities,
       logger: this.#logger.child({ adapter: state.definition.name }),
       emit: (event) => this.#emitLifecycle(event),
+      correlator: this.#correlator,
     });
   }
 
@@ -275,7 +285,7 @@ export class MiokuRuntime {
       config: botConfig,
       logger: this.#logger.child({ plugin: plugin.name }),
       priority: plugin.priority ?? 100,
-      dedup: this.#dedupEnabled,
+      correlator: this.#correlator,
       getAdapter: <T extends Adapter = Adapter>(name: string) =>
         this.getAdapter<T>(name),
       listAdapters: () => this.adapters,
@@ -658,6 +668,7 @@ export class MiokuRuntime {
     this.#enabledPlugins.clear();
     this.#capabilities.clear();
     this.#bots.clear();
+    this.#correlator?.clear();
     resetPluginMetadata();
     try {
       await this.#driver.shutdown();
