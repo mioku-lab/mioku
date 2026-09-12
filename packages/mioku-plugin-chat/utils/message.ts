@@ -27,11 +27,7 @@ export function shouldTrigger(
 ): boolean {
   if (e.message_type === "private") return false;
 
-  const atSeg = e.message?.find((seg: any) => seg.type === "at");
-  if (!atSeg) return false;
-  const data = (atSeg.data ?? {}) as { qq?: unknown; target?: unknown };
-  const qq = data.qq ?? data.target;
-  return String(qq ?? "") === String(e.self_id ?? "");
+  return ctx.mentionedBots(e).length > 0;
 }
 
 /**
@@ -45,8 +41,13 @@ export async function isQuotingBot(
   if (e.quote_id) {
     try {
       const quoteMsg = await fetchQuotedMessage(e, ctx);
-      if (quoteMsg && String(quoteMsg.sender?.user_id) === String(e.self_id)) {
-        const quotedText = quoteMsg.message
+      const quotedUserId = String(quoteMsg?.sender?.user_id ?? "");
+      const quotingAnyBot =
+        quoteMsg != null &&
+        quotedUserId !== "" &&
+        ctx.bots.some((bot) => String(bot.bot_id) === quotedUserId);
+      if (quotingAnyBot) {
+        const quotedText = quoteMsg!.message
           ?.filter((s: any) => s.type === "text")
           .map((s: any) => String(s.data?.text ?? s.text ?? ""))
           .join("");
@@ -130,15 +131,9 @@ export function extractContent(
     text = ctx.text(e) || "";
   } catch {}
 
-  // If text is empty but user @'d the bot, describe the action
+  // If text is empty but the message @'d a connected bot, describe the action
   if (!text.trim() && e.message) {
-    const hasAt = e.message.some((seg: any) => {
-      if (seg.type !== "at") return false;
-      const data = (seg.data ?? {}) as { qq?: unknown; target?: unknown };
-      const qq = data.qq ?? data.target;
-      return String(qq ?? "") === String(e.self_id ?? "");
-    });
-    if (hasAt) {
+    if (ctx.mentionedBots(e).length > 0) {
       text = "[@you with no text]";
     }
   }

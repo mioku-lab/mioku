@@ -222,6 +222,10 @@ export function createMessageHandler(
     }
 
     const atBot = shouldTrigger(e, text, cfg, ctx);
+    const replyBot = ctx.pickReplyBot(e);
+    const actorSelfId = replyBot
+      ? Number(replyBot.bot_id)
+      : Number(e.self_id || 0);
     const quotedBot = isGroup ? await isQuotingBot(e, ctx) : null;
     const mentionedNickname =
       cfg.nicknames.length > 0 &&
@@ -275,14 +279,14 @@ export function createMessageHandler(
               groupSessionId,
               groupId,
               delayInfo.delayMs,
-              Number(e.self_id || 0),
+              actorSelfId,
             );
             return;
           }
         }
 
         pluginCtx.rateLimiter.record(userId, groupId, text);
-        await processChat(e, pluginCtx, runtimeState);
+        await processChat(e, pluginCtx, runtimeState, { replyBot });
         return;
       }
 
@@ -294,10 +298,11 @@ export function createMessageHandler(
           ctx,
           cfg.historyCount,
           pluginCtx.db,
-          Number(e.self_id || 0),
+          actorSelfId,
           pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
         );
-        const botNickname = cfg.nicknames[0] || e.bot?.nickname || "Bot";
+        const botNickname =
+          cfg.nicknames[0] || replyBot?.nickname || e.bot?.nickname || "Bot";
         const planResult = await pluginCtx.humanize.actionPlanner.plan(
           groupSessionId,
           botNickname,
@@ -307,7 +312,7 @@ export function createMessageHandler(
         if (planResult.action !== "reply") return;
         if (!pluginCtx.rateLimiter.canProcess(userId, groupId, text)) return;
         pluginCtx.rateLimiter.record(userId, groupId, text);
-        await processChat(e, pluginCtx, runtimeState);
+        await processChat(e, pluginCtx, runtimeState, { replyBot });
       }
     };
 
@@ -319,7 +324,7 @@ export function createMessageHandler(
           pluginCtx.rateLimiter.recordInteraction(groupId, userId);
           pluginCtx.queueProcessor.scheduleQueuedMessages(
             groupSessionId,
-            Number(e.self_id || 0),
+            actorSelfId,
           );
         }
         return;

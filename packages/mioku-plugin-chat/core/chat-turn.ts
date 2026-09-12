@@ -1,12 +1,8 @@
 import type { MiokuContext } from "mioku";
-import type { AITool, ChatRuntimePromptInjection } from "mioku";
+import type { AITool, Bot, ChatRuntimePromptInjection } from "mioku";
 import type { ChatPluginContext, ChatRuntimeState } from "../context";
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
-import {
-  getGroupHistory,
-  getBotRole,
-  getQuotedContent,
-} from "../utils";
+import { getGroupHistory, getBotRole, getQuotedContent } from "../utils";
 import { buildStructuredUserInputFromTarget } from "../manage/group-structured-history";
 
 export type RuntimeReplyContextType =
@@ -53,7 +49,8 @@ function buildRuntimeTargetMessageContent(
   overrideContent?: string,
 ): string {
   if (overrideContent?.trim()) return overrideContent.trim();
-  if (!event || !event.message || !Array.isArray(event.message)) return NO_NEW_MESSAGE;
+  if (!event || !event.message || !Array.isArray(event.message))
+    return NO_NEW_MESSAGE;
   return ctx.text(event)?.trim() || NO_NEW_MESSAGE;
 }
 
@@ -74,7 +71,8 @@ function resolveRuntimeContext(
       selfId: event.self_id,
       sessionId: groupId ? `group:${groupId}` : `personal:${userId}`,
       personalSessionId: groupId ? `personal:${userId}` : undefined,
-      senderName: event.sender?.card || event.sender?.nickname || String(userId),
+      senderName:
+        event.sender?.card || event.sender?.nickname || String(userId),
       userRole: event.sender?.role || "member",
       userTitle: event.sender?.title || undefined,
       groupName: event.group_name,
@@ -85,7 +83,10 @@ function resolveRuntimeContext(
   if (typeof options.selfId !== "number") {
     throw new Error("Chat runtime requires either event or selfId");
   }
-  if (typeof options.groupId !== "number" && typeof options.userId !== "number") {
+  if (
+    typeof options.groupId !== "number" &&
+    typeof options.userId !== "number"
+  ) {
     throw new Error("Chat runtime requires groupId or userId");
   }
 
@@ -112,7 +113,9 @@ function resolveRuntimeContext(
     groupId: options.groupId,
     userId,
     selfId: options.selfId,
-    sessionId: options.groupId ? `group:${options.groupId}` : `personal:${userId}`,
+    sessionId: options.groupId
+      ? `group:${options.groupId}`
+      : `personal:${userId}`,
     personalSessionId:
       options.groupId && userId ? `personal:${userId}` : undefined,
     senderName: options.groupId ? "system" : String(userId),
@@ -144,39 +147,90 @@ export async function finalizeChatTurn(
     return;
   }
   const { ctx } = pluginCtx;
-  const { groupId, groupSessionId, userId, selfId, cfg, toolCtx, result, event } = args;
+  const {
+    groupId,
+    groupSessionId,
+    userId,
+    selfId,
+    cfg,
+    toolCtx,
+    result,
+    event,
+  } = args;
+
+  const actingBot = (selfId ? ctx.pickBot(selfId) : undefined) ?? event?.bot;
+  const eventBotId = event?.bot ? String(event.bot.bot_id) : undefined;
+  const actingIsEventBot =
+    eventBotId == null ||
+    (actingBot != null && String(actingBot.bot_id) === eventBotId);
 
   if (groupId) {
     const sentMessageIds = await pluginCtx.sendAIResponse(
-      { ctx, groupId, messages: result.messages, config: cfg, sentIndices: toolCtx.sentMessageIndices, audioService: pluginCtx.audioService },
+      {
+        ctx,
+        groupId,
+        messages: result.messages,
+        config: cfg,
+        sentIndices: toolCtx.sentMessageIndices,
+        audioService: pluginCtx.audioService,
+      },
       selfId,
     );
-    await pluginCtx.sendEmoji(ctx, groupId, result.emojiPath, event?.bot);
+    await pluginCtx.sendEmoji(ctx, groupId, result.emojiPath, actingBot);
     const now = Date.now();
-    pluginCtx.saveBotMessages(groupId, groupSessionId, result.messages, now, cfg, pluginCtx.db, ctx, event?.bot, sentMessageIds);
+    pluginCtx.saveBotMessages(
+      groupId,
+      groupSessionId,
+      result.messages,
+      now,
+      cfg,
+      pluginCtx.db,
+      ctx,
+      actingBot,
+      sentMessageIds,
+    );
     if (args.isLive) {
-      pluginCtx.idleCheckManager.recordBotMessages(groupSessionId, result.messages.length, selfId);
+      pluginCtx.idleCheckManager.recordBotMessages(
+        groupSessionId,
+        result.messages.length,
+        selfId,
+      );
     }
-    pluginCtx.cooldownManager.startCooldownTimer(groupSessionId, groupId, selfId);
+    pluginCtx.cooldownManager.startCooldownTimer(
+      groupSessionId,
+      groupId,
+      selfId,
+    );
   } else {
     const sentIndices = toolCtx.sentMessageIndices;
     for (let i = 0; i < result.messages.length; i++) {
       if (sentIndices?.has(i)) continue;
-      await pluginCtx.sendMessage(ctx, undefined, userId, result.messages[i], cfg, selfId, pluginCtx.audioService);
+      await pluginCtx.sendMessage(
+        ctx,
+        undefined,
+        userId,
+        result.messages[i],
+        cfg,
+        selfId,
+        pluginCtx.audioService,
+      );
     }
     if (result.emojiPath) {
       try {
         const emojiSegment = ctx.segment.image(`file://${result.emojiPath}`);
-        if (args.isLive) {
+        if (args.isLive && actingIsEventBot && event?.reply) {
           await event.reply([emojiSegment]);
         } else {
-          const bot = args.event?.bot;
-          if (!bot) throw new Error(`bot ${selfId} not found`);
-          await bot.sendMessage({ type: "private", user_id: userId}, [emojiSegment]);
+          if (!actingBot) throw new Error(`bot ${selfId} not found`);
+          await actingBot.sendMessage({ type: "private", user_id: userId }, [
+            emojiSegment,
+          ]);
         }
       } catch (err) {
         ctx.logger.warn(
-          args.isLive ? `[Emoticon] Send failed: ${err}` : `[chat-runtime] Send emoji failed: ${err}`,
+          args.isLive
+            ? `[Emoticon] Send failed: ${err}`
+            : `[chat-runtime] Send emoji failed: ${err}`,
         );
       }
     }
@@ -189,12 +243,13 @@ export async function processChat(
   e: any,
   pluginCtx: ChatPluginContext,
   runtimeState: ChatRuntimeState,
+  options: { replyBot?: Bot } = {},
 ): Promise<void> {
   const { ctx } = pluginCtx;
   const isGroup = e.message_type === "group";
   const groupId: number | undefined = isGroup ? e.group_id : undefined;
   const userId: number = e.user_id || e.sender?.user_id;
-  const selfId = e.self_id;
+  const selfId = options.replyBot ? Number(options.replyBot.bot_id) : e.self_id;
   const cfg = await pluginCtx.getConfig(groupId);
 
   const personalSessionId = `personal:${userId}`;
@@ -212,7 +267,11 @@ export async function processChat(
       groupId ?? userId,
     );
     if (groupId) {
-      pluginCtx.sessionManager.getOrCreate(personalSessionId, "personal", userId);
+      pluginCtx.sessionManager.getOrCreate(
+        personalSessionId,
+        "personal",
+        userId,
+      );
     }
 
     const quotedInfo = await getQuotedContent(e, ctx);
@@ -242,7 +301,7 @@ export async function processChat(
           groupId,
           ctx,
           cfg.historyCount,
-          e.self_id,
+          selfId,
           pluginCtx.db,
           pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
         )
@@ -260,15 +319,18 @@ export async function processChat(
     }));
 
     const botNickname =
-      cfg.nicknames[0] || e.bot?.nickname || "Bot";
-    const botRole = groupId ? await getBotRole(groupId, ctx, e.self_id) : "member";
+      cfg.nicknames[0] ||
+      options.replyBot?.nickname ||
+      e.bot?.nickname ||
+      "Bot";
+    const botRole = groupId ? await getBotRole(groupId, ctx, selfId) : "member";
     let groupName: string | undefined;
     let memberCount: number | undefined;
     if (groupId) {
       const groupInfo = await pluginCtx.getGroupInfoData(
         ctx,
         groupId,
-        e.self_id,
+        selfId,
         e.group_name,
       );
       groupName = groupInfo.groupName;
@@ -311,7 +373,7 @@ export async function processChat(
       pendingImageUrls: imageUrls,
       humanize: pluginCtx.humanize,
       targetMessage,
-      selfId: e.self_id,
+      selfId,
       audioService: pluginCtx.audioService,
     });
 
@@ -351,7 +413,12 @@ export async function processChat(
               }
             : undefined,
         ),
-      { userId, groupId, label: isGroup ? "group-chat" : "private-chat", skipRetryOnRateLimit: true },
+      {
+        userId,
+        groupId,
+        label: isGroup ? "group-chat" : "private-chat",
+        skipRetryOnRateLimit: true,
+      },
     );
 
     if (!result) {
@@ -366,7 +433,7 @@ export async function processChat(
       groupId,
       groupSessionId,
       userId,
-      selfId: e.self_id,
+      selfId,
       toolCtx,
       send: true,
       isLive: true,
@@ -435,7 +502,13 @@ async function executeChatRuntimeRequestNow(
   }
 
   const rawHistory = groupId
-    ? await getGroupHistory(groupId, pluginCtx.ctx, cfg.historyCount, selfId, pluginCtx.db)
+    ? await getGroupHistory(
+        groupId,
+        pluginCtx.ctx,
+        cfg.historyCount,
+        selfId,
+        pluginCtx.db,
+      )
     : [];
   const history: ChatMessage[] = rawHistory.map((msg) => ({
     sessionId,
@@ -449,9 +522,10 @@ async function executeChatRuntimeRequestNow(
     messageId: msg.messageId,
   }));
 
-  const botRole = groupId ? await getBotRole(groupId, pluginCtx.ctx, selfId) : "member";
-  const botNickname =
-    cfg.nicknames[0] || event?.bot?.nickname || "Bot";
+  const botRole = groupId
+    ? await getBotRole(groupId, pluginCtx.ctx, selfId)
+    : "member";
+  const botNickname = cfg.nicknames[0] || event?.bot?.nickname || "Bot";
 
   let groupName: string | undefined;
   let memberCount: number | undefined;
