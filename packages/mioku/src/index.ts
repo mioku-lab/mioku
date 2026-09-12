@@ -184,6 +184,8 @@ export async function start(
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+  installProcessErrorGuards();
+
   return {
     stop: (reason) => stopRuntime(reason),
   };
@@ -200,6 +202,23 @@ function readVersion(): string {
 }
 
 export const version: string = readVersion();
+
+function installProcessErrorGuards(): void {
+  if (process.listenerCount("unhandledRejection") === 0) {
+    process.on("unhandledRejection", (reason) => {
+      const detail =
+        reason instanceof Error ? reason.stack ?? reason.message : reason;
+      rootLogger.error(`[unhandledRejection] ${String(detail)}`);
+    });
+  }
+  if (process.listenerCount("uncaughtException") === 0) {
+    process.on("uncaughtException", (err) => {
+      rootLogger.error(
+        `[uncaughtException] ${err.stack ?? err.message ?? String(err)}`,
+      );
+    });
+  }
+}
 
 export {
   getDataDir,
