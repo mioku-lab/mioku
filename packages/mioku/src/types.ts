@@ -75,9 +75,9 @@ export type CommandRole = "master" | "admin" | "owner" | "member";
 
 /**
  * - `"master"`：仅 bot 主人可触发
- * - `"owner"`：legacy alias
- * - `"admin"`：bot 主人或管理员
- * - `"member"`：群内任意成员
+ * - `"owner"`：bot 主人或当前群群主
+ * - `"admin"`：bot 主人、配置管理员、当前群群主或群管理员
+ * - `"member"`：所有人
  *
  */
 export type SkillPermissionRole = "master" | "owner" | "admin" | "member";

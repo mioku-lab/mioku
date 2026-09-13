@@ -28,9 +28,9 @@
 
 ## manifest：mioku 字段
 
-`package.json` 的 `mioku` 字段是插件对框架的声明，框架认三个键：`services`、`help`、`accessHooks`。写别的键没用——会被忽略并打一条「含未知字段」的警告。
+`package.json` 的 `mioku` 字段是插件对框架的声明，框架认三个键：`services`、`help`、`accessHooks`。**新插件应把命令注册写在插件入口里**——用 `ctx.command()` 一次声明命令名、别名、描述、权限、优先级，框架会自动收录到帮助和访问控制目录里。manifest 中的 `help` 与 `accessHooks` 仅在旧插件兼容时使用，写别的键没用——会被忽略并打一条「含未知字段」的警告。
 
-一个完整的例子：
+只声明 `services` 的最小 manifest：
 
 ```json
 {
@@ -41,26 +41,7 @@
   "type": "module",
   "keywords": ["mioku"],
   "mioku": {
-    "services": ["ai", "config"],
-    "help": {
-      "title": "天气",
-      "description": "查询城市天气",
-      "commands": [
-        {
-          "cmd": "天气 <城市>",
-          "desc": "查询指定城市的当前天气",
-          "usage": "天气 上海",
-          "role": "member"
-        }
-      ]
-    },
-    "accessHooks": [
-      {
-        "id": "天气指令",
-        "match": "/^天气/",
-        "description": "匹配「天气」开头的消息"
-      }
-    ]
+    "services": ["ai", "config"]
   },
   "peerDependencies": {
     "mioku": "^1.0.0"
@@ -68,41 +49,38 @@
 }
 ```
 
-三个键各管一摊：
+对应的 `index.ts`：
+
+```ts
+import { definePlugin } from "mioku";
+
+export default definePlugin({
+  name: "weather",
+  version: "1.0.0",
+  description: "查天气插件",
+  async setup(ctx) {
+    ctx.command({
+      name: "weather",
+      aliases: ["天气"],
+      description: "查询城市天气",
+      usage: "weather <城市>",
+      permission: "member",
+      async handler({ event, args }) {
+        const city = args.join(" ");
+        await event.reply(`查询 ${city || "当前城市"}`);
+      },
+    });
+  },
+});
+```
+
+### services：声明依赖
 
 | 键 | 类型 | 作用 |
 | --- | --- | --- |
 | `services` | 字符串数组 | 声明依赖的服务短名，用户安装时 CLI 会自动补装缺的服务包 |
-| `help` | 对象 | 插件的帮助信息，框架启动时自动注册进帮助服务 |
-| `accessHooks` | 数组 | 访问钩子，声明插件对哪些消息感兴趣，供访问控制展示与拦截 |
 
-写错了也不会炸，但有代价：`services` 不是数组会被整个丢弃，`help.commands` 的某项缺 `cmd` 或 `desc` 会被跳过，`accessHooks` 的项缺 `id` 会被忽略。启动日志里都会提醒，看到就修。
-
-### 帮助信息怎么写
-
-`mioku.help` 会被框架自动收集，注册进帮助服务，所以 `#help` 图片里能不能正确展示你的插件，全看这段 JSON：
-
-| 字段 | 说明 |
-| --- | --- |
-| `title` | 插件名，展示在帮助里 |
-| `description` | 一句话介绍 |
-| `commands[].cmd` | 指令写法，如 `/重置会话` |
-| `commands[].desc` | 指令说明 |
-| `commands[].usage` | 用法示例（可选） |
-| `commands[].role` | 指令权限（可选） |
-
-`role` 对应命令权限，写的是「谁能用」：
-
-| 值 | 谁 |
-| --- | --- |
-| `member` | 任意成员 |
-| `admin` | bot 主人或管理员 |
-| `master` | 仅 bot 主人 |
-| `owner` | `master` 的旧写法，等价 |
-
-这个字段只是帮助展示用的声明，真正的权限拦截还是要在你自己的 handler 里做（`ctx.isOwner(event)`、`ctx.isOwnerOrAdmin(event)` 这些）。
-
-`accessHooks` 的每一项：`id` 必填，`match` 是匹配文本的正则字符串（如 `/^\.help$/`），`event` 是命中的事件路由（如 `notice.group.poke`），`description` 随便写。它主要服务于访问控制系统，让用户知道你的插件会碰哪些消息。参考 chat 插件的写法——戳一戳对话就是用一条 `event: "notice.group.poke"` 的钩子声明的。
+如果 `services` 不是数组会被整个丢弃，启动日志会有提示。
 
 ## 发布到 npm
 
@@ -119,5 +97,6 @@ bun publish
 ## 下一步
 
 - [第一个插件](/developer/first-plugin) —— 还没写过插件的话，从这里开始
+- [命令管理器](/developer/commands) —— `ctx.command()` 的全部字段
 - [插件市场](/guide/market) —— 用户是怎么安装、更新你的插件的
 - [PluginPackageConfig 类型参考](/reference/api/interfaces/PluginPackageConfig)

@@ -1,4 +1,14 @@
-import { isAdmin as isConfiguredAdmin, isOwner as isConfiguredOwner } from '../config'
+import {
+  isEventAdmin as isEventAdminImpl,
+  isEventAdminConfigOnly,
+  isEventGroupAdmin,
+  isEventGroupOwner,
+  isEventMaster as isEventMasterImpl,
+  isEventOwner as isEventOwnerImpl,
+  isEventOwnerOrAdmin as isEventOwnerOrAdminImpl,
+  hasEventRight as hasEventRightImpl,
+  toUserId,
+} from './permissions'
 import nodeCron from 'node-cron'
 import {
   createCmd as createCmdUtil,
@@ -33,6 +43,7 @@ import type { CapabilityRegistry } from '../adapter'
 import type { BotRegistry } from './bots'
 import type { Message, MessageInput } from '../adapter'
 import type { CorrelationRecord, CorrelationStats, EventCorrelator } from './event-correlator'
+import type { CommandDefinition, CommandHandler, CommandManager, CommandMatcher, CommandShortcutOptions } from './commands'
 
 /** 插件管理器：插件列表查询与运行时启停 */
 export interface PluginManager {
@@ -45,7 +56,9 @@ export interface PluginManager {
 
 export interface ContextOptions {
   readonly pluginName: string
+  readonly pluginId: string
   readonly bus: EventBus
+  readonly commands: CommandManager
   readonly bots: BotRegistry
   readonly driver: Driver
   readonly capabilities: CapabilityRegistry
@@ -60,38 +73,27 @@ export interface ContextOptions {
   readonly correlator?: EventCorrelator
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** 从事件对象中提取发送者 id（支持裸 id / user_id / sender.user_id） */
-export const toUserId = (value: unknown): string | undefined => {
-  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'bigint') {
-    return String(value)
-  }
-  if (isObject(value)) {
-    if ('user_id' in value) return toUserId((value as { user_id: unknown }).user_id)
-    if ('sender' in value) {
-      const sender = (value as { sender: unknown }).sender
-      if (isObject(sender) && 'user_id' in sender) return toUserId((sender as { user_id: unknown }).user_id)
-    }
-  }
-  return undefined
-}
+export { toUserId }
 
-export const isEventOwner = (event: unknown): boolean => {
-  const id = toUserId(event)
-  if (!id) return false
-  return isConfiguredOwner(id)
-}
+/** 仅看 owners 名单：bot 主人（无群身份加成） */
+export const isEventMaster = (event: unknown): boolean => isEventMasterImpl(event)
 
-export const isEventAdmin = (event: unknown): boolean => {
-  const id = toUserId(event)
-  if (!id) return false
-  return isConfiguredAdmin(id)
-}
+/**
+ * master 或当前群群主。等价于 `ctx.command({ permission: "owner" })` 的判断。
+ */
+export const isEventOwner = (event: unknown): boolean => isEventOwnerImpl(event)
 
-export const isEventOwnerOrAdmin = (event: unknown): boolean => isEventOwner(event) || isEventAdmin(event)
-export const hasEventRight = (event: unknown): boolean => isEventOwnerOrAdmin(event)
+/**
+ * master、配置管理员、当前群群主或群管理员。等价于 `ctx.command({ permission: "admin" })` 的判断。
+ */
+export const isEventAdmin = (event: unknown): boolean => isEventAdminImpl(event)
+
+export const isEventOwnerOrAdmin = (event: unknown): boolean => isEventOwnerOrAdminImpl(event)
+export const hasEventRight = (event: unknown): boolean => hasEventRightImpl(event)
+
+// 重新导出群身份 / 配置名单判断，便于插件在需要更细粒度判断时使用
+export { isEventGroupOwner, isEventGroupAdmin, isEventAdminConfigOnly }
 
 type SemanticRoute<R extends string> = R extends `${string}:${infer Rest}` ? Rest : R
 
@@ -186,6 +188,10 @@ export class MiokuContext {
 
   get pluginName(): string {
     return this.#options.pluginName
+  }
+
+  get pluginId(): string {
+    return this.#options.pluginId
   }
 
   /** 第一个已连接的 bot（多数单 bot 场景直接用这个） */
@@ -307,7 +313,7 @@ export class MiokuContext {
     const inputRoutes = Array.isArray(route) ? route : [route]
     const bypassDedup = inputRoutes.some((item) => item.startsWith('!'))
     const routes = inputRoutes.map((item) => item.startsWith('!') ? item.slice(1) : item)
-    const source = `plugin:${this.#options.pluginName}`
+    const source = `plugin:${this.#options.pluginId}`
     const handledEvents = new WeakSet<Event>()
     const correlator = bypassDedup ? undefined : this.#options.correlator
     const wrappedHandler = async (event: Event): Promise<void> => {
@@ -325,6 +331,41 @@ export class MiokuContext {
       disposed = true
       for (const dispose of disposers) dispose()
     }
+    this.#addCleanup(dispose)
+    return dispose
+  }
+
+  /** 注册消息命令；默认自动匹配框架前缀并在命中后消费消息 */
+  command(definition: CommandDefinition): () => void
+  command(
+    matcher: CommandMatcher,
+    handler: CommandHandler,
+    options?: CommandShortcutOptions,
+  ): () => void
+  command(
+    definitionOrMatcher: CommandDefinition | CommandMatcher,
+    handler?: CommandHandler,
+    options: CommandShortcutOptions = {},
+  ): () => void {
+    const dispose =
+      typeof definitionOrMatcher === 'object' &&
+      definitionOrMatcher !== null &&
+      'name' in definitionOrMatcher
+        ? this.#options.commands.register(
+            this.#options.pluginId,
+            {
+              ...definitionOrMatcher,
+              priority: definitionOrMatcher.priority ?? this.#options.priority,
+            },
+            this,
+          )
+        : this.#options.commands.register(
+            this.#options.pluginId,
+            definitionOrMatcher,
+            handler as CommandHandler,
+            { ...options, priority: options.priority ?? this.#options.priority },
+            this,
+          )
     this.#addCleanup(dispose)
     return dispose
   }
@@ -399,6 +440,11 @@ export class MiokuContext {
     return this.#options.bus
   }
 
+  /** 当前运行时的命令管理器 */
+  get commands(): CommandManager {
+    return this.#options.commands
+  }
+
   get segment(): typeof segment {
     return segment
   }
@@ -459,31 +505,38 @@ export class MiokuContext {
   }
 
   isGroupMsg(event: unknown): boolean {
-    return isObject(event) && (event as { kind?: unknown }).kind === 'message' &&
+    return utilsExports.isObject(event) && (event as { kind?: unknown }).kind === 'message' &&
       (event as { message_type?: unknown }).message_type === 'group'
   }
 
   isPrivateMsg(event: unknown): boolean {
-    return isObject(event) && (event as { kind?: unknown }).kind === 'message' &&
+    return utilsExports.isObject(event) && (event as { kind?: unknown }).kind === 'message' &&
       (event as { message_type?: unknown }).message_type === 'private'
   }
 
-  /** 事件发送者是否为主人 */
+  /** 事件发送者是否为 bot 主人（仅看 owners 名单，不识别群身份） */
+  isMaster(event: unknown): boolean {
+    return isEventMaster(event)
+  }
+
+  /** 事件发送者是否为 bot 主人或当前群群主；等价于 `permission: "owner"` */
   isOwner(event: unknown): boolean {
     return isEventOwner(event)
   }
 
-  /** 事件发送者是否为管理员 */
+  /** 事件发送者是否为 bot 主人、配置管理员、当前群群主或群管理员；等价于 `permission: "admin"` */
   isAdmin(event: unknown): boolean {
     return isEventAdmin(event)
   }
 
+  /** 同 `isAdmin`，保留旧名称 */
   isOwnerOrAdmin(event: unknown): boolean {
-    return isEventOwnerOrAdmin(event)
+    return isEventAdmin(event)
   }
 
+  /** 同 `isAdmin`，别名 */
   hasRight(event: unknown): boolean {
-    return hasEventRight(event)
+    return isEventAdmin(event)
   }
 
   async dispose(): Promise<void> {

@@ -15,6 +15,7 @@ import type { Logger } from "../logger";
 import type { BotRegistry } from "./bots";
 import type { Adapter } from "../adapter";
 import type { EventCorrelator } from "./event-correlator";
+import type { CommandManager } from "./commands";
 
 export class AdapterRegistrationConflictError extends Error {
   constructor(key: string) {
@@ -41,6 +42,7 @@ export class AdapterContextImpl implements AdapterContext {
   readonly #logger: Logger;
   readonly #emit: (event: BotLifecycleEvent) => Promise<void>;
   readonly #correlator: EventCorrelator | undefined;
+  readonly #commands: CommandManager;
   readonly #pendingStarts = new Set<Promise<void>>();
 
   constructor(options: {
@@ -52,6 +54,7 @@ export class AdapterContextImpl implements AdapterContext {
     logger: Logger;
     emit: (event: BotLifecycleEvent) => Promise<void>;
     correlator?: EventCorrelator;
+    commands: CommandManager;
   }) {
     this.#state = options.state;
     this.#bots = options.bots;
@@ -61,6 +64,7 @@ export class AdapterContextImpl implements AdapterContext {
     this.#logger = options.logger;
     this.#emit = options.emit;
     this.#correlator = options.correlator;
+    this.#commands = options.commands;
   }
 
   registerBot(bot: Bot): BotContext {
@@ -176,6 +180,14 @@ export class AdapterContextImpl implements AdapterContext {
           this.#logger.debug(
             `拦截来自其他已连接 bot 的消息: sender=${senderId} self=${event.self_id}`,
           );
+          return;
+        }
+      }
+    }
+    if (event.kind === "message") {
+      const duplicate = this.#correlator?.observationOf(event)?.duplicate ?? false;
+      if (!duplicate) {
+        if (await this.#commands.dispatch(event)) {
           return;
         }
       }

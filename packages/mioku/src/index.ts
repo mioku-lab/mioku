@@ -25,6 +25,7 @@ export * from "./runtime/context";
 export * from "./runtime/event-correlator";
 export * from "./runtime/lifecycle";
 export * from "./runtime/mioku-context";
+export * from "./runtime/commands";
 export * from "./runtime/runtime";
 export * from "./runtime/types";
 export * from "./loader";
@@ -111,6 +112,12 @@ export type {
   AIUsageFinalization,
   AIUsageSummary,
 } from "./types";
+
+export {
+  CommandManager,
+  getActiveCommandManager,
+  setActiveCommandManager,
+} from "./runtime/commands";
 
 export {
   TOOL_RESULT_FOLLOWUP_KEY,

@@ -1,8 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isEventOwner } from "../../../runtime/mioku-context";
 import type { MiokuContext } from "../../../runtime/mioku-context";
-import { getCommandPrefix } from "./prefix";
 import { replyText } from "./notify";
 
 const LOG_LINE_COUNT = 100;
@@ -42,16 +40,14 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 export function registerLogCommand(ctx: MiokuContext): () => void {
-  const dispose = ctx.handle("message", async (event) => {
-    const text = ctx.text(event)?.trim();
-    if (!text || event?.user_id === event?.self_id) return;
-    const prefix = getCommandPrefix();
-    if (text !== `${prefix}log` && text !== `${prefix}日志`) return;
-
-    if (!isEventOwner(event)) {
-      ctx.logger.warn("[core] 日志指令仅主人可用");
-      return;
-    }
+  const dispose = ctx.command({
+    name: "log",
+    aliases: ["日志"],
+    permission: "master",
+    priority: -1000,
+    description: "查看最近100条日志",
+    handler: async ({ event }) => {
+      if (event?.user_id === event?.self_id) return;
 
     const selfId = String(event?.self_id || "");
     const bot = event.bot;
@@ -115,6 +111,7 @@ export function registerLogCommand(ctx: MiokuContext): () => void {
       ctx.logger.error(`[core] 发送日志转发失败: ${error}`);
       await replyText(event, `发送日志失败：${String(error)}`);
     }
+    },
   });
   return dispose;
 }

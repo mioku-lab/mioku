@@ -21,6 +21,7 @@ import { AdapterContextImpl } from "./context";
 import type { RuntimeAdapterState } from "./context";
 import { MiokuContext } from "./mioku-context";
 import { EventCorrelator } from "./event-correlator";
+import { CommandManager, setActiveCommandManager } from "./commands";
 import { BUILTIN_PLUGINS as DEFAULT_BUILTIN_PLUGINS } from "../builtin";
 import {
   createImportContext,
@@ -87,6 +88,7 @@ export class MiokuRuntime {
   readonly #driverFactory: () => Driver;
   readonly #builtinPlugins: readonly MiokuPlugin[];
   readonly #correlator: EventCorrelator | undefined;
+  readonly #commands: CommandManager;
   #started = false;
   #stopped = false;
 
@@ -109,6 +111,16 @@ export class MiokuRuntime {
     });
     this.#bots = new BotRegistry();
     this.#capabilities = new CapabilityRegistry();
+    this.#commands = new CommandManager({
+      getDefaultPrefix: () => String(botConfig.prefix ?? "."),
+      getOwners: () => botConfig.owners,
+      getAdmins: () => botConfig.admins,
+      logger: this.#logger,
+    });
+    this.#bus.setFilter((registration, event) =>
+      this.#commands.shouldDispatch(registration.source, event),
+    );
+    setActiveCommandManager(this.#commands);
   }
 
   get cwd(): string {
@@ -125,6 +137,10 @@ export class MiokuRuntime {
 
   get bus(): EventBus {
     return this.#bus;
+  }
+
+  get commands(): CommandManager {
+    return this.#commands;
   }
 
   /** 事件关联器（跨适配器去重）；为 undefined 时表示已禁用 */
@@ -268,6 +284,7 @@ export class MiokuRuntime {
       logger: this.#logger.child({ adapter: state.definition.name }),
       emit: (event) => this.#emitLifecycle(event),
       correlator: this.#correlator,
+      commands: this.#commands,
     });
   }
 
@@ -278,6 +295,8 @@ export class MiokuRuntime {
     const cleanupTasks: PluginCleanup[] = [];
     const ctx = new MiokuContext({
       pluginName: `${type}:${plugin.name}`,
+      pluginId: plugin.name === "mioku-core" ? "core" : plugin.name,
+      commands: this.#commands,
       bus: this.#bus,
       bots: this.#bots,
       driver: this.#driver,
@@ -669,6 +688,8 @@ export class MiokuRuntime {
     this.#capabilities.clear();
     this.#bots.clear();
     this.#correlator?.clear();
+    this.#commands.clear();
+    setActiveCommandManager(undefined);
     resetPluginMetadata();
     try {
       await this.#driver.shutdown();

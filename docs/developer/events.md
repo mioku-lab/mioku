@@ -1,7 +1,5 @@
 # 事件处理
 
-插件的一切工作都由事件驱动：`ctx.handle()` 注册监听，事件来了框架按路由分发。
-
 ## 最小监听
 
 ```typescript
@@ -180,13 +178,16 @@ ctx.handle("message", async (event) => {
 
 ## 优先级
 
-`definePlugin` 的 `priority` 会影响事件处理顺序：数值小的插件先收到事件。同优先级按注册顺序。框架内置 core 插件优先级是 `-Infinity`，总是最先处理。
+`definePlugin` 的 `priority` 会影响 `handle` 注册的事件监听顺序：数值小的插件先收到事件。同优先级按注册顺序。框架内置 core 插件优先级是 `-Infinity`，总是最先处理。
+
+命令的优先级独立于插件——它由命令管理器在事件总线前选择首个匹配项，详见[命令管理器](/developer/commands)。
 
 ## 事件总线（进阶）
 
-路由匹配和分发由 `EventBus` 实现，支持 `*` 通配符、按优先级分组、单个监听器出错不影响其他监听器。插件一般用不到它，但想知道事件是怎么走到你的 handler 的，看[深入机制-事件总线](/advanced/event-bus)。
+路由匹配和分发由 `EventBus` 实现，支持 `*` 通配符、按优先级分组、单个监听器出错不影响其他监听器。命令管理器在事件进入总线之前先消费已匹配的命令，因此 `handle` 不会重复处理已经被命令处理过的消息。插件一般用不到 `EventBus`，但想知道事件是怎么走到你的 handler 的，看[深入机制-事件总线](/advanced/event-bus)。
 
 ## 下一步
 
+- [命令管理器](/developer/commands) —— 用 `ctx.command()` 注册消息命令
 - [消息与消息段](/developer/message) —— 消息里的消息段怎么用、怎么发复杂消息
 - [操作 Bot](/developer/bot) —— 主动发消息、管理群
