@@ -145,7 +145,6 @@ const weatherSkill: AISkill = {
 
 export default definePlugin({
   name: "weather",
-  version: "1.0.0",
   async setup(ctx) {
     const aiService = getService(ctx, Services.AI);
     if (!aiService) {

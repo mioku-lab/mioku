@@ -27,7 +27,6 @@ import { definePlugin } from "mioku";
 
 export default definePlugin({
   name: "hello",
-  version: "1.0.0",
 
   async setup(ctx) {
     ctx.logger.info("hello 插件已加载");
@@ -76,10 +75,11 @@ mioku> .hello
 | 字段            | 说明                                    |
 |---------------|---------------------------------------|
 | `name`        | 插件唯一标识，**必须和目录名 / npm 包短名一致**，否则加载会报错 |
-| `version`     | 版本号                                   |
 | `priority`    | 加载优先级，数值越小越先加载，默认 100                 |
-| `description` | 描述                                    |
+| `dependencies` | 依赖的其他插件名                              |
 | `setup(ctx)`  | 插件初始化逻辑，可以返回一个清理函数                    |
+
+版本号、描述这些信息走 `package.json`，框架通过 `PluginMetadata` 统一读出，不要在 `definePlugin` 里再写一份。
 
 **`ctx`** 是插件上下文，最常用的几个：
 

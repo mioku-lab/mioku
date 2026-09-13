@@ -102,7 +102,7 @@ async function selectPackages(
   return multiSelect(message, items, initial, { required: false });
 }
 
-export async function scaffoldCommand(version: string): Promise<number> {
+export async function scaffoldCommand(): Promise<number> {
   const name = await input("请输入项目名称", {
     default: "mioku-bot",
     placeholder: "mioku-bot",
@@ -169,7 +169,6 @@ export async function scaffoldCommand(version: string): Promise<number> {
 
     export default definePlugin({
       name: 'demo',
-      version: '${version}',
       async setup(ctx) {
         ctx.logger.info('Demo 插件已加载')
 

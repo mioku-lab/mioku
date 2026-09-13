@@ -31,11 +31,11 @@
 | 字段 | 说明 |
 | --- | --- |
 | `name` | 服务名，加载后插件按这个名字取服务 |
-| `version` | 版本号 |
-| `description` | 描述，可选 |
 | `init()` | 初始化，框架加载服务时调用 |
 | `api` | 对外暴露的接口对象 |
 | `dispose()` | 卸载时的清理逻辑，可选 |
+
+版本号、描述走 `package.json`，由 `ServiceMetadata` 统一读出，不要在服务对象里再写一份。
 
 关键就一条：**`init()` 里把 `api` 填上**。框架调完 `init`，会把 `service.api` 挂进服务注册表，插件通过 `getService` 拿到的就是这个 `api`。所以 `api` 里放什么，插件就能用什么——它是这个服务的全部门面。
 
@@ -86,8 +86,6 @@ const DEFAULT_WORDS = [
 
 const sentenceService: MiokuService = {
   name: "sentence",
-  version: "1.0.0",
-  description: "随机一言服务",
   api: {} as SentenceAPI,
 
   async init() {
@@ -138,7 +136,6 @@ const sentence = defineService<SentenceAPI>("sentence");
 
 export default definePlugin({
   name: "yiyan",
-  version: "1.0.0",
   async setup(ctx) {
     const api = getService(ctx, sentence);
     if (!api) {

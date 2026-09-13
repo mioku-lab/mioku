@@ -64,7 +64,6 @@ const DEFAULT_CONFIG: GreetingConfig = {
 
 export default definePlugin({
   name: "greeting",
-  version: "1.0.0",
 
   async setup(ctx) {
     const configService = getService(ctx, Services.Config);
@@ -170,7 +169,6 @@ interface WordBook {
 
 export default definePlugin({
   name: "wordbook",
-  version: "1.0.0",
 
   async setup(ctx) {
     const dir = ensureDataDir("wordbook");

@@ -2,7 +2,6 @@ import { definePlugin } from 'mioku'
 
 export default definePlugin({
   name: 'demo',
-  version: '1.0.0',
   async setup(ctx) {
     ctx.logger.info('Demo 插件已加载')
 

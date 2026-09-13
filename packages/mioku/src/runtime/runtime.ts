@@ -36,6 +36,7 @@ import { buildPluginMetadata } from "../loader/manifest";
 import { readPackageJsonSafe } from "../loader";
 import {
   setPluginMetadata,
+  getPluginMetadata,
   removePluginMetadata,
   resetPluginMetadata,
 } from "./plugin-metadata";
@@ -172,14 +173,18 @@ export class MiokuRuntime {
     type: "builtin" | "external";
     version?: string;
   }> {
-    return Array.from(this.#enabledPlugins.entries()).map(([key, entry]) => {
+    return Array.from(this.#enabledPlugins.entries()).map(([key]) => {
       const colon = key.indexOf(":");
       const type = key.slice(0, colon);
       const name = key.slice(colon + 1);
+      const isExternal = type !== "builtin";
+      const version = isExternal
+        ? getPluginMetadata(name)?.version
+        : undefined;
       return {
         name,
         type: type === "builtin" ? "builtin" : "external",
-        version: entry.plugin.version,
+        version,
       };
     });
   }

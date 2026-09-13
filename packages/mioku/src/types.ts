@@ -2,11 +2,8 @@
 
 // ---------- framework ----------
 
-/** 框架服务的最小形态：init 负责初始化，api 是对外暴露的接口对象 */
 export interface MiokuService {
   name: string;
-  version: string;
-  description?: string;
   init(): Promise<void>;
   api: Record<string, any>;
   dispose?(): Promise<void>;

@@ -56,8 +56,6 @@ import { definePlugin } from "mioku";
 
 export default definePlugin({
   name: "weather",
-  version: "1.0.0",
-  description: "查天气插件",
   async setup(ctx) {
     ctx.command({
       name: "weather",

@@ -35,7 +35,7 @@ const args = process.argv.slice(2);
         console.log(helpInfo);
         return;
       }
-      process.exitCode = await scaffoldCommand(version);
+      process.exitCode = await scaffoldCommand();
       return;
   }
 })();

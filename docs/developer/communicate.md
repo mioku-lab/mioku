@@ -9,8 +9,6 @@
 | 字段            | 说明                   |
 |---------------|----------------------|
 | `name`        | 服务名                  |
-| `version`     | 版本号                  |
-| `description` | 描述（可选）               |
 | `init()`      | 初始化，框架加载服务时调用        |
 | `api`         | 对外暴露的接口对象，其他插件拿到的就是它 |
 | `dispose()`   | 卸载清理（可选）             |
@@ -56,7 +54,6 @@ import { definePlugin, getService, Services } from "mioku";
 
 export default definePlugin({
   name: "demo",
-  version: "1.0.0",
   async setup(ctx) {
     const configService = getService(ctx, Services.Config);
     const helpService = getService(ctx, Services.Help);
@@ -106,7 +103,6 @@ export interface WeatherApi {
 
 export default definePlugin({
   name: "weather",
-  version: "1.0.0",
   // 数值小的插件先加载，保证消费方跑起来时服务已经就位
   priority: 50,
   async setup(ctx) {
@@ -134,7 +130,6 @@ const Weather = defineService<WeatherApi>("weather");
 
 export default definePlugin({
   name: "weather-report",
-  version: "1.0.0",
   async setup(ctx) {
     const weather = requireService(ctx, Weather);
     ctx.handle("message", async (event) => {
