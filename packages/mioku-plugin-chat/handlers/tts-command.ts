@@ -15,7 +15,7 @@ export async function handleTtsCommand(
   payload: string,
 ): Promise<void> {
   const { ctx } = pluginCtx;
-  const isOwner = ctx.isOwner?.(e) ?? false;
+  const isOwner = ctx.isMaster?.(e) ?? false;
   // if (!isOwner) {
   //   await e.reply("只有主人才能使用 /tts 指令~");
   //   return;

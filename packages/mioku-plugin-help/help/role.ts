@@ -33,7 +33,7 @@ export function canInvokeCommand(
  * Resolve the requesting user's effective role for help filtering.
  *
  * - `master` is honored everywhere (private or group) — it comes from
- *   mioki's `isOwner` allowlist.
+ *   mioki's `isMaster` allowlist (the bot `owners` list).
  * - Private chat skips the `isAdmin` check and defaults to `admin`,
  *   so anyone DM-ing the bot can see admin-level commands.
  * - Group chat resolves bot admin (mioki `isAdmin` allowlist), group
@@ -49,7 +49,7 @@ export async function resolveViewerRole(
   ctx: any,
   event: any,
 ): Promise<CommandRole> {
-  if (ctx?.isOwner?.(event)) {
+  if (ctx?.isMaster?.(event)) {
     return "master";
   }
 
