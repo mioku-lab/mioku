@@ -268,8 +268,6 @@ class ConfigManager implements ConfigService {
  */
 const configService: MiokuService = {
   name: "config",
-  version: "1.0.0",
-  description: "配置管理服务",
   api: {} as ConfigService,
 
   async init() {

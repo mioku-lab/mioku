@@ -115,8 +115,6 @@ function resolveRoleInstances(aiService: AIService): {
 
 export default definePlugin({
   name: "chat",
-  version: "1.1.0",
-  description: "AI 智能聊天插件",
   async setup(ctx: MiokuContext) {
     ctx.logger.info("聊天插件正在初始化...");
 

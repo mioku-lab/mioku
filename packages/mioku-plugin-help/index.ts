@@ -21,8 +21,6 @@ import { createHelpSkills } from "./skills";
 
 const helpPlugin = definePlugin({
   name: "help",
-  version: "2.1.0",
-  description: "帮助插件，生成帮助图片，并提供 #状态 指令",
 
   async setup(ctx: MiokuContext) {
     // 启动后台采样器

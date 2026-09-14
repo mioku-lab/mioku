@@ -6,9 +6,6 @@ import { parseToolArguments, normalizeToolResult } from "./core/tool-loop";
 
 const aiService: MiokuService = {
   name: "ai",
-  version: "3.0.0",
-  description:
-    "为插件提供完整的ai服务支持，包括多提供商管理、协议适配、提示词与 skills 管理等",
   api: {} as AIService,
 
   async init() {
