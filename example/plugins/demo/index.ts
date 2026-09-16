@@ -5,10 +5,13 @@ export default definePlugin({
   async setup(ctx) {
     ctx.logger.info('Demo 插件已加载')
 
-    ctx.handle('message', async (e) => {
-      if (e.raw_message === 'hello') {
-        await e.reply('world')
-      }
+    ctx.command({
+      name: 'hello',
+      aliases: ['你好'],
+      description: '打招呼',
+      handler: async ({ event }) => {
+        await event.reply('world')
+      },
     })
 
     return () => {

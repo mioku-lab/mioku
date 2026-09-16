@@ -25,7 +25,7 @@
 1. **name 一致**：包名去掉前缀后的短名，必须等于插件 `definePlugin` 里的 `name`。不一致报 `Plugin canonical ID mismatch`。
 2. **apiVersion 一致**：适配器包的 apiVersion 必须等于框架要求的版本（目前是 1）。适配器升级协议不向后兼容时，框架会 bump 这个值，老适配器直接拒绝加载而不是运行时报错。
 
-插件还有第三道校验：manifest 合法性。`package.json` 里 `mioku` 字段只认 `services` / `help` / `accessHooks` 三个键，未知字段忽略并告警（详见[发布插件](/developer/publish)）。
+插件还有第三道校验：manifest 合法性。`package.json` 里 `mioku` 字段只认 `services` 一个键，另兼容 `help` / `accessHooks` 两个旧键，未知字段忽略并告警（详见[发布插件](/developer/publish)）。
 
 ## 加载：jiti 动态导入
 

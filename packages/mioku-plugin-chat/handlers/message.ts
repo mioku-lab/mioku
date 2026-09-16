@@ -22,7 +22,6 @@ import {
   summarizeHistoryVideo,
 } from "../core/media/history-media";
 import { handleIdleCheckDebug } from "./idle-debug";
-import { handleTtsCommand } from "./tts-command";
 import { processChat } from "../core/chat-turn";
 
 const POKE_COOLDOWN_MS = 10 * 60_000;
@@ -52,25 +51,6 @@ export function createMessageHandler(
 
     if (text.startsWith("/空闲检查 ")) {
       await handleIdleCheckDebug(pluginCtx, e, cfg);
-      return;
-    }
-
-    if (text.startsWith("/tts")) {
-      const payload = text.replace(/^\/tts\s*/, "");
-      await handleTtsCommand(pluginCtx, e, payload);
-      return;
-    }
-
-    if (text === "/重置会话") {
-      if (groupId) {
-        pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
-        pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
-        await e.reply("已清除本群会话中 AI 发送的消息~");
-      } else {
-        pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
-        pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
-        await e.reply("已清除你的个人会话中 AI 发送的消息~");
-      }
       return;
     }
 

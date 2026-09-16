@@ -219,10 +219,4 @@ ctx.command({
 
 ## 不再推荐使用的插件元信息定义方式
 
-`mioku.accessHooks` 与 `mioku.help` 是旧 manifest 兼容项，仍可读取，但：
-
-- 新插件请把命令注册到 `setup` 里调用 `ctx.command()`，不要再写一遍前缀匹配与 `ctx.isMaster(event)` 闸门
-- `mioku.help` 仅作为目录补充，不再是命令的主要来源
-- `mioku.accessHooks` 仅用于没有迁移的旧插件的命令目录展示
-
-不受支持的特性将在下一个主要版本更新中被移除。
+`mioku.accessHooks` 与 `mioku.help` 是旧 manifest 兼容项，新插件请把命令注册到 `setup` 里调用 `ctx.command()`，不要再写一遍前缀匹配与 `ctx.isMaster(event)` 闸门。

@@ -60,7 +60,7 @@ bus.setFilter((registration, event) => {
 `shouldDispatch` 会：
 
 - 让主人、管理员、群主、群管理员的事件默认放行
-- 检查 `mioku.accessHooks`（旧插件）或 `ctx.command()` 注册的命令是否命中
+- 检查旧插件 `mioku.accessHooks` 的钩子或 `ctx.command()` 注册的命令是否命中
 - 命中后去 `config/core/access-control.json` 查规则
 
 这意味着即使一个插件挂了 `ctx.handle("message")`，访问控制系统仍然能按消息内容或事件路由拦截它。详细规则见[权限与访问控制](/developer/permissions)。

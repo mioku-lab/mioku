@@ -43,6 +43,7 @@ import { RateLimitGuard } from "./manage/rate-limit-guard";
 import { createChatRuntime } from "./runtime/chat-runtime";
 import { createMessageHandler } from "./handlers/message";
 import { createPokeHandler } from "./handlers/poke";
+import { handleTtsCommand } from "./handlers/tts-command";
 import { buildHistoryMediaOptions } from "./core/media/segment";
 import type { ChatConfigProvider } from "./humanize";
 import type { ChatPluginContext, ChatHandlerState } from "./context";
@@ -508,6 +509,59 @@ roleModels = resolved.models;
 
     const runtime = createChatRuntime(pluginCtx, getConfig);
     aiService.registerChatRuntime(runtime);
+
+    ctx.command({
+      name: "/重置会话",
+      match: /^\/重置会话$/,
+      prefixes: false,
+      description: "重置自己的AI聊天记录",
+      handler: async ({ event }) => {
+        if (event.user_id === event.self_id) return;
+        const groupId =
+          event.message_type === "group" ? Number(event.group_id) : undefined;
+        if (groupId) {
+          pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
+          pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
+          await event.reply("已清除本群会话中 AI 发送的消息~");
+        } else {
+          const userId = Number(event.user_id || event.sender?.user_id || 0);
+          pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
+          pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
+          await event.reply("已清除你的个人会话中 AI 发送的消息~");
+        }
+      },
+    });
+    ctx.command({
+      name: "/重置群会话",
+      match: /^\/重置群会话$/,
+      prefixes: false,
+      permission: "admin",
+      description: "重置当前群的AI聊天记录",
+      handler: async ({ event }) => {
+        if (event.user_id === event.self_id) return;
+        const groupId =
+          event.message_type === "group" ? Number(event.group_id) : undefined;
+        if (!groupId) {
+          await event.reply("在群里使用试试看吧~", true);
+          return;
+        }
+        pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
+        pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
+        await event.reply("已清除本群会话中 AI 发送的消息~");
+      },
+    });
+    ctx.command({
+      name: "/tts",
+      match: /^\/tts\s*(.*)$/,
+      prefixes: false,
+      permission: "owner",
+      description: "TTS 推理",
+      usage: "/tts <文本>",
+      handler: async ({ event, match }) => {
+        if (event.user_id === event.self_id) return;
+        await handleTtsCommand(pluginCtx, event, String(match?.[1] ?? "").trim());
+      },
+    });
 
     ctx.handle("message", createMessageHandler(pluginCtx, handlerState));
     ctx.handle("notice.group.poke", createPokeHandler(pluginCtx, handlerState));
