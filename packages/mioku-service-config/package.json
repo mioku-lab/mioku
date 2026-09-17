@@ -1,6 +1,6 @@
 {
   "name": "mioku-service-config",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "配置服务 - 配置管理和热重载",
   "main": "index.ts",
   "type": "module",
