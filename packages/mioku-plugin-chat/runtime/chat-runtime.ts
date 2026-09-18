@@ -15,9 +15,11 @@ function resolveRuntimeGroupId(
 ): number | undefined {
   if ("event" in options) {
     const event = options.event;
-    return event?.message_type === "group" && typeof event.group_id === "number"
-      ? event.group_id
-      : undefined;
+    if (event?.kind !== "message" || event.message_type !== "group") {
+      return undefined;
+    }
+    const groupId: unknown = event.group_id;
+    return typeof groupId === "number" ? groupId : undefined;
   }
   return "groupId" in options ? options.groupId : undefined;
 }

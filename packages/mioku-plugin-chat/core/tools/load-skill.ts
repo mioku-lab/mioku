@@ -97,7 +97,7 @@ export function createLoadSkillTool(
           feature: true,
           expires_in: "1 hour",
           tools: featureTools.map((t) => ({
-            name: `${skillName}.${t.name}`,
+            name: `${skillName}-${t.name}`,
             description: t.description,
             parameters: t.parameters,
           })),
@@ -139,7 +139,7 @@ export function createLoadSkillTool(
         skill_name: skill.name,
         expires_in: "1 hour",
         tools: skill.tools.map((t) => ({
-          name: `${skill.name}.${t.name}`,
+          name: `${skill.name}-${t.name}`,
           description: t.description,
           parameters: t.parameters,
         })),

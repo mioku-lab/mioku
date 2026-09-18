@@ -57,7 +57,7 @@ export async function extractGifFrames(
     })
       .png()
       .toBuffer();
-    frames.push(`data:image/png);base64,${firstFrame.toString("base64")}`);
+    frames.push(`data:image/png;base64,${firstFrame.toString("base64")}`);
 
     // 提取中间帧
     if (middleIndex !== firstIndex && middleIndex !== lastIndex) {
@@ -67,7 +67,7 @@ export async function extractGifFrames(
       })
         .png()
         .toBuffer();
-      frames.push(`data:image/png);base64,${middleFrame.toString("base64")}`);
+      frames.push(`data:image/png;base64,${middleFrame.toString("base64")}`);
     }
 
     // 提取末尾帧
@@ -78,7 +78,7 @@ export async function extractGifFrames(
       })
         .png()
         .toBuffer();
-      frames.push(`data:image/png);base64,${lastFrame.toString("base64")}`);
+      frames.push(`data:image/png;base64,${lastFrame.toString("base64")}`);
     }
 
     logger.info(

@@ -43,7 +43,7 @@ export class SkillSessionManager {
     const now = Date.now();
     const toolMap = new Map<string, AITool>();
     for (const tool of tools) {
-      toolMap.set(`${skillName}.${tool.name}`, tool);
+      toolMap.set(`${skillName}-${tool.name}`, tool);
     }
 
     const session: SkillSession = {

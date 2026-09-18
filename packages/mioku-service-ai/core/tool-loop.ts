@@ -1,6 +1,5 @@
 import type { AITool, ToolCallRecord, ToolResultFollowup } from "mioku";
-import { TOOL_RESULT_FOLLOWUP_KEY } from "mioku";
-import { logger } from "mioku";
+import { TOOL_RESULT_FOLLOWUP_KEY, logger } from "mioku";
 import type {
   AssistantMessageResult,
   CompleteOptions,

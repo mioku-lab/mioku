@@ -530,9 +530,7 @@ export class AIServiceImpl implements AIService {
   }
 
   getTool(toolName: string): AITool | undefined {
-    const parts = toolName.split(".");
-    if (parts.length === 2) return this.toolIndex.get(toolName);
-    return this.bareToolIndex.get(toolName);
+    return this.toolIndex.get(toolName) ?? this.bareToolIndex.get(toolName);
   }
 
   getAllTools(): Map<string, AITool> {
@@ -560,7 +558,7 @@ export class AIServiceImpl implements AIService {
     this.bareToolIndex.clear();
     for (const [skillName, skill] of this.globalSkills) {
       for (const tool of skill.tools) {
-        this.toolIndex.set(`${skillName}.${tool.name}`, tool);
+        this.toolIndex.set(`${skillName}-${tool.name}`, tool);
         if (!this.bareToolIndex.has(tool.name)) {
           this.bareToolIndex.set(tool.name, tool);
         }

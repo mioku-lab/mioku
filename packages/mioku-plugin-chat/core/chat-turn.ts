@@ -609,6 +609,15 @@ async function executeChatRuntimeRequestNow(
     { extraTools: options.extraTools },
   );
 
+  if (!result) {
+    pluginCtx.sessionManager.touch(sessionId);
+    return {
+      messages: [],
+      toolCalls: [],
+      collectedInfo: null,
+    };
+  }
+
   await finalizeChatTurn(pluginCtx, {
     event,
     cfg,

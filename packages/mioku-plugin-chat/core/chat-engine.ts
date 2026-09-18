@@ -580,8 +580,8 @@ function prependDynamicContextToFirstUserMessage(
 
 const RATE_LIMITED_TOOL_NAMES = new Set(["web_search", "web_read_page"]);
 const RATE_LIMITED_BUILTIN_NAMES = new Set([
-  "web_search.web_search",
-  "web_search.web_read_page",
+  "web_search-web_search",
+  "web_search-web_read_page",
 ]);
 
 function buildSessionTools(
@@ -634,7 +634,7 @@ function buildSessionTools(
   }
 
   for (const [name, tool] of skillTools) {
-    const skillName = name.split(".")[0] || "";
+    const skillName = name.split("-")[0] || "";
     const skill = toolCtx.aiService.getSkill(skillName);
     if (
       !toolCtx.config.enableExternalSkills ||

@@ -356,7 +356,7 @@ export class AIInstanceImpl implements LocalAIInstance {
     for (const [skillName, skill] of this.globalSkills) {
       for (const tool of skill.tools) {
         executableTools.push({
-          name: `${skillName}.${tool.name}`,
+          name: `${skillName}-${tool.name}`,
           tool: {
             ...tool,
             description: `[${skillName}] ${tool.description}`,
