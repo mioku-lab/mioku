@@ -38,8 +38,13 @@ const toIcqqElement = (segment: MessageSegment): MessageElem | string => {
   switch (segment.type) {
     case 'text':
       return typeof data.text === 'string' ? data.text : ''
-    case 'at':
-      return icqqSegment.at(String(data.target ?? data.qq ?? ''))
+    case 'at': {
+      const raw = data.target ?? data.qq ?? data.id
+      if (raw === 'all') return icqqSegment.at('all')
+      const numeric = typeof raw === 'number' ? raw : Number(raw)
+      if (Number.isFinite(numeric) && numeric > 0) return icqqSegment.at(numeric)
+      return icqqSegment.at(String(raw ?? ''))
+    }
     case 'face':
       return icqqSegment.face(num(data.id))
     case 'image':
