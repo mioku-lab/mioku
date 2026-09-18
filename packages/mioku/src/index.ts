@@ -72,6 +72,8 @@ export type {
   AccessControlConfig,
   ConfigService,
   ScreenshotService,
+  ScreenshotOptions,
+  MarkdownScreenshotOptions,
   HelpService,
   WebUIService,
   AITool,
