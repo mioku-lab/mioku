@@ -261,6 +261,8 @@ export interface CompleteOptions {
   /** 会话内可执行的工具（自动进入工具循环） */
   executableTools?: SessionToolDefinition[];
   executableToolsProvider?: () => SessionToolDefinition[];
+  steeringProvider?: () => any[];
+  abortSignal?: AbortSignal;
   maxIterations?: number;
   onTextDelta?: (delta: string) => void | Promise<void>;
   usageContext?: AIUsageContext;
@@ -276,6 +278,7 @@ export interface CompleteResponse {
   turnMessages: unknown[];
   iterations?: number;
   allToolCalls?: ToolCallRecord[];
+  stopped?: boolean;
 }
 
 export type AIProtocol =
@@ -465,6 +468,7 @@ export interface AIService {
     range: AIUsageRange;
     botId?: number;
   }): AIUsageSummary;
+  getUsageRecords?(options: AIUsageRecordQuery): AIUsageRecordSummary[];
   cleanupUsageStats?(retentionMs?: number): number;
   finalizeUsage?(usageId: string, finalization: AIUsageFinalization): boolean;
 }
@@ -668,4 +672,28 @@ export interface AIUsageSummary {
     errorRate: number;
     cacheHitRate: number;
   }>;
+}
+
+export interface AIUsageRecordQuery {
+  sessionId?: string;
+  usageId?: string;
+  source?: string;
+  userId?: number;
+  limit?: number;
+}
+
+export interface AIUsageRecordSummary {
+  usageId: string | null;
+  source: string | null;
+  sessionId: string | null;
+  userId: number | null;
+  model: string;
+  success: boolean;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
 }

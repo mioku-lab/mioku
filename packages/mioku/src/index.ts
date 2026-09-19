@@ -113,6 +113,8 @@ export type {
   AIUsageBreakdown,
   AIUsageFinalization,
   AIUsageSummary,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
 } from "./types";
 
 export {

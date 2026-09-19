@@ -4,4 +4,5 @@ export const BASE_CONFIG = {
   historyCount: 100,
   maxIterations: 20,
   enableMediaRecognition: true,
+  ignorePrivateChat: true,
 };

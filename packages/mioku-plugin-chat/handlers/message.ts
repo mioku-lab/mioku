@@ -39,6 +39,7 @@ export function createMessageHandler(
       ? Number(e.group_id)
       : undefined;
     const cfg = await getConfig(groupId);
+    if (!isGroup && cfg.ignorePrivateChat) return;
     if (!cfg.model && !cfg.apiKey) return;
     if (!e?.message || !Array.isArray(e.message)) return;
 

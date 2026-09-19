@@ -37,6 +37,9 @@
     },
     "terraria": {
       "npm": "mioku-plugin-terraria"
+    },
+    "agent": {
+      "npm": "mioku-plugin-agent"
     }
   },
   "services": {
@@ -82,6 +85,9 @@
     "stdin": {
       "npm": "mioku-adapter-stdin",
       "builtin": true
+    },
+    "qq-official": {
+      "npm": "mioku-adapter-qq-official"
     }
   }
 }
