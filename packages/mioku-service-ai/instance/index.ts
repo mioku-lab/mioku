@@ -175,6 +175,18 @@ export class AIInstanceImpl implements LocalAIInstance {
       return response;
     } catch (error) {
       tracker.finish(false, String(error));
+      if (options.abortSignal?.aborted) {
+        return {
+          content: null,
+          reasoning: null,
+          toolCalls: [],
+          raw: { role: "assistant", content: "" },
+          turnMessages: [],
+          iterations: 0,
+          allToolCalls: [],
+          stopped: true,
+        };
+      }
       throw error;
     }
   }
@@ -210,6 +222,7 @@ export class AIInstanceImpl implements LocalAIInstance {
       stream: options.stream,
       onTextDelta: options.onTextDelta,
       cachePreference: options.cachePreference ?? "prefer",
+      abortSignal: options.abortSignal,
     });
     tracker.recordAssistant(assistant);
     if (assistant.usage) tracker.recordMeasuredTokens(assistant.usage);
@@ -247,6 +260,7 @@ export class AIInstanceImpl implements LocalAIInstance {
     stream?: boolean;
     onTextDelta?: (delta: string) => void | Promise<void>;
     cachePreference?: "prefer" | "none";
+    abortSignal?: AbortSignal;
   }): Promise<AssistantMessageResult> {
     const mainCall = () => this.callOwnClient(args);
     try {
@@ -260,6 +274,7 @@ export class AIInstanceImpl implements LocalAIInstance {
         },
       };
     } catch (mainErr) {
+      if (args.abortSignal?.aborted) throw mainErr;
       if (this.role === "main" && this.fallbackChain.length > 0) {
         miokiLogger.warn(
           `[ai] 主模型 (${this.providerId}/${this.modelId}) 调用失败: ${mainErr}`,
@@ -317,6 +332,7 @@ export class AIInstanceImpl implements LocalAIInstance {
     stream?: boolean;
     onTextDelta?: (delta: string) => void | Promise<void>;
     cachePreference?: "prefer" | "none";
+    abortSignal?: AbortSignal;
   }): Promise<AssistantMessageResult> {
     const messages = toUnifiedMessages(args.messages);
     const tools = toUnifiedTools(args.tools);
@@ -330,6 +346,7 @@ export class AIInstanceImpl implements LocalAIInstance {
       onTextDelta: args.onTextDelta,
       cachePreference: args.cachePreference ?? "prefer",
       thinkingLevel: this.thinkingLevelProvider?.(),
+      abortSignal: args.abortSignal,
     });
 
     return {

@@ -96,7 +96,9 @@ export class AnthropicProvider extends BaseProviderClient {
       return this.completeStream(options, body);
     }
 
-    const response = await this.client.messages.create(body);
+    const response = await this.client.messages.create(body, {
+      signal: options.abortSignal,
+    });
     return parseAnthropicMessage(response);
   }
 
@@ -104,7 +106,9 @@ export class AnthropicProvider extends BaseProviderClient {
     options: ProviderCompleteOptions,
     body: Anthropic.MessageCreateParams,
   ): Promise<ProviderCompleteResponse> {
-    const stream = this.client.messages.stream(body);
+    const stream = this.client.messages.stream(body, {
+      signal: options.abortSignal,
+    });
     let content = "";
     let reasoning = "";
     const toolCallsByIndex = new Map<

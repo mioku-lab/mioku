@@ -73,7 +73,7 @@ export class OpenAIChatProvider extends BaseProviderClient {
       ...(reasoningEffort
         ? { reasoning_effort: reasoningEffort as unknown as string }
         : {}),
-    } as any);
+    } as any, { signal: options.abortSignal } as any);
 
     const message = response.choices[0]?.message;
     const content = extractTextContent(message?.content);
@@ -115,7 +115,7 @@ export class OpenAIChatProvider extends BaseProviderClient {
       ...(reasoningEffort
         ? { reasoning_effort: reasoningEffort as unknown as string }
         : {}),
-    } as any) as any);
+    } as any, { signal: options.abortSignal } as any) as any);
 
     let content = "";
     let reasoning = "";

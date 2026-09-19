@@ -75,7 +75,7 @@ export class OpenAIResponseProvider extends BaseProviderClient {
     }
 
     try {
-      const response = await this.createResponse(body);
+      const response = await this.createResponse(body, options.abortSignal);
       return parseResponseResult(response, options);
     } catch (error) {
       logResponseApiFailure(error, body);
@@ -89,7 +89,7 @@ export class OpenAIResponseProvider extends BaseProviderClient {
   ): Promise<ProviderCompleteResponse> {
     const streamBody = { ...body, stream: true };
     try {
-      const stream = await this.createResponse(streamBody);
+      const stream = await this.createResponse(streamBody, options.abortSignal);
       let content = "";
       let reasoning = "";
       let usage = extractUsageTokens(undefined);
@@ -177,9 +177,14 @@ export class OpenAIResponseProvider extends BaseProviderClient {
     }
   }
 
-  private async createResponse(body: Record<string, unknown>): Promise<any> {
+  private async createResponse(
+    body: Record<string, unknown>,
+    abortSignal?: AbortSignal,
+  ): Promise<any> {
     logResponseApiRequest(body);
-    const response = await (this.client as any).responses.create(body);
+    const response = await (this.client as any).responses.create(body, {
+      signal: abortSignal,
+    });
     logResponseApiResult(response);
     return response;
   }

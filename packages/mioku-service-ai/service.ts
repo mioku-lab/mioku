@@ -18,6 +18,8 @@ import type { AIInstance, AIService } from "./types";
 import type {
   AIUsageFinalization,
   AIUsageRange,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
   AIUsageStore,
 } from "./usage/types";
 import { parseModelFullId } from "./types";
@@ -539,6 +541,10 @@ export class AIServiceImpl implements AIService {
 
   getUsageSummary(options: { range: AIUsageRange; botId?: number }) {
     return this.usageStore.getSummary(options);
+  }
+
+  getUsageRecords(options: AIUsageRecordQuery): AIUsageRecordSummary[] {
+    return this.usageStore.listRecords(options);
   }
 
   cleanupUsageStats(retentionMs?: number): number {

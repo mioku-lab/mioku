@@ -116,6 +116,7 @@ export interface ProviderCompleteOptions {
   cachePreference?: "prefer" | "none";
   thinkingLevel?: AIThinkingLevel;
   onTextDelta?: (delta: string) => void | Promise<void>;
+  abortSignal?: AbortSignal;
 }
 
 export interface ProviderCompleteResponse {
