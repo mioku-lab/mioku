@@ -4,7 +4,9 @@
   "type": "module",
   "dependencies": {
     "mioku": "workspace:*",
+    "mioku-adapter-icqq": "workspace:*",
     "mioku-adapter-onebotv11": "workspace:*",
+    "mioku-adapter-qq-official": "workspace:*",
     "mioku-adapter-stdin": "workspace:*",
     "mioku-plugin-60s": "workspace:*",
     "mioku-plugin-admin": "workspace:*",
@@ -27,7 +29,8 @@
     "mioku-service-netease": "workspace:*",
     "mioku-service-packet": "workspace:*",
     "mioku-service-screenshot": "workspace:*",
-    "mioku-service-webui": "workspace:*"
+    "mioku-service-webui": "workspace:*",
+    "mioku-plugin-agent": "workspace:*"
   },
   "scripts": {
     "start": "bun run app.ts"
@@ -52,7 +55,8 @@
       "deerpipe",
       "impact",
       "terraria",
-      "sekai"
+      "sekai",
+      "agent"
     ],
     "log_level": "info",
     "adapters": {
