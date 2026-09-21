@@ -404,7 +404,7 @@ export async function sendMessage(
         // 有 @ 用户时，构建消息保持原始位置
         // 先将原始行按 @ 标记分割，然后重新构建
         let remaining = line;
-        const atPattern = /\[at: \d+\]/g;
+        const atPattern = /\[at: ?(\d+)\]/g;
 
         let lastIndex = 0;
         let match;

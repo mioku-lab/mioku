@@ -1,4 +1,3 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { MiokuContext } from "mioku";
 import type { AITool, AIService, SkillPermissionRole } from "mioku";
 import type { ChatDatabase } from "./db";
@@ -175,6 +174,7 @@ export interface ChatConfig {
   multimodalWorkingModel: string;
   isMultimodal: boolean;
   enableMediaRecognition: boolean;
+  ignorePrivateChat: boolean;
   nicknames: string[];
   persona: string;
   maxContextTokens: number;
@@ -339,7 +339,7 @@ export interface ChatResult {
   pendingQuote?: string;
   toolCalls: { name: string; args: any; result: any }[];
   emojiPath?: string | null;
-  protocolMessages?: ChatCompletionMessageParam[];
+  protocolMessages?: unknown[];
 }
 
 /**

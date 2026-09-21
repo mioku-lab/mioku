@@ -21,8 +21,6 @@ import { createHelpSkills } from "./skills";
 
 const helpPlugin = definePlugin({
   name: "help",
-  version: "2.1.0",
-  description: "帮助插件，生成帮助图片，并提供 #状态 指令",
 
   async setup(ctx: MiokuContext) {
     // 启动后台采样器
@@ -75,7 +73,7 @@ const helpPlugin = definePlugin({
       for (const skill of createHelpSkills()) aiService.registerSkill(skill);
     }
 
-    ctx.handle("message", async (event) => {
+    const handleHelpMessage = async (event: import("mioku").MessageEvent) => {
       const text = ctx.text(event);
       if (!text) {
         return;
@@ -155,6 +153,25 @@ const helpPlugin = definePlugin({
         ctx.logger.error(`生成帮助图片失败: ${error}`);
         await event.reply(`生成帮助图片失败: ${error}`);
       }
+    };
+
+    ctx.command({
+      id: "帮助菜单",
+      name: "help",
+      aliases: ["帮助", "菜单"],
+      match: /^(?:help|帮助|菜单)(?:\s|$)/i,
+      prefixes: ["#", "/", ""],
+      description: "生成帮助图片",
+      handler: ({ event }) => handleHelpMessage(event),
+    });
+    ctx.command({
+      id: "status",
+      name: "status",
+      aliases: ["状态", "zt"],
+      match: /^(?:status|状态|zt)(?:\s|$)/i,
+      prefixes: ["#", "/", ""],
+      description: "生成系统状态图片",
+      handler: ({ event }) => handleHelpMessage(event),
     });
 
     return () => {

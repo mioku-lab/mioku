@@ -11,7 +11,7 @@ export async function handleIdleCheckDebug(
   cfg: ChatConfig,
 ): Promise<void> {
   const ctx: MiokuContext = pluginCtx.ctx;
-  const isOwner = ctx.isOwner?.(e) ?? false;
+  const isOwner = ctx.isMaster?.(e) ?? false;
   if (!isOwner) {
     await e.reply("只有主人才能使用这个指令~");
     return;

@@ -88,13 +88,6 @@ export interface ButtonOptions {
   unsupportedTips?: string;
 }
 
-/** 会话引用：用于定位一段会话（含父会话） */
-export interface ConversationRef {
-  readonly type: string;
-  readonly id: string;
-  readonly parent_id?: string;
-}
-
 export class MessageSegmentImpl implements MessageSegment {
   readonly type: string;
   readonly data: Readonly<Record<string, unknown>>;

@@ -1,8 +1,7 @@
-import { isEventOwner } from "../../../runtime/mioku-context";
 import type { MiokuContext } from "../../../runtime/mioku-context";
+import { isEventMaster } from "../../../runtime/mioku-context";
 import { getPluginRuntimeState } from "../../../runtime/plugin-state";
 import { replyText } from "./notify";
-import { getCommandPrefix } from "./prefix";
 import {
   checkUpdates,
   diffVersions,
@@ -127,18 +126,15 @@ async function performUpdateAndReport(
 }
 
 export function registerUpdateCommands(ctx: MiokuContext): () => void {
-  const dispose = ctx.handle("message", async (event) => {
-    const text = ctx.text(event)?.trim();
-    if (!text || event?.user_id === event?.self_id) return;
-    const prefix = getCommandPrefix();
-    if (!text.startsWith(`${prefix}update`)) return;
-
-    if (!isEventOwner(event)) {
-      ctx.logger.warn("[core] update 指令仅主人可用");
-      return;
-    }
-
-    const arg = text.slice(prefix.length + "update".length).trim();
+  const dispose = ctx.command({
+    name: "update",
+    aliases: ["更新"],
+    permission: "master",
+    priority: -1000,
+    description: "检查并选择插件/服务更新",
+    handler: async ({ event, args }) => {
+    const prefix = String(ctx.config.prefix ?? ".");
+    const arg = args.join(" ").trim();
     const selfId = String(event?.self_id || "");
     const bot = event.bot;
     if (!bot) return;
@@ -202,7 +198,7 @@ export function registerUpdateCommands(ctx: MiokuContext): () => void {
       const listenerDispose = ctx.handle("message", async (ev: any) => {
         if (String(ev?.self_id || "") !== selfId) return;
         if (conversationKey(ev) !== key) return;
-        if (!isEventOwner(ev)) return;
+        if (!isEventMaster(ev)) return;
 
         const evText = ctx.text(ev)?.trim() || "";
         if (evText.startsWith(`${prefix}update`)) return;
@@ -246,6 +242,7 @@ export function registerUpdateCommands(ctx: MiokuContext): () => void {
       event,
       `用法：\n${prefix}update check  检查并选择更新\n${prefix}update all  更新全部\n${prefix}update mioku  更新框架\n${prefix}update plugin <名称>\n${prefix}update service <名称>`,
     );
+    },
   });
 
   return () => {

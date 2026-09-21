@@ -353,8 +353,6 @@ class ScreenshotServiceImpl implements ScreenshotService {
 
 const screenshotService: MiokuService = {
   name: "screenshot",
-  version: "1.0.0",
-  description: "网页截图服务",
   api: {} as ScreenshotService,
 
   async init() {

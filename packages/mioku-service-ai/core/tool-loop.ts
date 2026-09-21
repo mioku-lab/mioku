@@ -1,6 +1,5 @@
 import type { AITool, ToolCallRecord, ToolResultFollowup } from "mioku";
-import { TOOL_RESULT_FOLLOWUP_KEY } from "mioku";
-import { logger } from "mioku";
+import { TOOL_RESULT_FOLLOWUP_KEY, logger } from "mioku";
 import type {
   AssistantMessageResult,
   CompleteOptions,
@@ -19,6 +18,7 @@ export interface AssistantRequestArgs {
   stream?: boolean;
   onTextDelta?: (delta: string) => void | Promise<void>;
   cachePreference?: "prefer" | "none";
+  abortSignal?: AbortSignal;
 }
 
 export interface ToolLoopDeps {
@@ -43,7 +43,29 @@ export async function runToolLoop(
   let raw: any = { role: "assistant", content: "" };
 
   while (iterations < maxIterations) {
+    // 用户主动停止：不再发起新的模型请求，把已产生的内容原样返回。
+    if (options.abortSignal?.aborted) {
+      return {
+        content,
+        reasoning,
+        toolCalls: [],
+        raw,
+        iterations,
+        allToolCalls,
+        turnMessages,
+        stopped: true,
+      };
+    }
     iterations++;
+
+    // 运行期间用户新发的消息：并入本轮，模型在下一次请求里就能看到（steering）。
+    const steering = options.steeringProvider?.() ?? [];
+    if (steering.length > 0) {
+      sessionMessages.push(...steering);
+      turnMessages.push(...steering);
+      for (const message of steering) tracker.recordMessage(message as any);
+    }
+
     const currentDefinitions = options.executableToolsProvider
       ? options.executableToolsProvider()
       : (options.executableTools ?? []);
@@ -71,6 +93,7 @@ export async function runToolLoop(
       stream: options.stream,
       onTextDelta: options.onTextDelta,
       cachePreference: options.cachePreference ?? "prefer",
+      abortSignal: options.abortSignal,
     });
     tracker.recordAssistant(assistant);
     if (assistant.usage) tracker.recordMeasuredTokens(assistant.usage);
@@ -94,6 +117,7 @@ export async function runToolLoop(
     }
 
     for (const toolCall of assistant.toolCalls) {
+      if (options.abortSignal?.aborted) break;
       const toolName = toolCall.name;
       const tool = toolMap.get(toolName);
       const args = parseToolArguments(toolCall.arguments);

@@ -1,7 +1,6 @@
 import { atOf, buildRoutes, createFriendRef, createGroupRef } from "mioku";
 import type {
   Bot,
-  ConversationRef,
   EventIdentity,
   MessageEvent,
   NoticeEvent,
@@ -133,10 +132,6 @@ export const buildMessageEvent = (
     friend: !isGroup
       ? createFriendRef(bot, userId, event.sender.nickname)
       : undefined,
-    conversation: {
-      type: isGroup ? "group" : "private",
-      id: isGroup ? groupId! : userId,
-    } satisfies ConversationRef,
     message,
     is_to_me: isGroup ? (event as GroupMessageEvent).atme : false,
     at: atOf(message),

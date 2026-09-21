@@ -4,6 +4,8 @@ import type {
   AIUsageFinalization,
   AIUsageBotOption,
   AIUsageRange,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
   AIUsageScope,
   AIUsageSummary,
 } from "mioku";
@@ -14,6 +16,8 @@ export type {
   AIUsageFinalization,
   AIUsageBotOption,
   AIUsageRange,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
   AIUsageScope,
   AIUsageSummary,
 };
@@ -66,6 +70,7 @@ export interface AIUsageStore {
   record(record: AIUsageCompletionMeta): void;
   updateFinalization(usageId: string, finalization: AIUsageFinalization): boolean;
   getSummary(options: { range: AIUsageRange; botId?: number }): AIUsageSummary;
+  listRecords(options: AIUsageRecordQuery): AIUsageRecordSummary[];
   cleanup(retentionMs?: number): number;
   close(): void;
 }

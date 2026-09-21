@@ -1,7 +1,5 @@
-import { isEventOwner } from "../../../runtime/mioku-context";
 import type { MiokuContext } from "../../../runtime/mioku-context";
 import { replyText, sendTextOrForward } from "./notify";
-import { getCommandPrefix } from "./prefix";
 import { getMarketItems } from "../system/package-manager";
 
 function renderMarketText(
@@ -21,23 +19,35 @@ function renderMarketText(
 }
 
 export function registerMarketCommands(ctx: MiokuContext): () => void {
-  const dispose = ctx.handle("message", async (event) => {
-    const text = ctx.text(event)?.trim();
-    if (!text || event?.user_id === event?.self_id) return;
+  const pluginMarket = ctx.command({
+    id: "market",
+    name: "plugin-market",
+    aliases: ["插件市场"],
+    permission: "master",
+    priority: -1000,
+    description: "查看插件市场",
+    handler: (input) => handleMarket(ctx, input.event, "plugin"),
+  });
+  const serviceMarket = ctx.command({
+    id: "market",
+    name: "service-market",
+    aliases: ["服务市场"],
+    permission: "master",
+    priority: -1000,
+    description: "查看服务市场",
+    handler: (input) => handleMarket(ctx, input.event, "service"),
+  });
+  return () => {
+    pluginMarket();
+    serviceMarket();
+  };
+}
 
-    const prefix = getCommandPrefix();
-    const kind: "plugin" | "service" | null =
-      text === `${prefix}plugin-market` || text === `${prefix}插件市场`
-        ? "plugin"
-        : text === `${prefix}service-market` || text === `${prefix}服务市场`
-          ? "service"
-          : null;
-    if (!kind) return;
-
-    if (!isEventOwner(event)) {
-      ctx.logger.warn("[core] market 指令仅主人可用");
-      return;
-    }
+async function handleMarket(
+  ctx: MiokuContext,
+  event: any,
+  kind: "plugin" | "service",
+): Promise<void> {
 
     let items;
     try {
@@ -55,7 +65,4 @@ export function registerMarketCommands(ctx: MiokuContext): () => void {
       source: `Mioku ${kind === "plugin" ? "插件" : "服务"}市场`,
       summary: `共 ${items.length} 个`,
     });
-  });
-
-  return dispose;
 }

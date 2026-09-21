@@ -36,8 +36,6 @@ class HelpManager implements HelpService {
  */
 const helpService: MiokuService = {
   name: "help",
-  version: "1.0.0",
-  description: "帮助系统服务",
   api: {} as HelpService,
 
   async init() {

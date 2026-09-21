@@ -5,6 +5,8 @@ import type {
   AIUsageCompletionMeta,
   AIUsageFinalization,
   AIUsageRange,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
   AIUsageScope,
   AIUsageStore,
   AIUsageSummary,
@@ -299,6 +301,10 @@ export function createAIUsageStore(): AIUsageStore {
       flush();
       return buildSummary(db, options.range, options.botId);
     },
+    listRecords(options): AIUsageRecordSummary[] {
+      flush();
+      return listRecords(db, options);
+    },
     updateFinalization,
     cleanup,
     close(): void {
@@ -308,6 +314,83 @@ export function createAIUsageStore(): AIUsageStore {
       db.close();
     },
   };
+}
+
+function listRecords(
+  db: UsageDatabase,
+  options: AIUsageRecordQuery,
+): AIUsageRecordSummary[] {
+  const conditions: string[] = [];
+  const params: Array<string | number> = [];
+  if (options.sessionId) {
+    conditions.push("session_id = ?");
+    params.push(options.sessionId);
+  }
+  if (options.usageId) {
+    conditions.push("usage_id = ?");
+    params.push(options.usageId);
+  }
+  if (options.source) {
+    conditions.push("source = ?");
+    params.push(options.source);
+  }
+  if (options.userId !== undefined) {
+    conditions.push("user_id = ?");
+    params.push(options.userId);
+  }
+  const whereSql =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = Math.min(
+    Math.max(1, Math.floor(options.limit ?? 50)),
+    500,
+  );
+  const rows = db
+    .prepare(
+      `SELECT usage_id, source, session_id, user_id, model, success,
+              started_at, ended_at, duration_ms, input_tokens, output_tokens,
+              total_tokens, tool_calls
+       FROM ai_usage_records ${whereSql}
+       ORDER BY id DESC LIMIT ${limit}`,
+    )
+    .all(...params) as Array<{
+    usage_id: string | null;
+    source: string | null;
+    session_id: string | null;
+    user_id: number | null;
+    model: string;
+    success: number;
+    started_at: number;
+    ended_at: number;
+    duration_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    tool_calls: string;
+  }>;
+  return rows.map((row) => {
+    let toolCallCount = 0;
+    try {
+      const parsed = JSON.parse(row.tool_calls ?? "[]");
+      if (Array.isArray(parsed)) toolCallCount = parsed.length;
+    } catch {
+      toolCallCount = 0;
+    }
+    return {
+      usageId: row.usage_id,
+      source: row.source,
+      sessionId: row.session_id,
+      userId: row.user_id,
+      model: row.model,
+      success: Boolean(row.success),
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      durationMs: row.duration_ms,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      totalTokens: row.total_tokens,
+      toolCallCount,
+    };
+  });
 }
 
 function buildSummary(

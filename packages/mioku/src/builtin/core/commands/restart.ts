@@ -1,7 +1,5 @@
-import { isEventOwner } from "../../../runtime/mioku-context";
 import type { MiokuContext } from "../../../runtime/mioku-context";
 import { replyText } from "./notify";
-import { getCommandPrefix } from "./prefix";
 import {
   formatUptime,
   triggerRestart,
@@ -9,16 +7,14 @@ import {
 } from "../system/restart";
 
 export function registerRestartCommand(ctx: MiokuContext): () => void {
-  const dispose = ctx.handle("message", async (event) => {
-    const text = ctx.text(event)?.trim();
-    if (!text || event?.user_id === event?.self_id) return;
-    const prefix = getCommandPrefix();
-    if (text !== `${prefix}restart` && text !== `${prefix}重启`) return;
-
-    if (!isEventOwner(event)) {
-      ctx.logger.warn("[core] restart 指令仅主人可用");
-      return;
-    }
+  const dispose = ctx.command({
+    name: "restart",
+    aliases: ["重启"],
+    permission: "master",
+    priority: -1000,
+    description: "重启机器人进程",
+    handler: async ({ event }) => {
+      if (event?.user_id === event?.self_id) return;
 
     const uptimeMs = process.uptime() * 1000;
     const selfId = Number(event?.self_id || 0);
@@ -43,6 +39,7 @@ export function registerRestartCommand(ctx: MiokuContext): () => void {
 
     ctx.logger.info(`[core] 正在执行重启命令 ${formatUptime(uptimeMs)}`);
     triggerRestart(marker);
+    },
   });
 
   return dispose;

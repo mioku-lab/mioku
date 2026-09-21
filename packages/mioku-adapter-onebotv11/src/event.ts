@@ -11,7 +11,6 @@ import { segment } from './message'
 
 import type {
   Attachment,
-  ConversationRef,
   EventIdentity,
   Message,
   MessageEvent,
@@ -113,8 +112,6 @@ export const buildMessageEvent = (params: {
       : undefined
   const isGroup = data.message_type === 'group'
   const routes = buildRoutes(adapter, 'message', data.message_type, data.sub_type)
-  const conversation: ConversationRef | undefined =
-    isGroup && groupId ? { type: 'group', id: groupId } : { type: 'private', id: userId }
   const sender: SenderInfo | undefined = isObject(data.sender)
     ? {
         user_id: String(data.sender.user_id ?? '') as string,
@@ -151,7 +148,6 @@ export const buildMessageEvent = (params: {
     sender,
     group: isGroup && groupId ? createGroupRef(bot, groupId, data.group_name) : undefined,
     friend: !isGroup && userId ? createFriendRef(bot, userId, sender?.nickname) : undefined,
-    conversation,
     message,
     is_to_me:
       typeof data.target_id === 'number' || typeof data.target_id === 'string'

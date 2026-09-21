@@ -80,7 +80,6 @@ const build = (
       raw_message: line,
       sender,
       friend: createFriendRef(currentBot, USER_ID, "stdin"),
-      conversation: { type: "private", id: USER_ID },
       message: createMessage([segment.text(line)], line),
       is_to_me: true,
       reply: async (input, _options) =>

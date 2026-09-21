@@ -22,7 +22,6 @@ import {
   summarizeHistoryVideo,
 } from "../core/media/history-media";
 import { handleIdleCheckDebug } from "./idle-debug";
-import { handleTtsCommand } from "./tts-command";
 import { processChat } from "../core/chat-turn";
 
 const POKE_COOLDOWN_MS = 10 * 60_000;
@@ -40,6 +39,7 @@ export function createMessageHandler(
       ? Number(e.group_id)
       : undefined;
     const cfg = await getConfig(groupId);
+    if (!isGroup && cfg.ignorePrivateChat) return;
     if (!cfg.model && !cfg.apiKey) return;
     if (!e?.message || !Array.isArray(e.message)) return;
 
@@ -52,25 +52,6 @@ export function createMessageHandler(
 
     if (text.startsWith("/空闲检查 ")) {
       await handleIdleCheckDebug(pluginCtx, e, cfg);
-      return;
-    }
-
-    if (text.startsWith("/tts")) {
-      const payload = text.replace(/^\/tts\s*/, "");
-      await handleTtsCommand(pluginCtx, e, payload);
-      return;
-    }
-
-    if (text === "/重置会话") {
-      if (groupId) {
-        pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
-        pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
-        await e.reply("已清除本群会话中 AI 发送的消息~");
-      } else {
-        pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
-        pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
-        await e.reply("已清除你的个人会话中 AI 发送的消息~");
-      }
       return;
     }
 
@@ -222,6 +203,10 @@ export function createMessageHandler(
     }
 
     const atBot = shouldTrigger(e, text, cfg, ctx);
+    const replyBot = ctx.pickReplyBot(e);
+    const actorSelfId = replyBot
+      ? Number(replyBot.bot_id)
+      : Number(e.self_id || 0);
     const quotedBot = isGroup ? await isQuotingBot(e, ctx) : null;
     const mentionedNickname =
       cfg.nicknames.length > 0 &&
@@ -275,14 +260,14 @@ export function createMessageHandler(
               groupSessionId,
               groupId,
               delayInfo.delayMs,
-              Number(e.self_id || 0),
+              actorSelfId,
             );
             return;
           }
         }
 
         pluginCtx.rateLimiter.record(userId, groupId, text);
-        await processChat(e, pluginCtx, runtimeState);
+        await processChat(e, pluginCtx, runtimeState, { replyBot });
         return;
       }
 
@@ -294,10 +279,11 @@ export function createMessageHandler(
           ctx,
           cfg.historyCount,
           pluginCtx.db,
-          Number(e.self_id || 0),
+          actorSelfId,
           pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
         );
-        const botNickname = cfg.nicknames[0] || e.bot?.nickname || "Bot";
+        const botNickname =
+          cfg.nicknames[0] || replyBot?.nickname || e.bot?.nickname || "Bot";
         const planResult = await pluginCtx.humanize.actionPlanner.plan(
           groupSessionId,
           botNickname,
@@ -307,7 +293,7 @@ export function createMessageHandler(
         if (planResult.action !== "reply") return;
         if (!pluginCtx.rateLimiter.canProcess(userId, groupId, text)) return;
         pluginCtx.rateLimiter.record(userId, groupId, text);
-        await processChat(e, pluginCtx, runtimeState);
+        await processChat(e, pluginCtx, runtimeState, { replyBot });
       }
     };
 
@@ -319,7 +305,7 @@ export function createMessageHandler(
           pluginCtx.rateLimiter.recordInteraction(groupId, userId);
           pluginCtx.queueProcessor.scheduleQueuedMessages(
             groupSessionId,
-            Number(e.self_id || 0),
+            actorSelfId,
           );
         }
         return;

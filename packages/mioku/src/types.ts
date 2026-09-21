@@ -1,12 +1,11 @@
+import type { Event } from "./adapter/event";
+
 // Mioku framework types — single source of truth for the public API surface.
 
 // ---------- framework ----------
 
-/** 框架服务的最小形态：init 负责初始化，api 是对外暴露的接口对象 */
 export interface MiokuService {
   name: string;
-  version: string;
-  description?: string;
   init(): Promise<void>;
   api: Record<string, any>;
   dispose?(): Promise<void>;
@@ -75,9 +74,9 @@ export type CommandRole = "master" | "admin" | "owner" | "member";
 
 /**
  * - `"master"`：仅 bot 主人可触发
- * - `"owner"`：legacy alias
- * - `"admin"`：bot 主人或管理员
- * - `"member"`：群内任意成员
+ * - `"owner"`：bot 主人或当前群群主
+ * - `"admin"`：bot 主人、配置管理员、当前群群主或群管理员
+ * - `"member"`：所有人
  *
  */
 export type SkillPermissionRole = "master" | "owner" | "admin" | "member";
@@ -151,11 +150,37 @@ export interface ConfigService {
   ): () => void;
 }
 
+/** 截图输出选项 */
+export interface ScreenshotOptions {
+  /** 视图宽度 */
+  width?: number;
+  /** 视图高度 */
+  height?: number;
+  /** 设备像素比，CSS 尺寸不变，输出物理像素按比例放大；默认 1 */
+  deviceScaleFactor?: number;
+  /** 是否截取完整页面 */
+  fullPage?: boolean;
+  /** 图片质量 1-100 */
+  quality?: number;
+  /** 输出图片格式 */
+  type?: "png" | "jpeg" | "webp";
+  /** 渲染等待时间 */
+  waitTime?: number;
+  /** 主题模式，默认 auto（按时间自动切换） */
+  themeMode?: "auto" | "light" | "dark";
+}
+
+/** Markdown 截图选项 */
+export interface MarkdownScreenshotOptions extends ScreenshotOptions {}
+
 /** 截图服务：把 HTML / Markdown / URL 渲染成图片 */
 export interface ScreenshotService {
-  screenshot(html: string, options?: any): Promise<string>;
-  screenshotMarkdown(markdownContent: string, options?: any): Promise<string>;
-  screenshotFromUrl(url: string, options?: any): Promise<string>;
+  screenshot(html: string, options?: ScreenshotOptions): Promise<string>;
+  screenshotMarkdown(
+    markdownContent: string,
+    options?: MarkdownScreenshotOptions,
+  ): Promise<string>;
+  screenshotFromUrl(url: string, options?: ScreenshotOptions): Promise<string>;
   cleanupTemp(olderThanMs?: number): Promise<number>;
 }
 
@@ -179,7 +204,7 @@ export interface AITool {
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required?: string[];
   };
   handler: (args: any, event?: any) => Promise<any> | any;
@@ -216,8 +241,8 @@ export interface MultimodalMessage {
 /** 一次工具调用的记录（名称、参数与结果） */
 export interface ToolCallRecord {
   name: string;
-  arguments: any;
-  result: any;
+  arguments: unknown;
+  result: unknown;
 }
 
 export interface SessionToolDefinition {
@@ -236,6 +261,8 @@ export interface CompleteOptions {
   /** 会话内可执行的工具（自动进入工具循环） */
   executableTools?: SessionToolDefinition[];
   executableToolsProvider?: () => SessionToolDefinition[];
+  steeringProvider?: () => any[];
+  abortSignal?: AbortSignal;
   maxIterations?: number;
   onTextDelta?: (delta: string) => void | Promise<void>;
   usageContext?: AIUsageContext;
@@ -247,10 +274,11 @@ export interface CompleteResponse {
   content: string | null;
   reasoning: string | null;
   toolCalls: Array<{ id: string; name: string; arguments: string }>;
-  raw: any;
-  turnMessages: any[];
+  raw: unknown;
+  turnMessages: unknown[];
   iterations?: number;
   allToolCalls?: ToolCallRecord[];
+  stopped?: boolean;
 }
 
 export type AIProtocol =
@@ -358,7 +386,11 @@ export interface AIInstance {
     model?: string;
     temperature?: number;
     maxIterations?: number;
-  }): Promise<any>;
+  }): Promise<{
+    content: string;
+    iterations: number;
+    allToolCalls: ToolCallRecord[];
+  }>;
   setUsageContext?(context: AIUsageContext | undefined): void;
   withUsageContext?<T>(
     context: AIUsageContext | undefined,
@@ -423,8 +455,8 @@ export interface AIService {
   getInstanceByRole?(role: AIModelRole): AIInstance | undefined;
   setMainFallbackChain?(modelFullIds: string[]): void;
   getMainFallbackChain?(): string[];
-  registerChatRuntime(runtime: any): boolean;
-  getChatRuntime(): any;
+  registerChatRuntime(runtime: ChatRuntime): boolean;
+  getChatRuntime(): ChatRuntime | undefined;
   removeChatRuntime(): boolean;
   registerSkill(skill: AISkill): boolean;
   getSkill(skillName: string): AISkill | undefined;
@@ -436,6 +468,7 @@ export interface AIService {
     range: AIUsageRange;
     botId?: number;
   }): AIUsageSummary;
+  getUsageRecords?(options: AIUsageRecordQuery): AIUsageRecordSummary[];
   cleanupUsageStats?(retentionMs?: number): number;
   finalizeUsage?(usageId: string, finalization: AIUsageFinalization): boolean;
 }
@@ -475,7 +508,7 @@ export interface ChatRuntimePrivateTarget {
 }
 
 export type ChatRuntimeSource =
-  | { event: any }
+  | { event: Event }
   | ChatRuntimeGroupTarget
   | ChatRuntimePrivateTarget;
 
@@ -494,7 +527,7 @@ export type ChatRuntimeInformationRequestOptions = ChatRuntimeBaseOptions & {
   task: string;
   schema: {
     type: "object";
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required?: string[];
   };
   toolName?: string;
@@ -502,7 +535,7 @@ export type ChatRuntimeInformationRequestOptions = ChatRuntimeBaseOptions & {
 };
 
 export interface ChatRuntimeCollectedInfo {
-  data: any;
+  data: unknown;
   isComplete?: boolean;
   confidence?: number;
   notes?: string;
@@ -516,7 +549,7 @@ export interface ChatRuntimeResult {
   pendingPoke?: number[];
   pendingQuote?: number;
   emojiPath?: string | null;
-  protocolMessages?: any[];
+  protocolMessages?: unknown[];
 }
 
 // ---------- usage tracking ----------
@@ -639,4 +672,28 @@ export interface AIUsageSummary {
     errorRate: number;
     cacheHitRate: number;
   }>;
+}
+
+export interface AIUsageRecordQuery {
+  sessionId?: string;
+  usageId?: string;
+  source?: string;
+  userId?: number;
+  limit?: number;
+}
+
+export interface AIUsageRecordSummary {
+  usageId: string | null;
+  source: string | null;
+  sessionId: string | null;
+  userId: number | null;
+  model: string;
+  success: boolean;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
 }

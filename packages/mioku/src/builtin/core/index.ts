@@ -1,7 +1,7 @@
 import { version } from '../../../package.json' with { type: 'json' }
 import { definePlugin } from '../../plugin'
 import { createCmd, dedent, unique } from '../../utils'
-import { isEventOwner, isEventOwnerOrAdmin } from '../../runtime/mioku-context'
+import { isEventMaster, isEventOwnerOrAdmin } from '../../runtime/mioku-context'
 import { getService } from '../../services/define'
 import { Services } from '../../services/builtin'
 import { rootLogger as logger } from '../../logger'
@@ -156,7 +156,6 @@ const core: MiokuPlugin = definePlugin({
   description: 'mioku 内置核心插件',
   async setup(ctx: MiokuContext) {
     const rawPrefix = ctx.config.prefix ?? '.'
-    const cmdPrefix = new RegExp(`^${escapeRegExp(rawPrefix)}`)
     const displayPrefix = rawPrefix
     const statusAdminOnly = ctx.config.status_permission === 'admin-only'
 
@@ -184,15 +183,18 @@ const core: MiokuPlugin = definePlugin({
     }
 
     let accessRules: AccessControlConfig = ensureAccessControlConfig()
+    ctx.commands.setAccessControl(accessRules)
     if (configService) {
       await configService.registerConfig('core', 'access-control', accessRules)
       const persisted = await configService.getConfig('core', 'access-control')
       if (persisted) {
         accessRules = normalizeAccessConfig(persisted)
+        ctx.commands.setAccessControl(accessRules)
       }
       disposers.push(
         configService.onConfigChange('core', 'access-control', (next) => {
           accessRules = normalizeAccessConfig(next)
+          ctx.commands.setAccessControl(accessRules)
         }),
       )
     }
@@ -268,22 +270,54 @@ const core: MiokuPlugin = definePlugin({
     const getAdapterText = async (): Promise<string> =>
       formatAdapterReport(await buildAdapterReport({ bots: collectBots(), adapters: collectAdapters() }))
 
+    ctx.command({
+      name: "help",
+      aliases: ["帮助"],
+      permission: "master",
+      priority: -1000,
+      description: "显示帮助信息",
+      handler: async ({ event }) => {
+        await event.reply(buildCoreHelpText(displayPrefix))
+      },
+    })
+    ctx.command({
+      name: "status",
+      aliases: ["状态"],
+      priority: -1000,
+      description: "显示框架状态",
+      handler: async ({ event }) => {
+        if (statusAdminOnly && !isEventOwnerOrAdmin(event)) return
+        await event.reply(await formatMiokuStatus(await getStatus()))
+      },
+    })
+    ctx.command({
+      name: "adapter",
+      aliases: ["适配器"],
+      priority: -1000,
+      description: "显示适配器与连接实例",
+      handler: async ({ event }) => {
+        if (statusAdminOnly && !isEventOwnerOrAdmin(event)) return
+        await event.reply(await getAdapterText())
+      },
+    })
+
     const atTarget = (event: MessageEvent): string | undefined => {
       const at = event.message.find((seg): seg is MessageSegment & { data: Record<string, unknown> } => seg.type === 'at')
       const qq = at?.data?.qq ?? at?.data?.target
       return qq != null ? String(qq) : undefined
     }
 
-    disposers.push(
-      ctx.handle('message', async (event) => {
+    const handleCoreMessage = async (event: MessageEvent) => {
         const ev = event as MessageEvent
         const text = ev.message.text()
+        const currentPrefix = String(ctx.config.prefix ?? '.')
+        const currentCmdPrefix = new RegExp(`^${escapeRegExp(currentPrefix)}`)
 
-        if (!cmdPrefix.test(text)) return
+        if (!currentCmdPrefix.test(text)) return
 
         if (statusAdminOnly && !isEventOwnerOrAdmin(ev)) return
 
-        const bare = text.replace(cmdPrefix, '').trim()
+        const bare = text.replace(currentCmdPrefix, '').trim()
 
         if (bare === '状态' || bare === 'status') {
           await ev.reply(await formatMiokuStatus(await getStatus()))
@@ -295,12 +329,12 @@ const core: MiokuPlugin = definePlugin({
           return
         }
 
-        if (!isEventOwner(ev)) return
+        if (!isEventMaster(ev)) return
 
         const { cmd, params } = createCmd(text)
         if (!cmd) return
 
-        const subCmd = cmd.replace(cmdPrefix, '').replace(/\s+/g, '')
+        const subCmd = cmd.replace(currentCmdPrefix, '').replace(/\s+/g, '')
         const target = params[0]
 
         switch (subCmd) {
@@ -547,8 +581,20 @@ const core: MiokuPlugin = definePlugin({
             process.exit(0)
           }
         }
-      }),
-    )
+    }
+
+    for (const command of [
+      { name: 'plugin', aliases: ['插件'], description: '插件管理' },
+      { name: 'settings', aliases: ['设置'], description: '框架设置管理' },
+      { name: 'exit', aliases: ['退出'], description: '退出框架进程' },
+    ]) {
+      ctx.command({
+        ...command,
+        permission: 'master',
+        priority: -1000,
+        handler: ({ event }) => handleCoreMessage(event),
+      })
+    }
 
     logger.info('========================================')
     logger.info('          Mioku 服务初始化完成')

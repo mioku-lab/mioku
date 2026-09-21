@@ -284,6 +284,7 @@ export default defineConfig({
           items: [
             { text: "第一个插件", link: "/developer/first-plugin" },
             { text: "事件处理", link: "/developer/events" },
+            { text: "命令管理器", link: "/developer/commands" },
             { text: "消息与消息段", link: "/developer/message" },
             { text: "操作 Bot", link: "/developer/bot" },
             { text: "定时任务与生命周期", link: "/developer/cron-lifecycle" },

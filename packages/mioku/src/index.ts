@@ -22,8 +22,10 @@ export * from "./capabilities";
 export * from "./runtime/bus";
 export * from "./runtime/bots";
 export * from "./runtime/context";
+export * from "./runtime/event-correlator";
 export * from "./runtime/lifecycle";
 export * from "./runtime/mioku-context";
+export * from "./runtime/commands";
 export * from "./runtime/runtime";
 export * from "./runtime/types";
 export * from "./loader";
@@ -70,6 +72,8 @@ export type {
   AccessControlConfig,
   ConfigService,
   ScreenshotService,
+  ScreenshotOptions,
+  MarkdownScreenshotOptions,
   HelpService,
   WebUIService,
   AITool,
@@ -109,7 +113,15 @@ export type {
   AIUsageBreakdown,
   AIUsageFinalization,
   AIUsageSummary,
+  AIUsageRecordQuery,
+  AIUsageRecordSummary,
 } from "./types";
+
+export {
+  CommandManager,
+  getActiveCommandManager,
+  setActiveCommandManager,
+} from "./runtime/commands";
 
 export {
   TOOL_RESULT_FOLLOWUP_KEY,
@@ -184,6 +196,8 @@ export async function start(
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+  installProcessErrorGuards();
+
   return {
     stop: (reason) => stopRuntime(reason),
   };
@@ -200,6 +214,23 @@ function readVersion(): string {
 }
 
 export const version: string = readVersion();
+
+function installProcessErrorGuards(): void {
+  if (process.listenerCount("unhandledRejection") === 0) {
+    process.on("unhandledRejection", (reason) => {
+      const detail =
+        reason instanceof Error ? reason.stack ?? reason.message : reason;
+      rootLogger.error(`[unhandledRejection] ${String(detail)}`);
+    });
+  }
+  if (process.listenerCount("uncaughtException") === 0) {
+    process.on("uncaughtException", (err) => {
+      rootLogger.error(
+        `[uncaughtException] ${err.stack ?? err.message ?? String(err)}`,
+      );
+    });
+  }
+}
 
 export {
   getDataDir,

@@ -11,7 +11,6 @@ import { definePlugin } from "mioku";
 
 export default definePlugin({
   name: "morning",
-  version: "1.0.0",
 
   async setup(ctx) {
     ctx.cron("0 9 * * *", async (ctx, task) => {
@@ -91,7 +90,6 @@ import { definePlugin } from "mioku";
 
 export default definePlugin({
   name: "reminder",
-  version: "1.0.0",
 
   async setup(ctx) {
     const timer = setInterval(() => {

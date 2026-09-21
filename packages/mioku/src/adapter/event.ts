@@ -1,6 +1,5 @@
 import type {
   Attachment,
-  ConversationRef,
   Message,
   MessageInput,
   MessageTarget,
@@ -62,7 +61,6 @@ export interface MessageEvent extends BotEventBase {
   readonly sender?: SenderInfo
   readonly group?: import('../capabilities/group').Group
   readonly friend?: import('../capabilities/friend').Friend
-  readonly conversation?: ConversationRef
   readonly message: Message
   readonly is_to_me?: boolean
   readonly at?: string
@@ -148,4 +146,4 @@ export const buildRoutes = (adapter: string, ...parts: (string | undefined | nul
   return Array.from(new Set(routes))
 }
 
-export type { Attachment, ConversationRef, Message, MessageInput, MessageTarget, ReplyOptions, SentMessage }
+export type { Attachment, Message, MessageInput, MessageTarget, ReplyOptions, SentMessage }

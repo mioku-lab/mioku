@@ -17,6 +17,8 @@ export interface BusStats {
   readonly dispatched: number
 }
 
+export type RegistrationFilter = (registration: Registration, event: Event) => boolean
+
 const WILDCARD = '*'
 
 const isWildcardMatch = (pattern: string, route: string): boolean => {
@@ -38,9 +40,14 @@ export class EventBus {
   #nextOrder = 0
   #dispatched = 0
   #logger: ((level: 'error' | 'warn' | 'info', message: string, detail?: unknown) => void) | null = null
+  #filter: RegistrationFilter | null = null
 
   setLogger(logger: ((level: 'error' | 'warn' | 'info', message: string, detail?: unknown) => void) | null): void {
     this.#logger = logger
+  }
+
+  setFilter(filter: RegistrationFilter | null): void {
+    this.#filter = filter
   }
 
   /** 注册事件监听，返回取消注册函数 */
@@ -87,6 +94,17 @@ export class EventBus {
     const matched: Registration[] = []
     for (const reg of this.#registrations) {
       if (reg.disposed) continue
+      if (this.#filter) {
+        try {
+          if (!this.#filter(reg, event)) continue
+        } catch (err) {
+          this.#logger?.(
+            'error',
+            `Event registration filter failed for "${reg.source}"`,
+            err,
+          )
+        }
+      }
       if (isWildcardMatch(reg.route, event.type)) {
         matched.push(reg)
         continue

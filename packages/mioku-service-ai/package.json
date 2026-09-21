@@ -1,6 +1,6 @@
 {
   "name": "mioku-service-ai",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "为插件提供完整的ai服务支持，包括多提供商、协议适配、实例/提示词/skills管理等",
   "main": "index.ts",
   "type": "module",
