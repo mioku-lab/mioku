@@ -31,11 +31,12 @@ function getPendingMap(): Map<string, PendingSelection> {
 }
 
 function conversationKey(event: any): string {
-  const selfId = Number(event?.self_id || 0);
+  const selfId = String(event?.self_id ?? "");
+  const adapter = String(event?.bot?.adapter ?? "");
   if (event?.message_type === "group" && event?.group_id) {
-    return `${selfId}:g:${event.group_id}`;
+    return `${adapter}:${selfId}:g:${String(event.group_id)}`;
   }
-  return `${selfId}:p:${event?.user_id || 0}`;
+  return `${adapter}:${selfId}:p:${String(event?.user_id ?? "")}`;
 }
 
 function typeLabel(type: string): string {
@@ -110,17 +111,18 @@ async function performUpdateAndReport(
   parts.push("", "即将重启...");
   await replyText(event, parts.join("\n"));
 
-  const selfId = Number(event?.self_id || 0);
+  const selfId = String(event?.self_id ?? "");
   const groupId =
     event?.message_type === "group" && event?.group_id
-      ? Number(event.group_id)
+      ? String(event.group_id)
       : null;
-  const userId = Number(event?.user_id || 0);
+  const userId = String(event?.user_id ?? "");
   const marker: RestartMarker = {
     initiatedAt: Date.now(),
     selfId,
     groupId,
     userId,
+    adapter: event?.bot?.adapter,
   };
   triggerRestart(marker);
 }

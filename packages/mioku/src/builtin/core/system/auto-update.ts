@@ -57,9 +57,9 @@ export function startAutoUpdateScheduler(
       logger.info("[core] 自动更新成功，准备重启...");
       const marker: RestartMarker = {
         initiatedAt: Date.now(),
-        selfId: 0,
+        selfId: "",
         groupId: null,
-        userId: 0,
+        userId: "",
       };
       triggerRestart(marker);
     } catch (error) {

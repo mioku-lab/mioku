@@ -498,13 +498,13 @@ export interface ChatRuntimePromptInjection {
 }
 
 export interface ChatRuntimeGroupTarget {
-  selfId: number;
-  groupId: number;
+  selfId: string;
+  groupId: string;
 }
 
 export interface ChatRuntimePrivateTarget {
-  selfId: number;
-  userId: number;
+  selfId: string;
+  userId: string;
 }
 
 export type ChatRuntimeSource =
@@ -561,10 +561,10 @@ export type AIUsageScope = "all" | "bot";
 export interface AIUsageContext {
   usageId?: string;
   source?: string;
-  botId?: number;
-  groupId?: number;
+  botId?: string;
+  groupId?: string;
   groupName?: string;
-  userId?: number;
+  userId?: string;
   userName?: string;
   sessionId?: string;
   fallbackUsed?: boolean;
@@ -586,7 +586,7 @@ export interface AIUsageFinalization {
 }
 
 export interface AIUsageBotOption {
-  botId: number;
+  botId: string;
   label: string;
 }
 
@@ -594,7 +594,7 @@ export interface AIUsageSummary {
   generatedAt: number;
   range: AIUsageRange;
   scope: AIUsageScope;
-  botId?: number;
+  botId?: string;
   bots: AIUsageBotOption[];
   totals: {
     requests: number;
@@ -628,7 +628,7 @@ export interface AIUsageSummary {
   };
   toolRanking: Array<{ name: string; count: number }>;
   groupRanking: Array<{
-    groupId: number;
+    groupId: string;
     groupName: string;
     requests: number;
     totalTokens: number;
@@ -678,7 +678,7 @@ export interface AIUsageRecordQuery {
   sessionId?: string;
   usageId?: string;
   source?: string;
-  userId?: number;
+  userId?: string;
   limit?: number;
 }
 
@@ -686,7 +686,7 @@ export interface AIUsageRecordSummary {
   usageId: string | null;
   source: string | null;
   sessionId: string | null;
-  userId: number | null;
+  userId: string | null;
   model: string;
   success: boolean;
   startedAt: number;
