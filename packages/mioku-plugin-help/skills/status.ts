@@ -32,7 +32,7 @@ export function createStatusSkill(): AISkill {
             return "screenshot 服务未加载";
           }
           try {
-            const { botNickname, botAvatarUrl } = resolveHelpBotProfile(
+            const { botNickname, botAvatarUrl } = await resolveHelpBotProfile(
               ctx,
               event,
             );

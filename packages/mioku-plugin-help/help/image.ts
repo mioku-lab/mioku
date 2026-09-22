@@ -108,22 +108,38 @@ export async function generateHelpImage(options: {
  * Pick a bot's nickname + avatar URL. Used so the help card can greet
  * the user with their bot's identity rather than a generic string.
  */
-export function resolveHelpBotProfile(
+export async function resolveHelpBotProfile(
   ctx: any,
   event?: any,
-): { botNickname: string; botAvatarUrl?: string } {
+): Promise<{ botNickname: string; botAvatarUrl?: string }> {
   const fallbackNickname = "Mioku Bot";
   const selfId = event?.self_id;
   const bot =
     event?.bot ??
     (ctx?.bots instanceof Map ? Array.from(ctx.bots.values())[0] : null);
-  const botId = selfId || bot?.bot_id;
+  const botId = String(selfId ?? bot?.bot_id ?? "").trim();
   const botNickname = bot?.nickname || bot?.name || fallbackNickname;
-  const botAvatarUrl = botId
-    ? `https://q1.qlogo.cn/g?b=qq&nk=${botId}&s=640`
-    : undefined;
+  const botAvatarUrl = await resolveBotAvatar(bot, botId);
 
   return { botNickname, botAvatarUrl };
+}
+
+/** QQ 系的 qlogo 头像服务只认数字 QQ 号,openid/AppID 一律走平台接口 */
+export async function resolveBotAvatar(
+  bot: any,
+  botId: string,
+): Promise<string | undefined> {
+  try {
+    const avatar = await bot?.getAvatar?.();
+    if (typeof avatar === "string" && avatar) return avatar;
+  } catch {
+    // 平台不支持时回退
+  }
+  const adapter = String(bot?.adapter ?? "");
+  if ((adapter === "onebotv11" || adapter === "icqq") && /^\d+$/.test(botId)) {
+    return `https://q1.qlogo.cn/g?b=qq&nk=${botId}&s=640`;
+  }
+  return undefined;
 }
 
 /**

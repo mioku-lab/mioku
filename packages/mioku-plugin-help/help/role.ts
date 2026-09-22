@@ -65,19 +65,20 @@ export async function resolveViewerRole(
       return "admin";
     }
 
-    if (event?.group_id != null && event?.user_id != null) {
+    const groupId = String(event?.group_id ?? "").trim();
+    const userId = String(event?.user_id ?? "").trim();
+    if (groupId && userId) {
       const bot = event?.bot;
       if (bot) {
         try {
-          const info = await bot.getMemberInfo(
-            event.group_id,
-            event.user_id,
-          );
+          const info = await bot.getMemberInfo(groupId, userId);
           if (info?.role === "owner" || info?.role === "admin") {
             return "admin";
           }
+          // 拿不到成员信息(null/空)时不能断言对方是普通成员,保守给 admin
+          if (!info?.role) return "admin";
         } catch {
-          // fall through to member
+          return "admin";
         }
       }
     }

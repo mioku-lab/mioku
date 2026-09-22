@@ -56,7 +56,7 @@ export interface PlannerConfig {
   // 群聊记录保底消息数量
   idleMessageCount: number;
   // 空闲检查的 bot ID 列表
-  idleCheckBotIds: number[];
+  idleCheckBotIds: string[];
 }
 
 /**
@@ -183,9 +183,9 @@ export interface ChatConfig {
   webReader: WebReaderConfig;
   audio: AudioConfig;
   historyCount: number;
-  blacklistGroups: number[];
-  whitelistGroups: number[];
-  mediaAnalysisBlacklistUsers: number[];
+  blacklistGroups: string[];
+  whitelistGroups: string[];
+  mediaAnalysisBlacklistUsers: string[];
   maxSessions: number;
   maxIterations: number;
   enableExternalSkills: boolean;
@@ -249,7 +249,7 @@ export type SessionType = "group" | "personal";
 export interface SessionMeta {
   id: string; // "group:{group_id}" 或 "personal:{user_id}"
   type: SessionType;
-  targetId: number; // group_id 或 user_id
+  targetId: string; // group_id 或 user_id
   createdAt: number;
   updatedAt: number;
   compressedContext: string | null;
@@ -263,11 +263,11 @@ export interface ChatMessage {
   sessionId: string;
   role: "user" | "assistant" | "system";
   content: string; // 存储时统一为字符串
-  userId?: number;
+  userId?: string;
   userName?: string;
   userRole?: string; // "owner" | "admin" | "member"
   userTitle?: string;
-  groupId?: number;
+  groupId?: string;
   groupName?: string;
   timestamp: number;
   messageId?: string; // 消息 id
@@ -278,7 +278,7 @@ export interface ChatMessage {
  */
 export interface TargetMessage {
   userName: string;
-  userId: number;
+  userId: string;
   userRole: string;
   userTitle?: string;
   content: string;
@@ -303,8 +303,8 @@ export interface ToolContext {
   ctx: MiokuContext;
   event: any;
   sessionId: string;
-  groupId?: number;
-  userId: number;
+  groupId?: string;
+  userId: string;
   triggerSkillRole: SkillPermissionRole;
   config: ChatConfig;
   aiService: AIService;
@@ -364,7 +364,7 @@ export interface TopicRecord {
 export interface ExpressionRecord {
   id?: number;
   sessionId: string;
-  userId: number;
+  userId: string;
   userName: string;
   situation: string; // 使用场景
   style: string; // 表达风格

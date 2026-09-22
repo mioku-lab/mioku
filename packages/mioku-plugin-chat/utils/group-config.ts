@@ -70,10 +70,9 @@ export function mergeGroupOverrides(
 /**
  * 从 sessionId（如 "group:123"）提取群号，个人会话返回 undefined
  */
-export function extractGroupIdFromSession(sessionId: string): number | undefined {
+export function extractGroupIdFromSession(sessionId: string): string | undefined {
   if (!sessionId || typeof sessionId !== "string") return undefined;
   if (!sessionId.startsWith("group:")) return undefined;
-  const raw = sessionId.slice("group:".length);
-  const parsed = parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  const raw = sessionId.slice("group:".length).trim();
+  return raw.length > 0 ? raw : undefined;
 }

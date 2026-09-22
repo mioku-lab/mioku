@@ -539,7 +539,7 @@ export class AIServiceImpl implements AIService {
     return new Map(this.toolIndex);
   }
 
-  getUsageSummary(options: { range: AIUsageRange; botId?: number }) {
+  getUsageSummary(options: { range: AIUsageRange; botId?: string }) {
     return this.usageStore.getSummary(options);
   }
 

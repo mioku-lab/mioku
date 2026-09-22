@@ -70,12 +70,12 @@ export interface HistoryMediaProcessingOptions {
     error(message: string): void;
   };
   bot?: Bot;
-  groupId?: number;
+  groupId?: string;
   runAIRequest?<T>(request: () => Promise<T>): Promise<T | null>;
 }
 
 export interface GroupNoticeHistorySummary {
-  userId: number;
+  userId: string;
   userName: string;
   userRole: string;
   content: string;
@@ -701,18 +701,18 @@ function extractNoticeText(notice: any): string {
 }
 
 function extractNoticeSender(notice: any): {
-  userId: number;
+  userId: string;
   userName: string;
 } {
-  const userId = Number(
-    notice?.user_id ||
-      notice?.sender_id ||
-      notice?.operator_id ||
-      notice?.poster_id ||
-      notice?.publisher_id ||
-      notice?.sender?.user_id ||
-      0,
-  );
+  const userId = String(
+    notice?.user_id ??
+      notice?.sender_id ??
+      notice?.operator_id ??
+      notice?.poster_id ??
+      notice?.publisher_id ??
+      notice?.sender?.user_id ??
+      "",
+  ).trim();
   const userName =
     notice?.sender?.card ||
     notice?.sender?.nickname ||
@@ -722,7 +722,7 @@ function extractNoticeSender(notice: any): {
     notice?.operator_name ||
     (userId ? String(userId) : "unknown");
   return {
-    userId: Number.isFinite(userId) ? userId : 0,
+    userId,
     userName: String(userName),
   };
 }

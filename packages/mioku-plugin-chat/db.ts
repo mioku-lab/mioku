@@ -69,14 +69,14 @@ export interface ChatDatabase {
     before?: number,
   ): ChatMessage[];
   // 获取 bot 发送的消息
-  getBotMessages(groupId: number, limit?: number): ChatMessage[];
-  getStoredGroupNoticeMessages(groupId: number, limit?: number): ChatMessage[];
+  getBotMessages(groupId: string, limit?: number): ChatMessage[];
+  getStoredGroupNoticeMessages(groupId: string, limit?: number): ChatMessage[];
   getMessagesByUser(
-    userId: number,
+    userId: string,
     sessionId?: string,
     limit?: number,
   ): ChatMessage[];
-  getAllMessagesByUser(userId: number, sessionId?: string): ChatMessage[];
+  getAllMessagesByUser(userId: string, sessionId?: string): ChatMessage[];
   getMessagesByTimeRange(
     sessionId: string,
     startTimestamp: number,
@@ -108,9 +108,9 @@ export interface ChatDatabase {
   // 表达学习
   saveExpression(expr: ExpressionRecord): void;
   getExpressions(sessionId: string, limit?: number): ExpressionRecord[];
-  getExpressionsByUser(userId: number, limit?: number): ExpressionRecord[];
+  getExpressionsByUser(userId: string, limit?: number): ExpressionRecord[];
   replaceExpressionsByUser(
-    userId: number,
+    userId: string,
     userName: string,
     expressions: Array<
       Pick<ExpressionRecord, "situation" | "style" | "example">
@@ -473,7 +473,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
         .reverse(); // 按时间正序
     },
 
-    getBotMessages(groupId: number, limit: number = 50): ChatMessage[] {
+    getBotMessages(groupId: string, limit: number = 50): ChatMessage[] {
       const rows = stmts.getBotMessages.all({ $groupId: groupId, $limit: limit }) as any[];
       return rows
         .map(toChatMessage)
@@ -481,7 +481,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getStoredGroupNoticeMessages(
-      groupId: number,
+      groupId: string,
       limit: number = 20,
     ): ChatMessage[] {
       const rows = stmts.getStoredGroupNoticeMessages.all(
@@ -493,7 +493,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getMessagesByUser(
-      userId: number,
+      userId: string,
       sessionId?: string,
       limit: number = 20,
     ): ChatMessage[] {
@@ -510,7 +510,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
         .reverse();
     },
 
-    getAllMessagesByUser(userId: number, sessionId?: string): ChatMessage[] {
+    getAllMessagesByUser(userId: string, sessionId?: string): ChatMessage[] {
       const rows = sessionId
         ? (stmts.getAllMessagesByUserInSession.all({ $userId: userId, $sessionId: sessionId }) as any[])
         : (stmts.getAllMessagesByUser.all({ $userId: userId }) as any[]);
@@ -633,7 +633,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     getExpressionsByUser(
-      userId: number,
+      userId: string,
       limit: number = 50,
     ): ExpressionRecord[] {
       const rows = stmts.getExpressionsByUser.all({ $userId: userId, $limit: limit }) as any[];
@@ -641,7 +641,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
     },
 
     replaceExpressionsByUser(
-      userId: number,
+      userId: string,
       userName: string,
       expressions: Array<
         Pick<ExpressionRecord, "situation" | "style" | "example">
@@ -650,7 +650,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
       const now = Date.now();
       const tx = db.transaction(
         (
-          targetUserId: number,
+          targetUserId: string,
           targetUserName: string,
           rows: Array<
             Pick<ExpressionRecord, "situation" | "style" | "example">

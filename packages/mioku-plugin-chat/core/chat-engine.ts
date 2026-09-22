@@ -142,7 +142,7 @@ export async function runChat(
   const usageContext = {
     usageId,
     source: "chat",
-    botId: getEventNumber(toolCtx.event, "self_id"),
+    botId: getEventId(toolCtx.event, "self_id"),
     groupId: toolCtx.groupId,
     groupName: getEventString(toolCtx.event, "group_name"),
     userId: toolCtx.userId,
@@ -960,7 +960,7 @@ ${failedSummary}
       ],
       usageContext: {
         source: "chat.tool-failure",
-        botId: getEventNumber(toolCtx.event, "self_id"),
+        botId: getEventId(toolCtx.event, "self_id"),
         groupId: toolCtx.groupId,
         groupName: getEventString(toolCtx.event, "group_name"),
         userId: toolCtx.userId,
@@ -984,12 +984,12 @@ ${failedSummary}
   return "我刚刚查这条信息时出了点问题，你可以换个关键词再试试，或者给我更具体一点的线索。";
 }
 
-function getEventNumber(event: unknown, key: string): number | undefined {
+function getEventId(event: unknown, key: string): string | undefined {
   if (!event || typeof event !== "object") return undefined;
   const value = (event as Record<string, unknown>)[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+  if (value == null) return undefined;
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
 }
 
 function getEventString(event: unknown, key: string): string | undefined {

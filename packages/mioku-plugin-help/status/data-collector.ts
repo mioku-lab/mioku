@@ -205,6 +205,14 @@ async function collectBots(
   return collectBotStatuses(sorted, ctx, stdinAvatar);
 }
 
+/** QQ 系适配器的 bot_id 才是数字 QQ 号,qlogo 服务对 openid/AppID 无效 */
+function qlogoAvatarUrl(adapter: string, botId: string): string {
+  if ((adapter === "onebotv11" || adapter === "icqq") && /^\d+$/.test(botId)) {
+    return `https://q1.qlogo.cn/g?b=qq&nk=${botId}&s=160`;
+  }
+  return "";
+}
+
 /** 把本地绝对路径 / http(s) / file:// 统一成可被截图服务加载的图片地址 */
 function toImageSrc(value: string): string {
   if (/^(https?:|file:|data:)/i.test(value)) return value;
@@ -274,7 +282,7 @@ async function collectBotStatuses(
           ? toImageSrc(stdinAvatar || "")
           : avatarFromBot
             ? toImageSrc(avatarFromBot)
-            : `https://q1.qlogo.cn/g?b=qq&nk=${uin}&s=160`,
+            : qlogoAvatarUrl(adapter, uin),
         adapter,
         implLabel,
         framework: isStdin ? adapter : framework,

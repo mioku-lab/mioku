@@ -261,7 +261,7 @@ export default definePlugin({
       });
     }
 
-    const configProvider: ChatConfigProvider = (groupId?: number) => {
+    const configProvider: ChatConfigProvider = (groupId?: string) => {
       const base = cachedBaseConfig;
       if (!base) return PERSONALIZATION_CONFIG as unknown as ChatConfig;
       if (groupId === undefined) return base;
@@ -269,7 +269,7 @@ export default definePlugin({
       return mergeGroupOverrides(base, overrides);
     };
 
-    const getConfig = async (groupId?: number): Promise<ChatConfig> => {
+    const getConfig = async (groupId?: string): Promise<ChatConfig> => {
       if (!cachedBaseConfig) await refreshBaseCache();
       return configProvider(groupId);
     };
@@ -380,14 +380,14 @@ roleModels = resolved.models;
     rateLimiter.setConfigProvider(configProvider);
     const skillManager = new SkillSessionManager();
 
-    rateLimiter.setQueueLengthGetter((groupId: number) =>
+    rateLimiter.setQueueLengthGetter((groupId: string) =>
       queueManager.getQueueLength(`group:${groupId}`),
     );
 
     const humanize = new HumanizeEngine(workAIInstance, db, configProvider);
     await humanize.init();
 
-    const pokeCooldowns = new Map<number, number>();
+    const pokeCooldowns = new Map<string, number>();
     const processingSet = new Set<string>();
     const sessionTurnScheduler = new SessionTurnScheduler();
     const groupStructuredHistory = new GroupStructuredHistoryManager();
@@ -442,8 +442,8 @@ roleModels = resolved.models;
       audioService,
       startCooldownTimer: (
         groupSessionId: string,
-        groupId: number,
-        selfId: number,
+        groupId: string,
+        selfId: string,
       ) => cooldownManager.startCooldownTimer(groupSessionId, groupId, selfId),
       async recordGroupMessageForLearning(
         userMsg: ChatMessage,
@@ -511,20 +511,24 @@ roleModels = resolved.models;
     aiService.registerChatRuntime(runtime);
 
     ctx.command({
-      name: "/重置会话",
-      match: /^\/重置会话$/,
-      prefixes: false,
+      name: "重置会话",
+      match: /^重置会话$/,
       description: "重置自己的AI聊天记录",
+      usage: ".重置会话",
       handler: async ({ event }) => {
-        if (event.user_id === event.self_id) return;
+        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
         const groupId =
-          event.message_type === "group" ? Number(event.group_id) : undefined;
+          event.message_type === "group"
+            ? String(event.group_id ?? "").trim() || undefined
+            : undefined;
         if (groupId) {
           pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
           pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
           await event.reply("已清除本群会话中 AI 发送的消息~");
         } else {
-          const userId = Number(event.user_id || event.sender?.user_id || 0);
+          const userId = String(
+            event.user_id ?? event.sender?.user_id ?? "",
+          ).trim();
           pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
           pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
           await event.reply("已清除你的个人会话中 AI 发送的消息~");
@@ -532,15 +536,17 @@ roleModels = resolved.models;
       },
     });
     ctx.command({
-      name: "/重置群会话",
-      match: /^\/重置群会话$/,
-      prefixes: false,
+      name: "重置群会话",
+      match: /^重置群会话$/,
       permission: "admin",
       description: "重置当前群的AI聊天记录",
+      usage: ".重置群会话",
       handler: async ({ event }) => {
-        if (event.user_id === event.self_id) return;
+        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
         const groupId =
-          event.message_type === "group" ? Number(event.group_id) : undefined;
+          event.message_type === "group"
+            ? String(event.group_id ?? "").trim() || undefined
+            : undefined;
         if (!groupId) {
           await event.reply("在群里使用试试看吧~", true);
           return;
@@ -551,14 +557,13 @@ roleModels = resolved.models;
       },
     });
     ctx.command({
-      name: "/tts",
-      match: /^\/tts\s*(.*)$/,
-      prefixes: false,
+      name: "tts",
+      match: /^tts\s*(.*)$/,
       permission: "owner",
       description: "TTS 推理",
-      usage: "/tts <文本>",
+      usage: ".tts <文本>",
       handler: async ({ event, match }) => {
-        if (event.user_id === event.self_id) return;
+        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
         await handleTtsCommand(pluginCtx, event, String(match?.[1] ?? "").trim());
       },
     });

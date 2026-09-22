@@ -111,7 +111,7 @@ export async function getQuotedContent(
   }
 }
 
-export function isGroupAllowed(groupId: number, cfg: ChatConfig): boolean {
+export function isGroupAllowed(groupId: string, cfg: ChatConfig): boolean {
   if (cfg.whitelistGroups.length > 0) {
     return cfg.whitelistGroups.includes(groupId);
   }
@@ -190,9 +190,9 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function getBotRole(
-  groupId: number,
+  groupId: string,
   ctx: MiokuContext,
-  selfId: number,
+  selfId: string,
 ): Promise<"owner" | "admin" | "member"> {
   try {
     const bot = ctx.pickBot(selfId);
@@ -205,7 +205,7 @@ export async function getBotRole(
 }
 
 interface FormattedHistoryMessage {
-  userId: number;
+  userId: string;
   userName: string;
   userRole: string;
   content: string;
@@ -223,7 +223,7 @@ interface HistoryFormatContext {
       }
     | undefined;
   historyMediaOptions: HistoryMediaProcessingOptions;
-  botUin: number;
+  botUin: string;
   /** 本运行时全部已连接 bot 的 id：这些账号的消息一律不作为用户历史（防 bot 互触循环） */
   botIds: Set<string>;
   memberNameCache: Map<string, string>;
@@ -362,8 +362,8 @@ async function formatHistoryMessage(
   if (!content.trim()) return null;
 
   return {
-    userId: Number(msg.user_id || 0),
-    userName: msg.nickname || String(msg.user_id || "unknown"),
+    userId: String(msg.user_id ?? "").trim(),
+    userName: msg.nickname || String(msg.user_id ?? "unknown"),
     userRole: "member",
     content,
     messageId:
@@ -501,12 +501,12 @@ async function buildMessageContent(
  * 返回格式化为 ChatMessage 数组
  */
 export async function getGroupHistory(
-  groupId: number,
+  groupId: string,
   ctx: MiokuContext,
   count: number = 100,
-  selfId: number,
+  selfId: string,
   db?: {
-    getBotMessages(groupId: number, limit: number): ChatMessage[];
+    getBotMessages(groupId: string, limit: number): ChatMessage[];
     getImageByHash?(hash: string): ImageRecord | null;
     getImageByUrl?(url: string): ImageRecord | null;
     getMediaSummary?(key: string): MediaSummaryRecord | null;
@@ -514,7 +514,7 @@ export async function getGroupHistory(
     getMediaSummaryBySource?(sourceKey: string): MediaSummaryRecord | null;
     saveMediaSummarySource?(sourceKey: string, summaryKey: string): void;
     getStoredGroupNoticeMessages?(
-      groupId: number,
+      groupId: string,
       limit?: number,
     ): ChatMessage[];
   },
@@ -525,7 +525,7 @@ export async function getGroupHistory(
   },
 ): Promise<
   Array<{
-    userId: number;
+    userId: string;
     userName: string;
     userRole: string;
     content: string;
@@ -536,7 +536,7 @@ export async function getGroupHistory(
 > {
   // 先获取 bot 从数据库发送的消息
   const botMessages: Array<{
-    userId: number;
+    userId: string;
     userName: string;
     userRole: string;
     content: string;
@@ -549,7 +549,7 @@ export async function getGroupHistory(
     const storedBotMessages = db.getBotMessages(groupId, count);
     for (const msg of storedBotMessages) {
       botMessages.push({
-        userId: msg.userId ?? 0,
+        userId: String(msg.userId ?? ""),
         userName: msg.userName || "Miku",
         userRole: msg.userRole || "member",
         content: msg.content,
@@ -563,8 +563,8 @@ export async function getGroupHistory(
       db.getStoredGroupNoticeMessages?.(groupId, Math.min(count, 20)) || [];
     for (const msg of storedNoticeMessages) {
       botMessages.push({
-        userId: msg.userId ?? 0,
-        userName: msg.userName || String(msg.userId || "unknown"),
+        userId: String(msg.userId ?? ""),
+        userName: msg.userName || String(msg.userId ?? "unknown"),
         userRole: msg.userRole || "member",
         content: msg.content,
         messageId: msg.messageId ?? "",
@@ -652,9 +652,9 @@ export function buildChatMessageFromEvent(
   e: any,
   text: string,
   isGroup: boolean,
-  groupId: number | undefined,
+  groupId: string | undefined,
 ): ChatMessage {
-  const userId: number = e.user_id || e.sender?.user_id;
+  const userId: string = e.user_id || e.sender?.user_id;
   return {
     sessionId: groupId ? `group:${groupId}` : `personal:${userId}`,
     role: "user" as const,
@@ -670,13 +670,13 @@ export function buildChatMessageFromEvent(
   };
 }
 
-export function normalizeIdList(input: unknown): number[] {
+export function normalizeIdList(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return Array.from(
     new Set(
       input
-        .map((item) => Math.floor(Number(item)))
-        .filter((id) => Number.isFinite(id) && id > 0),
+        .map((item) => String(item ?? "").trim())
+        .filter((id) => id.length > 0),
     ),
   );
 }

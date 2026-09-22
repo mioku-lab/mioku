@@ -26,7 +26,7 @@ interface CooldownMessage {
   event: any;
   content: string;
   userName: string;
-  userId: number;
+  userId: string;
   messageId: string;
   timestamp: number;
   isDirectAt: boolean;
@@ -86,8 +86,8 @@ export class CooldownManager {
 
   startCooldownTimer(
     groupSessionId: string,
-    groupId: number,
-    selfId: number,
+    groupId: string,
+    selfId: string,
   ): void {
     const existingTimer = this.cooldownTimeoutIds.get(groupSessionId);
     if (existingTimer) clearTimeout(existingTimer);
@@ -142,7 +142,7 @@ export class CooldownManager {
 
   collectMessage(
     groupSessionId: string,
-    groupId: number,
+    groupId: string,
     event: any,
     content: string,
     isDirectAt: boolean,
@@ -175,9 +175,9 @@ export class CooldownManager {
 
   private async processReviewMessages(
     groupSessionId: string,
-    groupId: number,
+    groupId: string,
     collected: CooldownMessage[],
-    selfId: number,
+    selfId: string,
   ): Promise<void> {
     const mergedContents = collected.map((m) => m.content);
     const userNames = collected.map((m) => m.userName);
@@ -297,9 +297,9 @@ export class CooldownManager {
 
   private async processCooldownWithPlanner(
     groupSessionId: string,
-    groupId: number,
+    groupId: string,
     collected: CooldownMessage[],
-    selfId: number,
+    selfId: string,
   ): Promise<void> {
     const mergedContent = collected.map((m) => m.content).join("\n");
     const firstMsg = collected[0];

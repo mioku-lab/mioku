@@ -67,7 +67,11 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
       parameters: {
         type: "object",
         properties: {
-          user_id: { type: "number", description: "QQ number of the member" },
+          user_id: {
+            type: "string",
+            description:
+              "Platform user id of the member (QQ number, or openid on QQ official)",
+          },
         },
         required: ["user_id"],
       },
@@ -137,7 +141,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
       type: "object",
       properties: {
         message_id: {
-          type: "number",
+          type: "string",
           description:
             "The message ID (message_id) of the image or video. You can get this from the original message that contains the media.",
         },
@@ -250,8 +254,9 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
       type: "object",
       properties: {
         user_id: {
-          type: "number",
-          description: "QQ number of the member whose avatar you want to view",
+          type: "string",
+          description:
+            "Platform user id of the member whose avatar you want to view",
         },
       },
       required: ["user_id"],

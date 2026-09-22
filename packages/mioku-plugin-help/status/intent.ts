@@ -3,8 +3,8 @@ import type { StatusIntent } from "./types";
 /**
  * Parse a user message into a `StatusIntent`.
  *
- * Recognized prefixes: `#状态`, `/状态`, `状态`, `菜单 状态` (also the
- * Latin aliases `zt` / `status`). Anything trailing the leading token is
+ * Recognized prefixes: `.状态`, `.菜单 状态` (also the Latin aliases `zt` /
+ * `status`). Anything trailing the leading token is
  * ignored — the panel always renders the full sheet.
  *
  * If the input doesn't look like a status command, returns `{ type: "none" }`

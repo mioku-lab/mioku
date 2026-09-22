@@ -38,7 +38,7 @@ export class EmotionAgent {
     return state;
   }
 
-  getAvailableEmotions(groupId?: number): string[] {
+  getAvailableEmotions(groupId?: string): string[] {
     const cfg = this.getConfig(groupId);
     const emotions = Object.keys(cfg.emotion?.emotions || {})
       .map((name) => name.trim().toLowerCase())
@@ -46,7 +46,7 @@ export class EmotionAgent {
     return Array.from(new Set(["default", ...emotions]));
   }
 
-  getReferenceExamples(emotion: string, groupId?: number): string[] {
+  getReferenceExamples(emotion: string, groupId?: string): string[] {
     const cfg = this.getConfig(groupId);
     const normalized = this.normalizeEmotionName(emotion);
     const emotions = cfg.emotion?.emotions || {};
@@ -55,7 +55,7 @@ export class EmotionAgent {
     return this.normalizeExamples(emotions[this.getDefaultEmotion(groupId)]?.examples);
   }
 
-  setEmotion(sessionId: string, emotion: string, groupId?: number): EmotionState {
+  setEmotion(sessionId: string, emotion: string, groupId?: string): EmotionState {
     const current = this.resolveEmotion(emotion, groupId);
     const state = { current, updatedAt: Date.now() };
     this.states.set(sessionId, state);
@@ -144,14 +144,14 @@ ${input.targetMessage.userName}: ${input.targetMessage.content}`;
     return this.resolveEmotion(parsed?.emotion, extractGroupIdFromSession(input.sessionId));
   }
 
-  private resolveEmotion(emotion: unknown, groupId?: number): string {
+  private resolveEmotion(emotion: unknown, groupId?: string): string {
     const normalized = this.normalizeEmotionName(emotion);
     const available = this.getAvailableEmotions(groupId);
     if (available.includes(normalized)) return normalized;
     return this.getDefaultEmotion(groupId);
   }
 
-  private getDefaultEmotion(groupId?: number): string {
+  private getDefaultEmotion(groupId?: string): string {
     const cfg = this.getConfig(groupId);
     const configured = this.normalizeEmotionName(cfg.emotion?.defaultEmotion);
     const available = this.getAvailableEmotions(groupId);

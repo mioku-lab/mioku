@@ -17,7 +17,7 @@ export class SessionManager {
   /**
    * 获取或创建会话
    */
-  getOrCreate(id: string, type: SessionType, targetId: number): SessionMeta {
+  getOrCreate(id: string, type: SessionType, targetId: string): SessionMeta {
     // 先查缓存
     if (this.cache.has(id)) {
       return this.touch(id);

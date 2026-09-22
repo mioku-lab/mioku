@@ -17,10 +17,10 @@ export async function handleIdleCheckDebug(
     return;
   }
   const groupIdStr =
-    e.message[0]?.text?.replace("/空闲检查", "")?.trim() || "";
-  const targetGroupId = parseInt(groupIdStr, 10);
+    e.message[0]?.text?.replace(".空闲检查", "")?.trim() || "";
+  const targetGroupId = String(groupIdStr).trim();
   if (!targetGroupId) {
-    await e.reply("请指定群号，如：/空闲检查 123456");
+    await e.reply("请指定群 ID，如：.空闲检查 123456");
     return;
   }
 
@@ -61,7 +61,7 @@ export async function handleIdleCheckDebug(
 
         const targetMessage: TargetMessage = {
           userName: "系统",
-          userId: 0,
+          userId: "",
           userRole: "member",
           content: "[No one in the group is talking? I'll answer!]",
           messageId: "",
@@ -73,7 +73,7 @@ export async function handleIdleCheckDebug(
           event: null,
           groupSessionId,
           groupId: targetGroupId,
-          userId: 0,
+          userId: "",
           config: cfg,
           aiService: ctx.services!.ai as AIService,
           db: pluginCtx.db,
@@ -117,8 +117,8 @@ export async function handleIdleCheckDebug(
           result,
           groupId: targetGroupId,
           groupSessionId,
-          userId: 0,
-          selfId: e.self_id,
+          userId: "",
+          selfId: String(e.self_id ?? "").trim(),
           toolCtx,
           send: true,
           isLive: true,

@@ -25,7 +25,7 @@ export class IdleCheckManager {
   private groupLastBotMessageTime = new Map<string, number>();
   private groupMessageCountAfterBot = new Map<string, number>();
   private groupLastIdleCheckTime = new Map<string, number>();
-  private groupBotsMapping = new Map<string, Set<number>>();
+  private groupBotsMapping = new Map<string, Set<string>>();
   private intervalHandle: NodeJS.Timeout | null = null;
 
   private ctx: MiokuContext;
@@ -71,11 +71,11 @@ export class IdleCheckManager {
     this.groupMessageCount.set(groupSessionId, count + 1);
   }
 
-  recordBotMessages(groupSessionId: string, count: number, selfId: number): void {
+  recordBotMessages(groupSessionId: string, count: number, selfId: string): void {
     const current = this.groupMessageCountAfterBot.get(groupSessionId) ?? 0;
     this.groupMessageCountAfterBot.set(groupSessionId, current + count);
     let bots = this.groupBotsMapping.get(groupSessionId);
-    if (!bots) { bots = new Set<number>(); this.groupBotsMapping.set(groupSessionId, bots); }
+    if (!bots) { bots = new Set<string>(); this.groupBotsMapping.set(groupSessionId, bots); }
     bots.add(selfId);
     this.groupLastBotMessageTime.set(groupSessionId, Date.now());
   }
@@ -106,14 +106,15 @@ export class IdleCheckManager {
 
       const now = Date.now();
       const checkInterval = 60_000;
-      const allBotIds = Array.from(this.ctx.bots).map((bot) => Number(bot.bot_id));
+      const allBotIds = Array.from(this.ctx.bots).map((bot) => String(bot.bot_id));
 
       for (const [groupSessionId, lastTime] of this.groupLastActivityTime) {
         const lastCheckTime =
           this.groupLastIdleCheckTime.get(groupSessionId) ?? 0;
         if (now - lastCheckTime < checkInterval) continue;
 
-        const groupId = parseInt(groupSessionId.split(":")[1], 10);
+        const groupId = String(groupSessionId.split(":")[1] ?? "").trim();
+        if (!groupId) continue;
         const cfg = this.configProvider(groupId);
         if (!cfg.planner?.enabled) continue;
         if (!isGroupAllowed(groupId, cfg)) continue;
@@ -130,7 +131,7 @@ export class IdleCheckManager {
           cfg.planner.idleCheckBotIds ??
           baseCfg.planner?.idleCheckBotIds ??
           allBotIds;
-        const enabledBotIds = idleCheckBotIds.filter((id: number) =>
+        const enabledBotIds = idleCheckBotIds.filter((id: string) =>
           allBotIds.includes(id),
         );
 
@@ -193,8 +194,8 @@ export class IdleCheckManager {
 
   private async processIdleCheckTurn(
     groupSessionId: string,
-    groupId: number,
-    selfId: number,
+    groupId: string,
+    selfId: string,
     cfg: ChatConfig,
     scheduledLastActivity: number,
     scheduledAt: number,
@@ -234,7 +235,7 @@ export class IdleCheckManager {
 
     const targetMessage: TargetMessage = {
       userName: "system",
-      userId: 0,
+      userId: "",
       userRole: "member",
       content: "[No one in the group is talking? I'll answer!]",
       messageId: "",
@@ -246,7 +247,7 @@ export class IdleCheckManager {
       event: null,
       groupSessionId,
       groupId,
-      userId: 0,
+      userId: "",
       config: cfg,
       aiService: this.aiService,
       db: this.db,
@@ -292,7 +293,7 @@ export class IdleCheckManager {
       result,
       groupId,
       groupSessionId,
-      userId: 0,
+      userId: "",
       selfId,
       toolCtx,
       send: true,

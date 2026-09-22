@@ -87,7 +87,7 @@ const helpPlugin = definePlugin({
           return;
         }
         try {
-          const { botNickname, botAvatarUrl } = resolveHelpBotProfile(
+          const { botNickname, botAvatarUrl } = await resolveHelpBotProfile(
             ctx,
             event,
           );
@@ -129,7 +129,7 @@ const helpPlugin = definePlugin({
       }
 
       try {
-        const { botNickname, botAvatarUrl } = resolveHelpBotProfile(ctx, event);
+        const { botNickname, botAvatarUrl } = await resolveHelpBotProfile(ctx, event);
         const viewerRole = await resolveViewerRole(ctx, event);
         const imagePath = await generateHelpImage({
           helpService,
@@ -160,7 +160,6 @@ const helpPlugin = definePlugin({
       name: "help",
       aliases: ["帮助", "菜单"],
       match: /^(?:help|帮助|菜单)(?:\s|$)/i,
-      prefixes: ["#", "/", ""],
       description: "生成帮助图片",
       handler: ({ event }) => handleHelpMessage(event),
     });
@@ -169,7 +168,6 @@ const helpPlugin = definePlugin({
       name: "status",
       aliases: ["状态", "zt"],
       match: /^(?:status|状态|zt)(?:\s|$)/i,
-      prefixes: ["#", "/", ""],
       description: "生成系统状态图片",
       handler: ({ event }) => handleHelpMessage(event),
     });

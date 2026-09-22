@@ -35,8 +35,8 @@ export function createMessageHandler(
 
   return async (e: MessageEvent) => {
     const isGroup = e.message_type === "group";
-    const groupId: number | undefined = isGroup
-      ? Number(e.group_id)
+    const groupId: string | undefined = isGroup
+      ? String(e.group_id ?? "").trim() || undefined
       : undefined;
     const cfg = await getConfig(groupId);
     if (!isGroup && cfg.ignorePrivateChat) return;
@@ -44,9 +44,9 @@ export function createMessageHandler(
     if (!e?.message || !Array.isArray(e.message)) return;
 
     const text = ctx.text(e) || "";
-    const userId: number = Number(e.user_id || e.sender?.user_id || 0);
+    const userId: string = String(e.user_id ?? e.sender?.user_id ?? "").trim();
 
-    if (userId === Number(e.self_id || 0)) return;
+    if (!userId || userId === String(e.self_id ?? "").trim()) return;
 
     if (matchMessageCommands && matchMessageCommands(text).length > 0) return;
 
@@ -204,9 +204,7 @@ export function createMessageHandler(
 
     const atBot = shouldTrigger(e, text, cfg, ctx);
     const replyBot = ctx.pickReplyBot(e);
-    const actorSelfId = replyBot
-      ? Number(replyBot.bot_id)
-      : Number(e.self_id || 0);
+    const actorSelfId = String(replyBot?.bot_id ?? e.self_id ?? "").trim();
     const quotedBot = isGroup ? await isQuotingBot(e, ctx) : null;
     const mentionedNickname =
       cfg.nicknames.length > 0 &&

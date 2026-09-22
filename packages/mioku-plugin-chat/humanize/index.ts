@@ -16,7 +16,7 @@ import { TopicTracker } from "./topic";
 import { ActionPlanner } from "./planner";
 import { ExpressionLearner } from "./expression";
 
-export type ChatConfigProvider = (groupId?: number) => ChatConfig;
+export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 export class HumanizeEngine {
   readonly memoryRetrieval: MemoryRetrieval;

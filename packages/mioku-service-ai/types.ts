@@ -278,7 +278,7 @@ export interface AIService {
   getAllTools(): Map<string, AITool>;
   getUsageSummary(options: {
     range: AIUsageRange;
-    botId?: number;
+    botId?: string;
   }): AIUsageSummary;
   cleanupUsageStats(retentionMs?: number): number;
   finalizeUsage(usageId: string, finalization: AIUsageFinalization): boolean;

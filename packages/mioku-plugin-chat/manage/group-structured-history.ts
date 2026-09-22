@@ -4,7 +4,7 @@ import type { TargetMessage } from "../types";
 
 export interface StructuredUserInput {
   userName: string;
-  userId: number;
+  userId: string;
   userRole?: string;
   userTitle?: string;
   content: string;
@@ -192,7 +192,7 @@ function formatStructuredUserContent(input: StructuredUserInput): string {
   const lines = [
     "[Group Member Message]",
     `Name: ${input.userName || "unknown"}`,
-    `QQ: ${input.userId || 0}`,
+    `user_id: ${input.userId || "unknown"}`,
     `Time: ${formatTimestamp(input.timestamp)}`,
   ];
 

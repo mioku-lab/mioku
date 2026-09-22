@@ -13,16 +13,16 @@ const DEFAULT_AI_REQUEST_LIMITS: AIRequestLimitConfig = {
   windowMs: 60_000,
 };
 
-export type ChatConfigProvider = (groupId?: number) => ChatConfig;
+export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 export class RateLimiter {
-  private userTriggers: Map<number, number[]> = new Map();
-  private userMessages: Map<number, { content: string; timestamp: number }[]> =
+  private userTriggers: Map<string, number[]> = new Map();
+  private userMessages: Map<string, { content: string; timestamp: number }[]> =
     new Map();
-  private groupLastResponse: Map<number, number> = new Map();
-  private groupInteractions: Map<number, Map<number, number[]>> = new Map();
-  private userAiRequests: Map<number, number[]> = new Map();
-  private groupAiRequests: Map<number, number[]> = new Map();
+  private groupLastResponse: Map<string, number> = new Map();
+  private groupInteractions: Map<string, Map<string, number[]>> = new Map();
+  private userAiRequests: Map<string, number[]> = new Map();
+  private groupAiRequests: Map<string, number[]> = new Map();
 
   private readonly maxTriggersPerWindow: number;
   private readonly windowMs: number;
@@ -30,13 +30,13 @@ export class RateLimiter {
   private readonly groupCooldownMs: number;
   private readonly cleanupTimer: ReturnType<typeof setInterval>;
   private getConfig: ChatConfigProvider;
-  private getQueueLengthFn: ((groupId: number) => number) | null = null;
+  private getQueueLengthFn: ((groupId: string) => number) | null = null;
 
   setConfigProvider(provider: ChatConfigProvider): void {
     this.getConfig = provider;
   }
 
-  setQueueLengthGetter(fn: (groupId: number) => number): void {
+  setQueueLengthGetter(fn: (groupId: string) => number): void {
     this.getQueueLengthFn = fn;
   }
 
@@ -58,17 +58,17 @@ export class RateLimiter {
     this.cleanupTimer = setInterval(() => this.cleanup(), 300_000);
   }
 
-  private getDynamicDelay(groupId?: number): DynamicDelayConfig {
+  private getDynamicDelay(groupId?: string): DynamicDelayConfig {
     return this.getConfig(groupId)?.dynamicDelay ?? DEFAULT_DYNAMIC_DELAY;
   }
 
-  private getAiRequestLimits(groupId?: number): AIRequestLimitConfig {
+  private getAiRequestLimits(groupId?: string): AIRequestLimitConfig {
     return this.getConfig(groupId)?.aiRequestLimits ?? DEFAULT_AI_REQUEST_LIMITS;
   }
 
   canProcess(
-    userId: number,
-    groupId: number | undefined,
+    userId: string,
+    groupId: string | undefined,
     content: string,
   ): boolean {
     const now = Date.now();
@@ -93,7 +93,7 @@ export class RateLimiter {
     return !recentSame;
   }
 
-  record(userId: number, groupId: number | undefined, content: string): void {
+  record(userId: string, groupId: string | undefined, content: string): void {
     const now = Date.now();
 
     const triggers = this.userTriggers.get(userId) ?? [];
@@ -110,7 +110,7 @@ export class RateLimiter {
     }
   }
 
-  recordInteraction(groupId: number, userId: number): void {
+  recordInteraction(groupId: string, userId: string): void {
     const dynamicDelay = this.getDynamicDelay(groupId);
     if (!dynamicDelay.enabled) return;
 
@@ -129,7 +129,7 @@ export class RateLimiter {
     groupUsers.set(userId, timestamps);
   }
 
-  canRunAIRequest(userId?: number, groupId?: number): boolean {
+  canRunAIRequest(userId?: string, groupId?: string): boolean {
     const now = Date.now();
     const { userRpm, groupRpm, windowMs } = this.getAiRequestLimits(groupId);
 
@@ -154,7 +154,7 @@ export class RateLimiter {
     return true;
   }
 
-  recordAIRequest(userId?: number, groupId?: number): void {
+  recordAIRequest(userId?: string, groupId?: string): void {
     const now = Date.now();
     const { windowMs } = this.getAiRequestLimits(groupId);
 
@@ -175,7 +175,7 @@ export class RateLimiter {
     }
   }
 
-  getInteractionCount(groupId: number): number {
+  getInteractionCount(groupId: string): number {
     const now = Date.now();
     const { interactionWindowMs: windowMs } = this.getDynamicDelay(groupId);
 
@@ -199,7 +199,7 @@ export class RateLimiter {
     return count;
   }
 
-  calculateDelay(groupId: number): number {
+  calculateDelay(groupId: string): number {
     const dynamicDelay = this.getDynamicDelay(groupId);
     if (!dynamicDelay.enabled) return 0;
 
@@ -211,7 +211,7 @@ export class RateLimiter {
     return Math.min(delay, maxDelayMs);
   }
 
-  getDelayInfo(groupId: number): {
+  getDelayInfo(groupId: string): {
     delayMs: number;
     interactionCount: number;
     shouldDelay: boolean;
@@ -225,7 +225,7 @@ export class RateLimiter {
     };
   }
 
-  clearGroupInteractions(groupId: number): void {
+  clearGroupInteractions(groupId: string): void {
     this.groupInteractions.delete(groupId);
   }
 

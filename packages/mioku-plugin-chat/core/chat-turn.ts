@@ -14,9 +14,9 @@ export type RuntimeReplyContextType =
 
 export interface ExecuteChatRuntimeRequestOptions {
   event?: any;
-  selfId?: number;
-  groupId?: number;
-  userId?: number;
+  selfId?: string;
+  groupId?: string;
+  userId?: string;
   config: ChatConfig;
   targetMessageContent?: string;
   promptInjections?: ChatRuntimePromptInjection[];
@@ -28,9 +28,9 @@ export interface ExecuteChatRuntimeRequestOptions {
 interface ResolvedRuntimeContext {
   event: any;
   isGroup: boolean;
-  groupId?: number;
-  userId: number;
-  selfId: number;
+  groupId?: string;
+  userId: string;
+  selfId: string;
   sessionId: string;
   personalSessionId?: string;
   senderName: string;
@@ -61,8 +61,12 @@ function resolveRuntimeContext(
   if (options.event) {
     const event = options.event;
     const isGroup = event.message_type === "group";
-    const groupId: number | undefined = isGroup ? event.group_id : undefined;
-    const userId: number = event.user_id || event.sender?.user_id || 0;
+    const groupId: string | undefined = isGroup
+      ? String(event.group_id ?? "").trim() || undefined
+      : undefined;
+    const userId: string = String(
+      event.user_id ?? event.sender?.user_id ?? "",
+    ).trim();
     return {
       event,
       isGroup,
@@ -80,18 +84,18 @@ function resolveRuntimeContext(
     };
   }
 
-  if (typeof options.selfId !== "number") {
+  const selfId = String(options.selfId ?? "").trim();
+  if (!selfId) {
     throw new Error("Chat runtime requires either event or selfId");
   }
-  if (
-    typeof options.groupId !== "number" &&
-    typeof options.userId !== "number"
-  ) {
+  const optionGroupId = String(options.groupId ?? "").trim() || undefined;
+  const optionUserId = String(options.userId ?? "").trim();
+  if (!optionGroupId && !optionUserId) {
     throw new Error("Chat runtime requires groupId or userId");
   }
 
-  const isGroup = typeof options.groupId === "number";
-  const userId = options.userId ?? 0;
+  const isGroup = Boolean(optionGroupId);
+  const userId = optionUserId;
   const event = {
     self_id: options.selfId,
     message_type: isGroup ? "group" : "private",
@@ -110,15 +114,15 @@ function resolveRuntimeContext(
   return {
     event,
     isGroup,
-    groupId: options.groupId,
+    groupId: optionGroupId,
     userId,
-    selfId: options.selfId,
-    sessionId: options.groupId
-      ? `group:${options.groupId}`
+    selfId,
+    sessionId: optionGroupId
+      ? `group:${optionGroupId}`
       : `personal:${userId}`,
     personalSessionId:
-      options.groupId && userId ? `personal:${userId}` : undefined,
-    senderName: options.groupId ? "system" : String(userId),
+      optionGroupId && userId ? `personal:${userId}` : undefined,
+    senderName: optionGroupId ? "system" : String(userId),
     userRole: "member",
     userTitle: undefined,
     groupName: undefined,
@@ -133,10 +137,10 @@ export async function finalizeChatTurn(
     event: any;
     cfg: ChatConfig;
     result: { messages: string[]; emojiPath?: string | null };
-    groupId?: number;
+    groupId?: string;
     groupSessionId: string;
-    userId: number;
-    selfId: number;
+    userId: string;
+    selfId: string;
     toolCtx: { sentMessageIndices?: Set<number> };
     send: boolean;
     isLive: boolean;
@@ -247,8 +251,8 @@ export async function processChat(
 ): Promise<void> {
   const { ctx } = pluginCtx;
   const isGroup = e.message_type === "group";
-  const groupId: number | undefined = isGroup ? e.group_id : undefined;
-  const userId: number = e.user_id || e.sender?.user_id;
+  const groupId: string | undefined = isGroup ? e.group_id : undefined;
+  const userId: string = e.user_id || e.sender?.user_id;
   const selfId = options.replyBot ? Number(options.replyBot.bot_id) : e.self_id;
   const cfg = await pluginCtx.getConfig(groupId);
 

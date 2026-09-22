@@ -57,7 +57,7 @@ export function createHelpSkill(): AISkill {
           }
 
           try {
-            const { botNickname, botAvatarUrl } = resolveHelpBotProfile(
+            const { botNickname, botAvatarUrl } = await resolveHelpBotProfile(
               ctx,
               event,
             );
