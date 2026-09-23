@@ -50,7 +50,7 @@ export function createMessageHandler(
 
     if (matchMessageCommands && matchMessageCommands(text).length > 0) return;
 
-    if (text.startsWith("/空闲检查 ")) {
+    if (/^[./]空闲检查\s/.test(text)) {
       await handleIdleCheckDebug(pluginCtx, e, cfg);
       return;
     }

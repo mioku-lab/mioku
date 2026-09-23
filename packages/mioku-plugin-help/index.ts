@@ -160,6 +160,7 @@ const helpPlugin = definePlugin({
       name: "help",
       aliases: ["帮助", "菜单"],
       match: /^(?:help|帮助|菜单)(?:\s|$)/i,
+      prefixes: [".", "#", "/", ""],
       description: "生成帮助图片",
       handler: ({ event }) => handleHelpMessage(event),
     });
@@ -168,6 +169,7 @@ const helpPlugin = definePlugin({
       name: "status",
       aliases: ["状态", "zt"],
       match: /^(?:status|状态|zt)(?:\s|$)/i,
+      prefixes: [".", "#", "/", ""],
       description: "生成系统状态图片",
       handler: ({ event }) => handleHelpMessage(event),
     });

@@ -17,7 +17,7 @@ export async function handleIdleCheckDebug(
     return;
   }
   const groupIdStr =
-    e.message[0]?.text?.replace(".空闲检查", "")?.trim() || "";
+    e.message[0]?.text?.replace(/^[./]空闲检查/, "")?.trim() || "";
   const targetGroupId = String(groupIdStr).trim();
   if (!targetGroupId) {
     await e.reply("请指定群 ID，如：.空闲检查 123456");

@@ -512,6 +512,7 @@ roleModels = resolved.models;
 
     ctx.command({
       name: "重置会话",
+      prefixes: ["/", "."],
       match: /^重置会话$/,
       description: "重置自己的AI聊天记录",
       usage: ".重置会话",
@@ -537,6 +538,7 @@ roleModels = resolved.models;
     });
     ctx.command({
       name: "重置群会话",
+      prefixes: ["/", "."],
       match: /^重置群会话$/,
       permission: "admin",
       description: "重置当前群的AI聊天记录",
@@ -558,6 +560,7 @@ roleModels = resolved.models;
     });
     ctx.command({
       name: "tts",
+      prefixes: ["/", "."],
       match: /^tts\s*(.*)$/,
       permission: "owner",
       description: "TTS 推理",

@@ -23,7 +23,7 @@ import type {
 function sanitizeKeyword(value: string): string {
   return String(value || "")
     .trim()
-    .replace(/^[#/\s]+/, "")
+    .replace(/^[#/.\s]+/, "")
     .replace(/[。.!！?？,，:：；);]+$/g, "");
 }
 
@@ -55,15 +55,15 @@ function extractMatchTokens(text: string): string[] {
 }
 
 /**
- * The first whitespace-separated token of a command, with the `#` / `/`
- * prefix removed. Used as an additional alias when matching plugin
+ * The first whitespace-separated token of a command, with the `.` / `#` /
+ * `/` prefix removed. Used as an additional alias when matching plugin
  * commands. Returns null if the first token is empty, contains `<>` (a
  * placeholder), or has no alphanumeric characters.
  */
 function extractCommandAlias(command: string): string | null {
   const value = String(command || "")
     .trim()
-    .replace(/^[#/]+/, "");
+    .replace(/^[#/.]+/, "");
   if (!value) {
     return null;
   }
