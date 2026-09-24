@@ -556,7 +556,7 @@ async function extractVideoFrames(
         { timeout: 30_000 },
       );
       const buffer = await fs.readFile(outputPath);
-      frames.push(`data:image/jpeg);base64,${buffer.toString("base64")}`);
+      frames.push(`data:image/jpeg;base64,${buffer.toString("base64")}`);
     }
 
     return frames;

@@ -29,6 +29,7 @@ import {
   type StructuredUserInput,
 } from "../manage/group-structured-history";
 import { prepareImageUrlsForModel } from "./media/image-compress";
+import { mainModelSupportsVision } from "../utils/model";
 
 interface StructuredHistoryRunContext {
   manager: GroupStructuredHistoryManager;
@@ -116,7 +117,10 @@ export async function runChat(
   const currentUserMessages = hasStructuredHistory
     ? buildStructuredUserMessages(structuredHistory!.currentUserInputs)
     : [];
-  const directImageUrls = toolCtx.config.isMultimodal
+  const directImageUrls = mainModelSupportsVision(
+    toolCtx.aiService,
+    toolCtx.config.model,
+  )
     ? toolCtx.pendingImageUrls
     : undefined;
   const webSearchState = { count: 0 };
@@ -762,7 +766,7 @@ function sanitizeBrackets(text: string): string {
   let working = text.replace(FUNCTIONAL_BRACKET_PREFIX, (match) => {
     const idx = placeholders.length;
     placeholders.push(match);
-    return ` ${idx} `;
+    return `\u0000${idx}\u0000`;
   });
 
   let result = "";
@@ -772,8 +776,8 @@ function sanitizeBrackets(text: string): string {
   while (i < working.length) {
     const ch = working[i];
 
-    if (ch === " ") {
-      const endIdx = working.indexOf(" ", i + 1);
+    if (ch === "\u0000") {
+      const endIdx = working.indexOf("\u0000", i + 1);
       if (endIdx > i) {
         const idx = parseInt(working.slice(i + 1, endIdx), 10);
         if (!Number.isNaN(idx) && placeholders[idx] !== undefined) {

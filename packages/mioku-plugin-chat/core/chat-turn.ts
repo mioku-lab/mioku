@@ -2,7 +2,12 @@ import type { MiokuContext } from "mioku";
 import type { AITool, Bot, ChatRuntimePromptInjection } from "mioku";
 import type { ChatPluginContext, ChatRuntimeState } from "../context";
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
-import { getGroupHistory, getBotRole, getQuotedContent } from "../utils";
+import {
+  getGroupHistory,
+  getBotRole,
+  getQuotedContent,
+  mainModelSupportsVision,
+} from "../utils";
 import { buildStructuredUserInputFromTarget } from "../manage/group-structured-history";
 
 export type RuntimeReplyContextType =
@@ -42,6 +47,53 @@ interface ResolvedRuntimeContext {
 
 const NO_NEW_MESSAGE =
   "[No new user message in this turn. Reply naturally based on the runtime instruction and recent context.]";
+
+/**
+ * 主模型不支持视觉时，引用消息里的图片交给视觉工作模型描述（结果按内容哈希入库复用）。
+ * 主模型支持视觉时返回 undefined：图片会直接附到请求里，不必重复描述。
+ */
+async function describeQuotedImage(
+  pluginCtx: ChatPluginContext,
+  cfg: ChatConfig,
+  imageUrl: string | undefined,
+  userId: string,
+  groupId: string | undefined,
+): Promise<string | undefined> {
+  if (
+    !imageUrl ||
+    mainModelSupportsVision(pluginCtx.aiService, cfg.model)
+  ) {
+    return undefined;
+  }
+  const visionAI =
+    pluginCtx.visionAIInstance ?? pluginCtx.aiService.getDefault();
+  if (!visionAI) return undefined;
+
+  try {
+    const { processImage } = await import("./media/image-analyzer");
+    const record = await processImage(
+      visionAI,
+      imageUrl,
+      cfg.multimodalWorkingModel,
+      pluginCtx.db,
+      {
+        runAIRequest: (request) =>
+          pluginCtx.runWithRateLimitGuard(request, {
+            userId,
+            groupId,
+            label: "quoted-image",
+            skipRetryOnRateLimit: true,
+          }),
+      },
+    );
+    return record?.description?.trim() || undefined;
+  } catch (err) {
+    pluginCtx.ctx.logger.error(
+      `[chat-turn] Failed to describe quoted image: ${err}`,
+    );
+    return undefined;
+  }
+}
 
 function buildRuntimeTargetMessageContent(
   ctx: MiokuContext,
@@ -289,16 +341,14 @@ export async function processChat(
     }
     if (quotedInfo?.imageUrl) imageUrls.push(quotedInfo.imageUrl);
 
-    let messageContent = ctx.text(e) || "";
-    let extraContext = "";
-    if (quotedInfo) {
-      const parts = [
-        `[Quoted message #${quotedInfo.messageId} from ${quotedInfo.senderName}: ${quotedInfo.content}]`,
-      ];
-      if (quotedInfo.imageUrl) parts.push("[Quoted message contains an image]");
-      extraContext = parts.join(" ");
-    }
-    if (extraContext) messageContent = extraContext + " " + messageContent;
+    // 与历史拉取并行，省掉视觉描述带来的额外等待
+    const quotedImageNotePromise = describeQuotedImage(
+      pluginCtx,
+      cfg,
+      quotedInfo?.imageUrl,
+      userId,
+      groupId,
+    );
 
     const rawHistory = groupId
       ? await getGroupHistory(
@@ -349,6 +399,24 @@ export async function processChat(
       history,
       userId,
     );
+
+    const quotedImageNote = await quotedImageNotePromise;
+    let messageContent = ctx.text(e) || "";
+    if (quotedInfo) {
+      const quotedText =
+        quotedInfo.content || (quotedInfo.imageUrl ? "[image]" : "");
+      const parts = [
+        `[Quoted message #${quotedInfo.messageId} from ${quotedInfo.senderName}: ${quotedText}]`,
+      ];
+      if (quotedInfo.imageUrl) {
+        parts.push(
+          quotedImageNote
+            ? `[Quoted message image: ${quotedImageNote}]`
+            : "[Quoted message contains an image]",
+        );
+      }
+      messageContent = `${parts.join(" ")} ${messageContent}`;
+    }
 
     const targetMessage: TargetMessage = {
       userName: senderName,

@@ -2,6 +2,7 @@ import {logger} from "mioku";
 import type { AITool } from "mioku";
 import { TOOL_RESULT_FOLLOWUP_KEY } from "mioku";
 import type { ToolContext } from "../../types";
+import { mainModelSupportsVision } from "../../utils/model";
 
 async function createImageFollowupResult(
   imageUrl: string,
@@ -158,7 +159,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
         }
 
         if (media.kind === "image") {
-          if (toolCtx.config.isMultimodal) {
+          if (mainModelSupportsVision(toolCtx.aiService, toolCtx.config.model)) {
             return await createImageFollowupResult(
               media.url,
               `The image from message #${args.message_id} is attached. Inspect it directly and answer the user's question from the visual content.`,
@@ -205,7 +206,8 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
 
         try {
           const attachFullVideo =
-            toolCtx.config.isMultimodal && videoFile.byteSize <= VIDEO_FULL_UPLOAD_MAX_BYTES;
+            mainModelSupportsVision(toolCtx.aiService, toolCtx.config.model) &&
+            videoFile.byteSize <= VIDEO_FULL_UPLOAD_MAX_BYTES;
 
           if (attachFullVideo) {
             const fs = await import("fs/promises");
@@ -266,7 +268,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
         const avatarUrl = `https://q1.qlogo.cn/g?b=qq&nk=${args.user_id}&s=640`;
         logger.info(`[view_member_avatar] Analyzing avatar: ${avatarUrl}`);
 
-        if (toolCtx.config.isMultimodal) {
+        if (mainModelSupportsVision(toolCtx.aiService, toolCtx.config.model)) {
           return await createImageFollowupResult(
             avatarUrl,
             `User ${args.user_id}'s QQ avatar is attached. Inspect it directly and answer the user's question from the visual content.`,

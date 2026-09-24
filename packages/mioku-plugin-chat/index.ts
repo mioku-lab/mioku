@@ -48,6 +48,7 @@ import { buildHistoryMediaOptions } from "./core/media/segment";
 import type { ChatConfigProvider } from "./humanize";
 import type { ChatPluginContext, ChatHandlerState } from "./context";
 import { mergeGroupOverrides } from "./utils/group-config";
+import { mainModelSupportsVision } from "./utils/model";
 import {
   mergeChatConfig,
   normalizeIdList,
@@ -95,9 +96,20 @@ function resolveRoleInstances(aiService: AIService): {
   const visionModel = findModel("vision", vision) || workingModel;
 
   const models = aiService.listModels?.() ?? [];
-  const visionDesc =
-    models.find((item) => item.id === bindings.vision) ||
-    models.find((item) => item.modelId === visionModel);
+  const findModelDesc = (role: AIModelRole, modelId: string) => {
+    const exact = models.find((item) => item.id === bindings[role]);
+    if (exact) return exact;
+    const providerId = instances.find(
+      (info) => info.role === role || info.name === role,
+    )?.providerId;
+    return (
+      models.find(
+        (item) => item.modelId === modelId && item.providerId === providerId,
+      ) || models.find((item) => item.modelId === modelId)
+    );
+  };
+
+  const visionDesc = findModelDesc("vision", visionModel);
   const isMultimodal =
     visionDesc?.capabilities?.includes("vision") ?? Boolean(visionModel);
 
@@ -341,7 +353,7 @@ export default definePlugin({
       return;
     }
 
-roleModels = resolved.models;
+    roleModels = resolved.models;
     roleIsMultimodal = resolved.isMultimodal;
     await refreshBaseCache();
 
@@ -567,7 +579,11 @@ roleModels = resolved.models;
       usage: ".tts <文本>",
       handler: async ({ event, match }) => {
         if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
-        await handleTtsCommand(pluginCtx, event, String(match?.[1] ?? "").trim());
+        await handleTtsCommand(
+          pluginCtx,
+          event,
+          String(match?.[1] ?? "").trim(),
+        );
       },
     });
 
@@ -575,7 +591,7 @@ roleModels = resolved.models;
     ctx.handle("notice.group.poke", createPokeHandler(pluginCtx, handlerState));
 
     ctx.logger.info(
-      `聊天插件加载成功 (main=${roleModels.main || "?"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"})`,
+      `聊天插件加载成功 (main=${roleModels.main || "?"}${mainModelSupportsVision(aiService, roleModels.main) ? "" : " 无视觉，图片交给视觉模型描述"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"})`,
     );
 
     return () => {

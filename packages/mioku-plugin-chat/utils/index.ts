@@ -9,3 +9,5 @@ export {
   buildChatMessageFromEvent,
   normalizeIdList,
 } from "./message";
+
+export { mainModelSupportsVision } from "./model";
