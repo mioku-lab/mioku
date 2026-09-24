@@ -44,6 +44,18 @@ const buildAttachment = (data: Record<string, unknown>): Attachment | undefined 
   return attachment
 }
 
+export const replyIdOf = (raw: unknown[]): string | undefined => {
+  for (const entry of raw) {
+    if (!isObject(entry) || entry.type !== 'reply') continue
+    const data = isObject(entry.data) ? (entry.data as Record<string, unknown>) : {}
+    const id = data.id ?? data.message_id
+    if (typeof id !== 'string' && typeof id !== 'number') continue
+    const value = String(id).trim()
+    if (value) return value
+  }
+  return undefined
+}
+
 export const buildSegments = (raw: unknown[], rawMessage?: string): Message => {
   const segments = raw
     .filter(
@@ -103,7 +115,8 @@ export const buildMessageEvent = (params: {
   }
 }): MessageEvent => {
   const { adapter, bot, data } = params
-  const message = buildSegments(Array.isArray(data.message) ? data.message : [], data.raw_message)
+  const rawSegments = Array.isArray(data.message) ? data.message : []
+  const message = buildSegments(rawSegments, data.raw_message)
   const messageId = String(data.message_id) as string
   const userId = String(data.user_id) as string
   const groupId =
@@ -120,8 +133,9 @@ export const buildMessageEvent = (params: {
         role: typeof data.sender.role === 'string' ? (data.sender.role as SenderInfo['role']) : undefined,
       }
     : undefined
-  const quoteId =
-    typeof data.quote_id === 'string' || typeof data.quote_id === 'number' ? String(data.quote_id) : undefined
+  const quoteIdFromPayload =
+    typeof data.quote_id === 'string' || typeof data.quote_id === 'number' ? String(data.quote_id).trim() : ''
+  const quoteId = quoteIdFromPayload || replyIdOf(rawSegments)
   return {
     kind: 'message',
     type: 'message',
