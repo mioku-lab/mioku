@@ -55,6 +55,9 @@
     "netease": {
       "npm": "mioku-service-netease"
     },
+    "ncmdump": {
+      "npm": "mioku-service-ncmdump"
+    },
     "ai": {
       "npm": "mioku-service-ai",
       "builtin": true

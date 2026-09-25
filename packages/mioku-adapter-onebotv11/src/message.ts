@@ -151,7 +151,11 @@ export const stringifyMessage = (message: Message): string =>
         case "rps":
         case "dice":
           return `{dice:${d.result ?? ""}}`;
-        case "file":
+        case "file": {
+          const label = d.file ?? d.file_name ?? "";
+          const id = typeof d.file_id === "string" && d.file_id ? `,id:${d.file_id}` : "";
+          return `{file:${label}${id},${d.url ?? ""}}`;
+        }
         case "video":
         case "record":
           return `{${el.type}:${d.url ?? ""}}`;
