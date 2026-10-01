@@ -64,6 +64,7 @@ export interface PluginHelp {
   description: string;
   commands: Array<{
     cmd: string;
+    id?: string;
     desc: string;
     usage?: string;
     role?: CommandRole;

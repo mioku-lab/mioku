@@ -8,7 +8,11 @@ import { getActiveCommandManager } from "./commands";
 import type { HelpService } from "../types";
 
 const commandKey = (value: string): string =>
-  String(value).trim().replace(/^[#/.]+\s*/, "").split(/\s+/)[0].toLowerCase();
+  String(value)
+    .trim()
+    .replace(/^[#/.]+\s*/, "")
+    .split(/\s+/)[0]
+    .toLowerCase();
 
 export async function registerPluginArtifacts(
   ctx?: MiokuContext,
@@ -26,10 +30,19 @@ export async function registerPluginArtifacts(
       .map((item) => item.plugin),
   ]);
 
+  if (helpService) {
+    for (const name of [...helpService.getAllHelp().keys()]) {
+      if (!pluginNames.has(name)) {
+        helpService.unregisterHelp(name);
+      }
+    }
+  }
+
   let helpCount = 0;
   for (const pluginName of pluginNames) {
     const meta = metadataByName.get(pluginName);
-    const generated = commandManager?.getPluginHelp(pluginName) ?? meta?.config?.help;
+    const generated =
+      commandManager?.getPluginHelp(pluginName) ?? meta?.config?.help;
     const existing = helpService?.getHelp(pluginName);
     const help = generated
       ? {
