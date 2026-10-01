@@ -19,6 +19,7 @@ import * as fs from "node:fs/promises";
 import type { CommandRole, HelpService, ScreenshotService } from "mioku";
 import { checkNightMode } from "../utils";
 import { generateHelpHtml } from "./html-generator";
+import type { HelpAccessFilter } from "./types";
 
 /** POSIX or Windows absolute path → `file://...`; anything else passes through. */
 function isLocalFilePath(value: string): boolean {
@@ -55,7 +56,8 @@ export function normalizeImageSource(file: string): string {
  *
  * `viewerRole` controls which commands are rendered — the image only
  * shows commands the requester is allowed to invoke, so members don't
- * see admin/master-only commands cluttering the panel.
+ * see admin/master-only commands cluttering the panel. `accessFilter`
+ * carries the same viewer's access-control verdicts.
  */
 export async function generateHelpImage(options: {
   helpService?: HelpService;
@@ -66,6 +68,7 @@ export async function generateHelpImage(options: {
   botAvatarUrl?: string;
   targetPluginName?: string;
   viewerRole?: CommandRole;
+  accessFilter?: HelpAccessFilter;
 }): Promise<string | null> {
   const {
     helpService,
@@ -76,6 +79,7 @@ export async function generateHelpImage(options: {
     botAvatarUrl,
     targetPluginName,
     viewerRole,
+    accessFilter,
   } = options;
   if (!helpService || !screenshotService) {
     return null;
@@ -94,6 +98,7 @@ export async function generateHelpImage(options: {
     botAvatarUrl,
     hasTarget ? targetPluginName : undefined,
     viewerRole,
+    accessFilter,
   );
 
   return screenshotService.screenshot(htmlContent, {

@@ -3,14 +3,18 @@
  *
  * Used by AI skills: when the LLM is asked about a feature, the
  * `get_help_info` tool returns this text instead of an image, so the
- * model can read what's available without vision.
+ * model can read what's available without vision. Filtering goes through
+ * the same entry builder as the image, so a member never gets admin-only
+ * commands read back to them.
  */
 
-import type { PluginHelp } from "mioku";
+import type { CommandRole, PluginHelp } from "mioku";
+import { getRenderableEntries } from "./intent";
 import { ROLE_CONFIG } from "./role-config";
+import type { HelpAccessFilter } from "./types";
 
 /**
- * Render the entire help registry as a single string the AI can read.
+ * Render a help registry as a single string the AI can read.
  * Format:
  *
  *   === Mioku Bot 帮助信息 ===
@@ -21,18 +25,18 @@ import { ROLE_CONFIG } from "./role-config";
  */
 export function buildHelpInfoText(
   helpMap: Map<string, PluginHelp>,
+  viewerRole: CommandRole = "master",
+  accessFilter?: HelpAccessFilter,
 ): string {
   const info: string[] = ["=== Mioku Bot 帮助信息 ===\n"];
 
-  for (const [pluginName, help] of helpMap) {
-    info.push(`【${help.title || pluginName}】${help.description || ""}`);
-    if (help.commands?.length) {
-      for (const cmd of help.commands) {
-        const roleLabel = cmd.role
-          ? ` [${ROLE_CONFIG[cmd.role]?.label || cmd.role}]`
-          : "";
-        info.push(`  ${cmd.cmd}${roleLabel} - ${cmd.desc}`);
-      }
+  for (const entry of getRenderableEntries(helpMap, viewerRole, accessFilter)) {
+    info.push(`【${entry.title}】${entry.description}`);
+    for (const cmd of entry.commands) {
+      const roleLabel = cmd.role
+        ? ` [${ROLE_CONFIG[cmd.role]?.label || cmd.role}]`
+        : "";
+      info.push(`  ${cmd.cmd}${roleLabel} - ${cmd.desc}`);
     }
     info.push("");
   }

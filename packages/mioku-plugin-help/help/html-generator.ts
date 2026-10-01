@@ -17,7 +17,7 @@ import { escapeHtml } from "../utils";
 import { getHelpTheme, HELP_BACKGROUND_IMAGE_URL } from "../theme";
 import { getRenderableEntries } from "./intent";
 import { ROLE_CONFIG } from "./role-config";
-import type { HelpRenderableEntry } from "./types";
+import type { HelpAccessFilter, HelpRenderableEntry } from "./types";
 
 function resolvePrefixPlaceholder(cmd: string): string {
   const value = String(cmd || "");
@@ -119,8 +119,9 @@ function renderPluginDetail(
  * renderer to detail mode for that plugin (no-op if the name doesn't
  * match anything in `helpMap`).
  *
- * `viewerRole` filters out commands the requesting user can't invoke,
- * so the image only surfaces what they can actually run.
+ * `viewerRole` filters out commands the requesting user can't invoke, and
+ * `accessFilter` applies access-control for the requesting event; together
+ * they keep the image to what the viewer can actually run.
  */
 export function generateHelpHtml(
   helpMap: Map<string, PluginHelp>,
@@ -131,8 +132,9 @@ export function generateHelpHtml(
   botAvatarUrl?: string,
   targetPluginName?: string,
   viewerRole: CommandRole = "master",
+  accessFilter?: HelpAccessFilter,
 ): string {
-  const entries = getRenderableEntries(helpMap, viewerRole);
+  const entries = getRenderableEntries(helpMap, viewerRole, accessFilter);
   const selectedEntry = targetPluginName
     ? entries.find((entry) => entry.pluginName === targetPluginName)
     : undefined;

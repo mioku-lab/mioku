@@ -4,6 +4,7 @@ import * as path from "path";
 import { HELP_DEMO_CONFIG } from "./demo-config";
 import { HELP_STATUS_DEFAULT_CONFIG } from "./status/config";
 import {
+  createHelpAccessFilter,
   generateHelpImage,
   replyWithImage,
   resolveHelpBotProfile,
@@ -113,7 +114,14 @@ const helpPlugin = definePlugin({
       }
 
       const allHelp = helpService.getAllHelp();
-      const intent = resolveHelpImageIntent(text, allHelp);
+      const viewerRole = await resolveViewerRole(ctx, event);
+      const accessFilter = createHelpAccessFilter(ctx, event);
+      const intent = resolveHelpImageIntent(
+        text,
+        allHelp,
+        viewerRole,
+        accessFilter,
+      );
       if (intent.type === "none") {
         return;
       }
@@ -130,7 +138,6 @@ const helpPlugin = definePlugin({
 
       try {
         const { botNickname, botAvatarUrl } = await resolveHelpBotProfile(ctx, event);
-        const viewerRole = await resolveViewerRole(ctx, event);
         const imagePath = await generateHelpImage({
           helpService,
           screenshotService,
@@ -141,6 +148,7 @@ const helpPlugin = definePlugin({
           targetPluginName:
             intent.type === "detail" ? intent.pluginName : undefined,
           viewerRole,
+          accessFilter,
         });
 
         if (!imagePath) {

@@ -2,6 +2,7 @@ import type { AISkill, AITool } from "mioku";
 import type { HelpService, ScreenshotService } from "mioku";
 import {
   buildHelpInfoText,
+  createHelpAccessFilter,
   generateHelpImage,
   resolveHelpBotProfile,
   resolveViewerRole,
@@ -26,12 +27,19 @@ export function createHelpSkill(): AISkill {
         },
         handler: async (_args: any, runtimeCtx?: any) => {
           const ctx = runtimeCtx?.ctx;
+          const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
           const helpService = ctx?.services?.help as HelpService | undefined;
           if (!helpService) {
             return "help-service 未加载，无法获取帮助信息";
           }
 
-          return buildHelpInfoText(helpService.getAllHelp());
+          const viewerRole = await resolveViewerRole(ctx, event);
+          const accessFilter = createHelpAccessFilter(ctx, event);
+          return buildHelpInfoText(
+            helpService.getAllHelp(),
+            viewerRole,
+            accessFilter,
+          );
         },
       } as AITool,
       {
@@ -62,6 +70,7 @@ export function createHelpSkill(): AISkill {
               event,
             );
             const viewerRole = await resolveViewerRole(ctx, event);
+            const accessFilter = createHelpAccessFilter(ctx, event);
             const imagePath = await generateHelpImage({
               helpService,
               screenshotService,
@@ -70,6 +79,7 @@ export function createHelpSkill(): AISkill {
               botNickname,
               botAvatarUrl,
               viewerRole,
+              accessFilter,
             });
 
             if (!imagePath) {

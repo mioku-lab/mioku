@@ -11,6 +11,7 @@ import type { CommandRole, PluginHelp } from "mioku";
 import { canInvokeCommand } from "./role";
 import { STOPWORDS } from "./role-config";
 import type {
+  HelpAccessFilter,
   HelpImageIntent,
   HelpKeywordCandidate,
   HelpRenderableEntry,
@@ -92,25 +93,39 @@ function extractCommandAlias(command: string): string | null {
  * `html-generator.ts` can reuse it instead of duplicating the logic.
  *
  * `viewerRole` filters out commands above the requester's permission
- * level so the overview/detail views don't show commands they can't
- * invoke. Defaults to `"master"` so callers that don't yet know the
- * viewer (e.g. AI skill listings) keep the full registry.
+ * level; `accessFilter` applies access-control (user / group / global
+ * allow / block) for the requesting event. A plugin whose every command
+ * is filtered out disappears entirely — rendering an empty card would
+ * still leak its name and description. Defaults to `"master"` with no
+ * access filter so callers without a viewer (AI listings) keep the full
+ * registry.
  */
 export function getRenderableEntries(
   helpMap: Map<string, PluginHelp>,
   viewerRole: CommandRole = "master",
+  accessFilter?: HelpAccessFilter,
 ): HelpRenderableEntry[] {
   return Array.from(helpMap.entries())
+    .filter(([pluginName]) => accessFilter?.canUsePlugin?.(pluginName) ?? true)
     .map(([pluginName, help]) => {
       const title = String(help.title || pluginName).trim() || pluginName;
       const description = String(help.description || "").trim();
       const allCommands = Array.isArray(help.commands) ? help.commands : [];
-      const commands = allCommands.filter((command) =>
-        canInvokeCommand(
-          viewerRole,
-          command.role as CommandRole | undefined,
-        ),
-      );
+      const commands = allCommands.filter((command) => {
+        if (
+          !canInvokeCommand(viewerRole, command.role as CommandRole | undefined)
+        ) {
+          return false;
+        }
+        const ref = String(command.id ?? command.cmd ?? "").trim();
+        if (!ref) return true;
+        return accessFilter?.canUseCommand?.(pluginName, ref) ?? true;
+      });
+
+      if (allCommands.length > 0 && commands.length === 0) {
+        return null;
+      }
+
       const normalizedPluginName = normalizeForMatch(pluginName);
       const normalizedTitle = normalizeForMatch(title);
 
@@ -143,6 +158,7 @@ export function getRenderableEntries(
         matchKeys: keys,
       };
     })
+    .filter((entry): entry is HelpRenderableEntry => entry !== null)
     .sort((a, b) => a.pluginName.localeCompare(b.pluginName, "zh-Hans-CN"));
 }
 
@@ -266,13 +282,15 @@ function extractHelpKeywordCandidates(
 export function findPluginHelpByKeyword(
   helpMap: Map<string, PluginHelp>,
   keyword: string,
+  viewerRole: CommandRole = "master",
+  accessFilter?: HelpAccessFilter,
 ): { pluginName: string; help: PluginHelp } | null {
   const normalizedQuery = normalizeForMatch(sanitizeKeyword(keyword));
   if (!normalizedQuery || STOPWORDS.has(normalizedQuery)) {
     return null;
   }
 
-  const entries = getRenderableEntries(helpMap);
+  const entries = getRenderableEntries(helpMap, viewerRole, accessFilter);
   if (entries.length === 0) {
     return null;
   }
@@ -340,6 +358,8 @@ export function findPluginHelpByKeyword(
 export function resolveHelpImageIntent(
   text: string,
   helpMap: Map<string, PluginHelp>,
+  viewerRole: CommandRole = "master",
+  accessFilter?: HelpAccessFilter,
 ): HelpImageIntent {
   const source = String(text || "").trim();
   if (!source) {
@@ -363,7 +383,12 @@ export function resolveHelpImageIntent(
   }
 
   for (const candidate of candidates) {
-    const resolved = findPluginHelpByKeyword(helpMap, candidate.keyword);
+    const resolved = findPluginHelpByKeyword(
+      helpMap,
+      candidate.keyword,
+      viewerRole,
+      accessFilter,
+    );
     if (resolved) {
       return {
         type: "detail",

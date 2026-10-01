@@ -11,8 +11,8 @@ import type { CommandRole } from "mioku";
 
 const ROLE_RANK: Record<CommandRole, number> = {
   master: 4,
-  admin: 3,
-  owner: 2,
+  owner: 3,
+  admin: 2,
   member: 1,
 };
 
@@ -32,18 +32,15 @@ export function canInvokeCommand(
 /**
  * Resolve the requesting user's effective role for help filtering.
  *
- * - `master` is honored everywhere (private or group) — it comes from
- *   mioki's `isMaster` allowlist (the bot `owners` list).
- * - Private chat skips the `isAdmin` check and defaults to `admin`,
- *   so anyone DM-ing the bot can see admin-level commands.
- * - Group chat resolves bot admin (mioki `isAdmin` allowlist), group
- *   owner (群主) and group admin (群管理) all to `admin`. This mirrors
- *   the admin plugin's execution gating (`isMaster || senderRole ===
- *   "owner" || senderRole === "admin"`) so the help image only hides
- *   commands the viewer genuinely can't run. `sender.role` is checked
- *   first (populated by OneBot on group events), with
- *   `getGroupMemberInfo` as a fallback when it's missing. Everyone else
- *   is `member`.
+ * Mirrors the command manager's gating so the image hides exactly the
+ * commands the viewer cannot run:
+ *
+ * - `ctx.isMaster` → `master` (bot `owners`).
+ * - `ctx.isOwner` → `owner` (主人或当前群群主).
+ * - `ctx.isAdmin` → `admin` (配置管理员或群管理).
+ * - Otherwise, when the event carries no `sender.role`, fall back to
+ *   `getMemberInfo`; an unresolved member counts as `member` — guessing
+ *   upward would show commands the viewer cannot invoke.
  */
 export async function resolveViewerRole(
   ctx: any,
@@ -52,39 +49,28 @@ export async function resolveViewerRole(
   if (ctx?.isMaster?.(event)) {
     return "master";
   }
-
-  const isGroup = event?.message_type === "group";
-
-  if (isGroup) {
-    if (ctx?.isAdmin?.(event)) {
-      return "admin";
-    }
-
-    const senderRole = event?.sender?.role;
-    if (senderRole === "owner" || senderRole === "admin") {
-      return "admin";
-    }
-
-    const groupId = String(event?.group_id ?? "").trim();
-    const userId = String(event?.user_id ?? "").trim();
-    if (groupId && userId) {
-      const bot = event?.bot;
-      if (bot) {
-        try {
-          const info = await bot.getMemberInfo(groupId, userId);
-          if (info?.role === "owner" || info?.role === "admin") {
-            return "admin";
-          }
-          // 拿不到成员信息(null/空)时不能断言对方是普通成员,保守给 admin
-          if (!info?.role) return "admin";
-        } catch {
-          return "admin";
-        }
-      }
-    }
-
-    return "member";
+  if (ctx?.isOwner?.(event)) {
+    return "owner";
+  }
+  if (ctx?.isAdmin?.(event)) {
+    return "admin";
   }
 
-  return "admin";
+  const groupId = String(event?.group_id ?? "").trim();
+  const userId = String(event?.user_id ?? "").trim();
+  if (groupId && userId) {
+    const bot = event?.bot;
+    if (bot) {
+      try {
+        const info = await bot.getMemberInfo(groupId, userId);
+        if (info?.role === "owner" || info?.role === "admin") {
+          return info.role;
+        }
+      } catch {
+        // 查询失败按普通成员处理
+      }
+    }
+  }
+
+  return "member";
 }
