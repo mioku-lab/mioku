@@ -574,7 +574,6 @@ export default definePlugin({
       name: "tts",
       prefixes: ["/", "."],
       match: /^tts\s*(.*)$/,
-      permission: "owner",
       description: "TTS 推理",
       usage: ".tts <文本>",
       handler: async ({ event, match }) => {
