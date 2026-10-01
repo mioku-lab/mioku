@@ -1,6 +1,5 @@
 import { logger } from "mioku";
-import type { MiokuService, PluginHelp } from "mioku";
-import { HelpService } from "./types";
+import type { HelpService, MiokuService, PluginHelp } from "mioku";
 
 class HelpManager implements HelpService {
   private helpRegistry: Map<string, PluginHelp> = new Map();
