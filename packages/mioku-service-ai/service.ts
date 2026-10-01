@@ -51,7 +51,8 @@ export class AIServiceImpl implements AIService {
     providerId: string,
     modelId: string,
   ): () => AIThinkingLevel | undefined {
-    return () => this.registry.getModel(`${providerId}/${modelId}`)?.thinkingLevel;
+    return () =>
+      this.registry.getModel(`${providerId}/${modelId}`)?.thinkingLevel;
   }
 
   private bootstrapRoleInstances(): void {
@@ -334,15 +335,20 @@ export class AIServiceImpl implements AIService {
     input: Partial<AIProviderConfig>,
   ): Promise<AIProviderConfig> {
     const provider = await this.registry.updateProvider(id, input);
-    for (const [name, instance] of this.instances) {
-      if (instance.providerId === id) {
-        await this.createInstance({
-          name,
-          providerId: id,
-          modelId: instance.modelId,
-          role: instance.role,
-        });
-      }
+    const affected = [...this.instances.values()].filter(
+      (instance) => instance.providerId === id,
+    );
+    if (!provider.enabled) {
+      for (const instance of affected) this.remove(instance.name);
+      return provider;
+    }
+    for (const instance of affected) {
+      await this.createInstance({
+        name: instance.name,
+        providerId: id,
+        modelId: instance.modelId,
+        role: instance.role,
+      });
     }
     return provider;
   }
