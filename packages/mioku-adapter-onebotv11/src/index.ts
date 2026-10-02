@@ -4,6 +4,7 @@ export * from './config'
 export * from './event'
 export * from './gateway'
 export * from './message'
+export * from './server-gateway'
 export * from './status'
 
 export { oneBotAdapterDefinition as default } from './adapter'

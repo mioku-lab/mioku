@@ -1,8 +1,8 @@
 {
   "name": "mioku-adapter-onebotv11",
   "type": "module",
-  "version": "1.0.6",
-  "description": "OneBot v11 adapter for mioku (NapCat).",
+  "version": "1.1.0",
+  "description": "OneBot v11 adapter for mioku (NapCat, forward & reverse WebSocket).",
   "keywords": [
     "mioku"
   ],
@@ -37,10 +37,12 @@
   },
   "dependencies": {
     "consola": "^3.4.2",
-    "napcat-sdk": "^0.16.0"
+    "napcat-sdk": "^0.16.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.8",
+    "@types/ws": "^8.18.0",
     "mioku": "workspace:*",
     "tsdown": "^0.18.4",
     "typescript": "^5.9.3"
