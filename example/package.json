@@ -30,7 +30,9 @@
     "mioku-service-packet": "workspace:*",
     "mioku-service-screenshot": "workspace:*",
     "mioku-service-webui": "workspace:*",
-    "mioku-plugin-agent": "workspace:*"
+    "mioku-plugin-agent": "workspace:*",
+    "mioku-service-ncmdump": "workspace:*",
+    "mioku-plugin-crystelf": "workspace:*"
   },
   "scripts": {
     "start": "bun run app.ts"
@@ -38,7 +40,7 @@
   "mioku": {
     "prefix": ".",
     "owners": [
-      3479445703,
+      "3479445703",
       "stdin"
     ],
     "admins": [],
