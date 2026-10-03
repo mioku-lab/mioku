@@ -51,6 +51,7 @@ interface OfficialRegistryEntry {
 interface OfficialRegistry {
   plugins?: Record<string, OfficialRegistryEntry>;
   services?: Record<string, OfficialRegistryEntry>;
+  hidden?: Partial<Record<"plugins" | "services" | "adapters", string[]>>;
 }
 
 interface NpmSearchObject {
@@ -94,7 +95,10 @@ function shortNameOf(name: string): string {
   return name;
 }
 
-export async function runBun(args: string[], cwd?: string): Promise<BunRunResult> {
+export async function runBun(
+  args: string[],
+  cwd?: string,
+): Promise<BunRunResult> {
   const runCwd = cwd ?? projectRoot();
   logger.info(`[core] 执行: bun ${args.join(" ")}  (cwd: ${runCwd})`);
   const startedAt = Date.now();
@@ -142,7 +146,9 @@ function readPackageJson(dir: string): any | null {
 }
 
 export function getInstalledVersion(pkgName: string): string {
-  const pkg = readPackageJson(path.join(projectRoot(), "node_modules", pkgName));
+  const pkg = readPackageJson(
+    path.join(projectRoot(), "node_modules", pkgName),
+  );
   return String(pkg?.version || "0.0.0");
 }
 
@@ -202,7 +208,9 @@ async function fetchNpmMeta(pkgName: string): Promise<NpmPackageMeta | null> {
     repoUrl = repoUrl.replace(/^git\+/, "").replace(/\.git$/, "");
     return {
       latest,
-      description: String(version?.description || data?.description || "").trim(),
+      description: String(
+        version?.description || data?.description || "",
+      ).trim(),
       keywords: Array.isArray(version?.keywords) ? version.keywords : [],
       homepage: String(version?.homepage || data?.homepage || "").trim(),
       repository: repoUrl,
@@ -339,7 +347,9 @@ export async function installPackage(
   logger.info(`[core] 开始安装 ${type} 包: ${packageName}`);
   const result = await runBun(["add", packageName]);
   if (result.code !== 0) {
-    logger.error(`[core] 安装 ${packageName} 失败: ${result.stderr || result.stdout}`);
+    logger.error(
+      `[core] 安装 ${packageName} 失败: ${result.stderr || result.stdout}`,
+    );
     return {
       ok: false,
       packageName,
@@ -380,7 +390,9 @@ export async function uninstallPackage(
   logger.info(`[core] 开始卸载 ${type} 包: ${packageName}`);
   const result = await runBun(["remove", packageName]);
   if (result.code !== 0) {
-    logger.error(`[core] 卸载 ${packageName} 失败: ${result.stderr || result.stdout}`);
+    logger.error(
+      `[core] 卸载 ${packageName} 失败: ${result.stderr || result.stdout}`,
+    );
     return {
       ok: false,
       packageName,
@@ -428,8 +440,7 @@ function buildMarketItem(
 ): MarketItem {
   const type = detectType(pkgName) as "plugin" | "service";
   const installedVersion = getInstalledVersion(pkgName);
-  const installed =
-    installedVersion !== "0.0.0" && installedVersion !== "";
+  const installed = installedVersion !== "0.0.0" && installedVersion !== "";
   const latest = String(meta?.latest || "");
   return {
     name: shortNameOf(pkgName),
@@ -451,15 +462,18 @@ export async function getMarketItems(
   type: "plugin" | "service",
 ): Promise<MarketItem[]> {
   const registry = await fetchOfficialRegistry();
-  const officialEntries =
-    type === "plugin" ? registry.plugins || {} : registry.services || {};
+  const registryKey = type === "plugin" ? "plugins" : "services";
+  const officialEntries = registry[registryKey] || {};
   const officialNpmNames = new Set(
     Object.values(officialEntries)
       .map((entry) => String(entry?.npm || ""))
       .filter(Boolean),
   );
+  const hiddenShorts = new Set(registry.hidden?.[registryKey] ?? []);
 
-  const searchObjects = await searchNpmPackages().catch(() => [] as NpmSearchObject[]);
+  const searchObjects = await searchNpmPackages().catch(
+    () => [] as NpmSearchObject[],
+  );
   const prefix = type === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
 
   const candidateNames = new Set<string>();
@@ -469,6 +483,11 @@ export async function getMarketItems(
   }
   for (const name of officialNpmNames) {
     if (name.startsWith(prefix)) candidateNames.add(name);
+  }
+  // hidden 名单内的包不出现在市场
+  for (const name of Array.from(candidateNames)) {
+    if (hiddenShorts.has(name.slice(prefix.length)))
+      candidateNames.delete(name);
   }
 
   const metas = await Promise.all(
@@ -481,9 +500,7 @@ export async function getMarketItems(
   const items = metas
     .filter((entry) => entry.meta !== null)
     .filter((entry) => (entry.meta?.keywords ?? []).includes("mioku"))
-    .map((entry) =>
-      buildMarketItem(entry.pkgName, entry.meta, entry.official),
-    );
+    .map((entry) => buildMarketItem(entry.pkgName, entry.meta, entry.official));
 
   return items.sort((a, b) => {
     if (a.installed !== b.installed) return a.installed ? -1 : 1;

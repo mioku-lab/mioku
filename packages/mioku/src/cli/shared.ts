@@ -88,6 +88,18 @@ export interface OfficialRegistry {
   plugins?: Record<string, OfficialRegistryEntry>;
   services?: Record<string, OfficialRegistryEntry>;
   adapters?: Record<string, OfficialRegistryEntry>;
+  /** 市场隐藏名单：各类别下的包短名，不出现在引导与市场里 */
+  hidden?: Partial<Record<"plugin" | "service" | "adapter", string[]>>;
+}
+
+export type MarketPackageType = "plugin" | "service" | "adapter";
+
+/** 取官方注册表中某类别需要隐藏的包短名 */
+export function hiddenShortNames(
+  registry: OfficialRegistry | null,
+  type: MarketPackageType,
+): Set<string> {
+  return new Set(registry?.hidden?.[type] ?? []);
 }
 
 export async function fetchOfficialRegistry(): Promise<OfficialRegistry | null> {
@@ -204,6 +216,19 @@ export async function multiSelect(
   return (result as Array<string | { value: string }>).map((item) =>
     typeof item === "string" ? item : item.value,
   );
+}
+
+/** 单选框，取消时抛出（调用方负责兜底） */
+export async function selectOne<T extends string>(
+  message: string,
+  items: Array<{ label: string; value: T }>,
+): Promise<T> {
+  const result = await consola.prompt(message, {
+    type: "select",
+    options: items,
+    cancel: "reject",
+  });
+  return result as T;
 }
 
 export function runAdapterCli(name: string, cwd: string): void {
@@ -417,9 +442,26 @@ export async function getInstalledPackages(cwd: string): Promise<string[]> {
       readFileSync(path.join(cwd, "package.json"), "utf-8"),
     );
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-    return Object.keys(deps).filter((k) => k.startsWith("mioku-"));
+    return Object.keys(deps).filter(
+      (k) => k === "mioku" || k.startsWith("mioku-"),
+    );
   } catch {
     return [];
+  }
+}
+
+/** 读取已安装包的版本，未安装返回 null */
+export function installedVersionOf(
+  cwd: string,
+  pkgName: string,
+): string | null {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(path.join(cwd, "node_modules", pkgName, "package.json"), "utf-8"),
+    );
+    return String(pkg.version || "") || null;
+  } catch {
+    return null;
   }
 }
 
@@ -488,11 +530,14 @@ export function buildHelpInfo(version: string): string {
   用法: mioku <命令> [选项]
 
   命令:
-    install plugin <名称>   安装插件，自动补全 mioku-plugin- 前缀
-    install service <名称>  安装服务，自动补全 mioku-service- 前缀
+    install [类型] [名称]   安装包；不带参数时进入交互选择
+                            install              - 选择安装 mioku 框架 / 插件 / 服务 / 适配器
+                            install plugin <名称>  安装插件，自动补全 mioku-plugin- 前缀
+                            install service <名称> 安装服务，自动补全 mioku-service- 前缀
+                            install adapter <名称> 安装适配器并运行配置向导
     update [包名|self|all]   更新插件或服务
-                            update          - 检查可用更新
-                            update all      - 更新所有 mioku- 包
+                            update          - 检查可用更新（含 mioku 框架）并选择更新
+                            update all      - 更新所有 mioku 包（含框架）
                             update self     - 更新 mioku 框架
                             update xxx      - 更新指定包
 

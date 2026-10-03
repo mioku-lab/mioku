@@ -206,6 +206,11 @@ async function fetchBuiltinPkgJson(type, key) {
 
 async function mergeResults(officialRegistry, npmObjects) {
   const seen = new Map()
+  const hidden = {
+    plugin: new Set(officialRegistry.hidden?.plugins || []),
+    service: new Set(officialRegistry.hidden?.services || []),
+    adapter: new Set(officialRegistry.hidden?.adapters || []),
+  }
 
   for (const obj of npmObjects) {
     const pkg = obj?.package
@@ -215,6 +220,9 @@ async function mergeResults(officialRegistry, npmObjects) {
 
     const type = inferType(name)
     if (!type) continue
+
+    // hidden 名单内的包不出现在市场
+    if (hidden[type].has(stripPrefix(name, type))) continue
 
     const keywords = Array.isArray(pkg.keywords) ? pkg.keywords.map(String) : []
     if (!keywords.includes('mioku')) continue
@@ -244,6 +252,7 @@ async function mergeResults(officialRegistry, npmObjects) {
 
   const processEntries = (entries, type) => {
     for (const [key, entry] of Object.entries(entries)) {
+      if (hidden[type].has(key)) continue
       const isBuiltin = Boolean(entry.builtin)
       const npm = isBuiltin
         ? `mioku-${type === 'plugin' ? 'plugin' : type === 'service' ? 'service' : 'adapter'}-${key}`

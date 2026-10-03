@@ -1,4 +1,9 @@
 {
+  "hidden": {
+    "plugins": ["boot"],
+    "services": [],
+    "adapters": []
+  },
   "plugins": {
     "60s": {
       "npm": "mioku-plugin-60s"
