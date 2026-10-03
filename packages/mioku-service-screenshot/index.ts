@@ -9,6 +9,11 @@ import {
   ScreenshotOptions,
   ScreenshotService,
 } from "./types";
+import {
+  NAV_TIMEOUT_MS,
+  RenderBudget,
+  trackPendingRequests,
+} from "./render-budget";
 
 /**
  * 截图服务实现
@@ -175,39 +180,44 @@ class ScreenshotServiceImpl implements ScreenshotService {
   private async gotoPage(
     page: Page,
     url: string,
+    budget: RenderBudget,
+    pending: () => string,
   ): Promise<void> {
-    const attempts = [
-      { waitUntil: "networkidle0" as const, timeout: 20_000 },
-      { waitUntil: "domcontentloaded" as const, timeout: 10_000 },
-    ];
+    const attempts = ["networkidle0", "domcontentloaded"] as const;
     let lastErr: unknown;
-    for (const opts of attempts) {
+    for (const waitUntil of attempts) {
+      const timeout = Math.min(NAV_TIMEOUT_MS, budget.remainingMs);
+      if (timeout <= 0) break;
       try {
-        await page.goto(url, opts);
+        await page.goto(url, { waitUntil, timeout });
         return;
       } catch (err) {
         lastErr = err;
       }
     }
-    throw new Error(`页面加载超时（外部资源不可达）: ${String(lastErr)}`);
+    const timedOut = (lastErr as Error | undefined)?.name === "TimeoutError";
+    throw timedOut
+      ? new Error(`页面加载超时（${NAV_TIMEOUT_MS}ms 内未完成：${pending()}）`)
+      : new Error(`页面加载失败（未完成：${pending()}）: ${String(lastErr)}`);
   }
 
-  private async waitForImages(page: Page): Promise<void> {
-    try {
-      await Promise.race([
-        page.evaluate(async () => {
-          const doc = globalThis as unknown as { document?: { images?: unknown[] } };
-          const images = doc.document?.images ? Array.from(doc.document.images) : [];
-          await Promise.all(
-            images.map((img) =>
-              (img as { decode?: () => Promise<void> }).decode?.().catch(() => {}),
-            ),
-          );
-        }),
-        new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
-      ]);
-    } catch {
-    }
+  private async waitForImages(
+    page: Page,
+    budget: RenderBudget,
+    pending: () => string,
+  ): Promise<void> {
+    await budget.guard(
+      page.evaluate(async () => {
+        const doc = globalThis as unknown as { document?: { images?: unknown[] } };
+        const images = doc.document?.images ? Array.from(doc.document.images) : [];
+        await Promise.all(
+          images.map((img) =>
+            (img as { decode?: () => Promise<void> }).decode?.().catch(() => {}),
+          ),
+        );
+      }),
+      () => `图片解码超时（未完成：${pending()}）`,
+    );
   }
 
   /**
@@ -222,6 +232,8 @@ class ScreenshotServiceImpl implements ScreenshotService {
     }
 
     const page = await this.browser.newPage();
+    const budget = new RenderBudget();
+    const pending = trackPendingRequests(page);
 
     try {
       const width = options?.width || 1920;
@@ -233,8 +245,8 @@ class ScreenshotServiceImpl implements ScreenshotService {
       const htmlId = this.generateId();
       const htmlPath = path.join(this.tempDir, `${htmlId}.html`);
       await fs.promises.writeFile(htmlPath, fullHtml, "utf-8");
-      await this.gotoPage(page, `file://${htmlPath}`);
-      await this.waitForImages(page);
+      await this.gotoPage(page, `file://${htmlPath}`, budget, pending);
+      await this.waitForImages(page, budget, pending);
 
       // if (options?.waitTime) {
       //   await this.delay(options.waitTime);
@@ -246,12 +258,15 @@ class ScreenshotServiceImpl implements ScreenshotService {
         `${screenshotId}.${options?.type || "png"}`,
       );
 
-      await page.screenshot({
-        path: screenshotPath,
-        type: options?.type || "png",
-        quality: options?.quality,
-        fullPage: options?.fullPage ?? false,
-      });
+      await budget.guard(
+        page.screenshot({
+          path: screenshotPath,
+          type: options?.type || "png",
+          quality: options?.quality,
+          fullPage: options?.fullPage ?? false,
+        }),
+        () => `截图写入超时（已用 ${budget.elapsedMs}ms，未完成：${pending()}）`,
+      );
 
       try {
         await fs.promises.unlink(htmlPath);
@@ -292,6 +307,8 @@ class ScreenshotServiceImpl implements ScreenshotService {
     }
 
     const page = await this.browser.newPage();
+    const budget = new RenderBudget();
+    const pending = trackPendingRequests(page);
 
     try {
       const width = options?.width || 1920;
@@ -299,11 +316,11 @@ class ScreenshotServiceImpl implements ScreenshotService {
       const deviceScaleFactor = options?.deviceScaleFactor ?? 1;
       await page.setViewport({ width, height, deviceScaleFactor });
 
-      await this.gotoPage(page, url);
-      await this.waitForImages(page);
+      await this.gotoPage(page, url, budget, pending);
+      await this.waitForImages(page, budget, pending);
 
       if (options?.waitTime) {
-        await this.delay(options.waitTime);
+        await this.delay(Math.min(options.waitTime, budget.remainingMs));
       }
 
       const screenshotId = this.generateId();
@@ -312,12 +329,15 @@ class ScreenshotServiceImpl implements ScreenshotService {
         `${screenshotId}.${options?.type || "png"}`,
       );
 
-      await page.screenshot({
-        path: screenshotPath,
-        type: options?.type || "png",
-        quality: options?.quality,
-        fullPage: options?.fullPage ?? true,
-      });
+      await budget.guard(
+        page.screenshot({
+          path: screenshotPath,
+          type: options?.type || "png",
+          quality: options?.quality,
+          fullPage: options?.fullPage ?? true,
+        }),
+        () => `截图写入超时（已用 ${budget.elapsedMs}ms，未完成：${pending()}）`,
+      );
       return screenshotPath;
     } finally {
       await page.close();
