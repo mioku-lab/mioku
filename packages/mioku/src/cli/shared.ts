@@ -9,6 +9,7 @@ import {
   resolveCommand,
   runCommandInherit,
 } from "../internal/exec";
+import { pickHighestVersion } from "../internal/version";
 
 export const PLUGIN_PREFIX = "mioku-plugin-";
 export const SERVICE_PREFIX = "mioku-service-";
@@ -133,7 +134,13 @@ export async function fetchNpmPackageMeta(
     );
     if (!res.ok) return null;
     const data = (await res.json()) as any;
-    const latest = String(data?.["dist-tags"]?.latest || "").trim();
+    const distTag = String(data?.["dist-tags"]?.latest || "").trim();
+    const versions = Object.keys(data?.versions ?? {});
+    // 刚发布时 registry 可能先更新 latest 标签、后同步版本信息
+    const latest =
+      distTag && versions.includes(distTag)
+        ? distTag
+        : (pickHighestVersion(versions) ?? distTag);
     const version = latest ? (data?.versions?.[latest] ?? {}) : {};
     return {
       version: latest,

@@ -4,9 +4,7 @@ import { getPluginRuntimeState } from "../../../runtime/plugin-state";
 import { replyText } from "./notify";
 import {
   checkUpdates,
-  diffVersions,
-  snapshotAll,
-  updateAllManaged,
+  listManagedPackages,
   updatePackages,
   type UpdateAvailable,
 } from "../system/package-manager";
@@ -86,27 +84,48 @@ async function performUpdateAndReport(
     await replyText(event, "没有需要更新的项。");
     return;
   }
-  const before = snapshotAll(names);
   await replyText(event, `正在更新 ${names.length} 个包，请稍候...`);
-  const result = await updatePackages(names);
-  if (result.code !== 0) {
-    ctx.logger.error(`[core] 更新失败: ${result.stderr || result.stdout}`);
-    await replyText(event, `更新失败：${result.stderr || result.stdout}`);
-    return;
-  }
-  const diffs = diffVersions(names, before);
-  const changed = diffs.filter((d) => d.changed);
-  const unchanged = diffs.filter((d) => !d.changed);
+  const report = await updatePackages(names);
+  const changed = report.outcomes.filter((item) => item.changed);
+  const failures = report.failures;
 
-  if (changed.length === 0) {
+  ctx.logger.info(
+    `[core] 更新结束：升级 ${changed.length} 个，失败 ${failures.length} 个`,
+  );
+  if (failures.length > 0) {
+    ctx.logger.error(
+      `[core] 更新失败: ${failures
+        .map((item) => `${item.name}(${item.error})`)
+        .join("; ")}`,
+    );
+  }
+
+  if (changed.length === 0 && failures.length === 0) {
     await replyText(event, "更新完成，所有包均已是最新版本");
     return;
   }
 
-  const lines = changed.map((d) => `• ${d.name}: ${d.before} → ${d.after}`);
-  const parts = [`更新完成，共 ${changed.length} 个包已升级：`, ...lines];
-  if (unchanged.length > 0) {
-    parts.push("", `另有 ${unchanged.length} 个包已是最新`);
+  const parts: string[] = [];
+  if (changed.length > 0) {
+    parts.push(
+      `更新完成，共 ${changed.length} 个包已升级：`,
+      ...changed.map((item) => `• ${item.name}: ${item.before} → ${item.after}`),
+    );
+    const unchanged = report.outcomes.length - changed.length - failures.length;
+    if (unchanged > 0) parts.push("", `另有 ${unchanged} 个包已是最新`);
+  }
+  if (failures.length > 0) {
+    parts.push(
+      "",
+      `以下 ${failures.length} 个包未能更新：`,
+      ...failures.map((item) => `• ${item.name}: ${item.error}`),
+      "",
+      "通常是 npm 上的版本信息尚未同步，可稍后重试",
+    );
+  }
+  if (changed.length === 0) {
+    await replyText(event, parts.join("\n"));
+    return;
   }
   parts.push("", "即将重启...");
   await replyText(event, parts.join("\n"));
@@ -142,12 +161,16 @@ export function registerUpdateCommands(ctx: MiokuContext): () => void {
     if (!bot) return;
 
     if (arg === "all") {
-      const managed = await updateAllManaged();
-      if (managed.names.length === 0) {
+      const managed = listManagedPackages();
+      if (managed.length === 0) {
         await replyText(event, "未找到可更新的 mioku 包");
         return;
       }
-      await performUpdateAndReport(ctx, event, managed.names);
+      await performUpdateAndReport(
+        ctx,
+        event,
+        managed.map((item) => item.name),
+      );
       return;
     }
 

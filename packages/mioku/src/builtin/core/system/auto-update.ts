@@ -1,6 +1,6 @@
 import { rootLogger as logger } from "../../../logger";
 import { triggerRestart, type RestartMarker } from "./restart";
-import { listInstalledPackages, updatePackages } from "./package-manager";
+import { listDeclaredPackages, updatePackages } from "./package-manager";
 
 let autoUpdateTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -39,22 +39,28 @@ export function startAutoUpdateScheduler(
     running = true;
     try {
       logger.info("[core] 自动更新开始...");
-      const allInstalled = listInstalledPackages();
+      const allInstalled = listDeclaredPackages();
       const names = allInstalled.map((pkg) => pkg.name);
       if (names.length === 0) {
         logger.info("[core] 未找到需要更新的包");
         return;
       }
 
-      const result = await updatePackages(names);
-      if (result.code !== 0) {
+      const report = await updatePackages(names);
+      const changed = report.outcomes.filter((item) => item.changed);
+      if (report.failures.length > 0) {
         logger.error(
-          `[core] 自动更新失败: ${result.stderr || result.stdout}`,
+          `[core] 自动更新失败: ${report.failures
+            .map((item) => `${item.name}(${item.error})`)
+            .join("; ")}`,
         );
+      }
+      if (changed.length === 0) {
+        logger.info("[core] 自动更新结束，没有包需要升级");
         return;
       }
 
-      logger.info("[core] 自动更新成功，准备重启...");
+      logger.info(`[core] 自动更新成功，升级 ${changed.length} 个包，准备重启...`);
       const marker: RestartMarker = {
         initiatedAt: Date.now(),
         selfId: "",

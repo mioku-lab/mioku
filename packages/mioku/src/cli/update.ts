@@ -9,14 +9,54 @@ import {
   PLUGIN_PREFIX,
   SERVICE_PREFIX,
 } from "./shared";
+import { compareVersions } from "../internal/version";
 
+/** 单个包更新：latest 标签不可解析时改用 npm 上的实际最高版本 */
+async function updateOne(name: string, cwd: string): Promise<boolean> {
+  console.log(`执行: bun update ${name} --latest`);
+  try {
+    run("bun", ["update", name, "--latest"], { cwd });
+    return true;
+  } catch {
+    // 落到固定版本重试
+  }
+  const meta = await fetchNpmPackageMeta(name);
+  const target = meta?.version ?? "";
+  if (!target) return false;
+  const current = installedVersionOf(cwd, name) ?? "0.0.0";
+  if (!isNewerVersion(target, current)) return true;
+  console.log(`执行: bun update ${name}@${target}`);
+  try {
+    run("bun", ["update", `${name}@${target}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 整批更新失败时逐个重试，避免一个包的 latest 标签拖垮全部 */
 async function updatePackages(packages: string[], cwd: string): Promise<void> {
   if (packages.length === 0) {
     consola.info("未找到 mioku 相关依赖");
     return;
   }
   console.log(`执行: bun update ${packages.join(" ")} --latest`);
-  run("bun", ["update", ...packages, "--latest"], { cwd });
+  try {
+    run("bun", ["update", ...packages, "--latest"], { cwd });
+    return;
+  } catch {
+    consola.warn("批量更新失败，改为逐个更新");
+  }
+
+  const failed: string[] = [];
+  for (const name of packages) {
+    if (!(await updateOne(name, cwd))) failed.push(name);
+  }
+  if (failed.length > 0) {
+    consola.error(`以下包更新失败：${failed.join(", ")}`);
+    return;
+  }
+  consola.success("更新完成");
 }
 
 async function updateByPrefix(
@@ -26,8 +66,7 @@ async function updateByPrefix(
 ): Promise<void> {
   if (name) {
     const normalized = name.startsWith(prefix) ? name : `${prefix}${name}`;
-    console.log(`执行: bun update ${normalized} --latest`);
-    run("bun", ["update", normalized, "--latest"], { cwd });
+    await updatePackages([normalized], cwd);
     return;
   }
   const packages = (await getInstalledPackages(cwd)).filter((p) =>
@@ -46,22 +85,9 @@ interface OutdatedPackage {
   latest: string;
 }
 
-/** latest 是否比 current 更新（按数字段比较，避免把已装的新版本倒退回去） */
+/** latest 是否比 current 更新（避免把已装的新版本倒退回去） */
 function isNewerVersion(latest: string, current: string): boolean {
-  const parse = (v: string) => {
-    const [core, pre = ""] = v.split("-");
-    return { nums: core.split(".").map((n) => Number(n) || 0), pre };
-  };
-  const a = parse(latest);
-  const b = parse(current);
-  for (let i = 0; i < 3; i++) {
-    const diff = (a.nums[i] ?? 0) - (b.nums[i] ?? 0);
-    if (diff !== 0) return diff > 0;
-  }
-  // 同主版本：正式版 > 预发布
-  if (!a.pre && b.pre) return true;
-  if (a.pre && !b.pre) return false;
-  return a.pre > b.pre;
+  return compareVersions(latest, current) > 0;
 }
 
 /** 对比 npm 上的最新版本，找出所有可更新的 mioku 包（含框架本身） */
@@ -134,8 +160,7 @@ export async function updateCommand(cmdArgs: string[]): Promise<number> {
   }
 
   if (target === "self") {
-    console.log("执行: bun update mioku --latest");
-    run("bun", ["update", "mioku", "--latest"], { cwd });
+    await updatePackages(["mioku"], cwd);
     return 0;
   }
 
@@ -145,7 +170,6 @@ export async function updateCommand(cmdArgs: string[]): Promise<number> {
     return 0;
   }
 
-  console.log(`执行: bun update ${target} --latest`);
-  run("bun", ["update", target, "--latest"], { cwd });
+  await updatePackages([target], cwd);
   return 0;
 }
