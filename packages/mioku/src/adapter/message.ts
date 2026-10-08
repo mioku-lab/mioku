@@ -133,12 +133,9 @@ class MessageImpl extends Array<MessageSegment> implements Message {
   }
 
   text(): string {
-    return (
-      this.raw_message ??
-      this.filterByType("text")
-        .map((seg) => String(seg.data.text ?? ""))
-        .join("")
-    );
+    return this.filterByType("text")
+      .map((seg) => String(seg.data.text ?? ""))
+      .join("");
   }
 
   filterByType<T extends MessageSegment = MessageSegment>(type: string): T[] {
