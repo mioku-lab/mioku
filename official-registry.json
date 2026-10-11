@@ -96,6 +96,9 @@
     },
     "qq-official": {
       "npm": "mioku-adapter-qq-official"
+    },
+    "milky": {
+      "npm": "mioku-adapter-milky"
     }
   }
 }
