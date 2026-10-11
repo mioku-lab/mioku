@@ -12,12 +12,22 @@
         </button>
       </div>
 
-      <input
-        v-model.trim="searchInput"
-        class="store-search"
-        placeholder="搜索包名、描述或标签..."
-        @keydown.enter="applySearch"
-      />
+      <div class="store-search-wrap">
+        <input
+          v-model.trim="searchQuery"
+          class="store-search"
+          placeholder="搜索包名或描述..."
+        />
+        <button
+          v-if="searchQuery"
+          class="store-search-clear"
+          type="button"
+          aria-label="清除搜索"
+          @click="clearSearch"
+        >
+          ×
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="store-loading">
@@ -30,17 +40,6 @@
     </div>
 
     <template v-else>
-      <div v-if="allTags.length" class="store-tags">
-        <button
-          v-for="tag in allTags"
-          :key="tag"
-          class="store-tag"
-          @click="searchByTag(tag)"
-        >
-          #{{ tag }}
-        </button>
-      </div>
-
       <p class="store-summary">
         {{ total }} 个结果
         <template v-if="searchQuery"> · 搜索：{{ searchQuery }}</template>
@@ -56,7 +55,7 @@
             <h3 class="store-card-name">{{ item.name }}</h3>
             <div class="store-badges">
               <span class="store-badge store-badge--type">
-                {{ item.type === 'plugin' ? '插件' : item.type === 'service' ? '服务' : '适配器' }}
+                {{ typeLabel(item.type) }}
               </span>
               <span v-if="item.builtin" class="store-badge store-badge--builtin">内置</span>
               <span v-else-if="item.official" class="store-badge store-badge--official">官方</span>
@@ -65,12 +64,6 @@
           </div>
 
           <p class="store-card-desc">{{ item.description || '暂无描述' }}</p>
-
-          <div v-if="item.tags?.length" class="store-tags-inline">
-            <span v-for="tag in item.tags.slice(0, 4)" :key="tag" class="store-tag-chip">
-              {{ tag }}
-            </span>
-          </div>
 
           <div class="store-card-footer">
             <span class="store-card-meta">
@@ -83,7 +76,11 @@
       </div>
 
       <p v-if="items.length === 0" class="store-empty">
-        {{ searchQuery ? '没有匹配的结果' : '暂无插件、服务或适配器' }}
+        <template v-if="searchQuery">
+          没有匹配「{{ searchQuery }}」的结果
+          <button class="store-empty-reset" type="button" @click="clearSearch">清除搜索</button>
+        </template>
+        <template v-else>暂无插件、服务或适配器</template>
       </p>
 
       <div v-if="totalPages > 1" class="store-pagination">
@@ -96,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 const PAGE_SIZE = 12
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search'
@@ -110,12 +107,15 @@ const tabs = [
 ]
 
 const activeType = ref('all')
-const searchInput = ref('')
 const searchQuery = ref('')
 const page = ref(1)
 const loading = ref(true)
 const error = ref('')
 const allPackages = ref([])
+
+function typeLabel(type) {
+  return type === 'plugin' ? '插件' : type === 'service' ? '服务' : '适配器'
+}
 
 function inferType(name) {
   if (name.startsWith('mioku-plugin-')) return 'plugin'
@@ -234,7 +234,6 @@ async function mergeResults(officialRegistry, npmObjects) {
       description: String(pkg.description || '').trim(),
       version: String(pkg.version || '').trim(),
       keywords,
-      tags: keywords.filter(k => k !== 'mioku'),
       official: false,
       builtin: false,
       repo: normalizeRepoUrl(pkg.repository),
@@ -277,7 +276,6 @@ async function mergeResults(officialRegistry, npmObjects) {
           description: '',
           version: '',
           keywords: ['mioku'],
-          tags: [],
           official: true,
           builtin: true,
           repo: `https://github.com/mioku-lab/mioku/tree/main/${base}`,
@@ -341,25 +339,12 @@ const total = computed(() => filteredItems.value.length)
 const hasMore = computed(() => page.value * PAGE_SIZE < total.value)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 
-const allTags = computed(() => {
-  const set = new Set()
-  for (const item of filteredItems.value) {
-    for (const tag of item.tags || []) {
-      if (tag) set.add(tag)
-    }
-  }
-  return Array.from(set).slice(0, 12)
+watch(searchQuery, () => {
+  page.value = 1
 })
 
-function applySearch() {
-  page.value = 1
-  searchQuery.value = searchInput.value.trim()
-}
-
-function searchByTag(tag) {
-  searchInput.value = tag
-  searchQuery.value = tag
-  page.value = 1
+function clearSearch() {
+  searchQuery.value = ''
 }
 
 function changeType(type) {
@@ -422,21 +407,55 @@ onMounted(() => {
   background: var(--vp-c-brand-soft);
 }
 
+.store-search-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 200px;
+}
+
 .store-search {
   flex: 1;
-  min-width: 180px;
-  padding: 0.5rem 0.75rem;
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--vp-c-default-soft);
   background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-1);
   font-size: 0.85rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .store-search:focus {
   outline: none;
   border-color: var(--vp-c-brand-1);
   box-shadow: 0 0 0 2px var(--vp-c-brand-soft);
+}
+
+.store-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-2);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.store-search-clear:hover {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-brand-soft);
 }
 
 .store-loading {
@@ -470,29 +489,6 @@ onMounted(() => {
   font-size: 0.85rem;
 }
 
-.store-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.75rem;
-}
-
-.store-tag {
-  padding: 0.25rem 0.6rem;
-  border: none;
-  border-radius: 4px;
-  background: var(--vp-c-default-soft);
-  color: var(--vp-c-text-2);
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.store-tag:hover {
-  color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
-}
-
 .store-summary {
   margin-bottom: 0.75rem;
   color: var(--vp-c-text-3);
@@ -506,15 +502,19 @@ onMounted(() => {
 }
 
 .store-card {
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
   border-radius: 8px;
   border: 1px solid var(--vp-c-default-soft);
   background: var(--vp-c-bg-soft);
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .store-card:hover {
   border-color: var(--vp-c-brand-soft);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.45);
 }
 
 .store-card-top {
@@ -567,22 +567,15 @@ onMounted(() => {
 }
 
 .store-card-desc {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.75rem;
   font-size: 0.8rem;
   color: var(--vp-c-text-2);
   line-height: 1.5;
-}
-
-.store-tags-inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-bottom: 0.5rem;
-}
-
-.store-tag-chip {
-  font-size: 0.7rem;
-  color: var(--vp-c-text-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .store-card-footer {
@@ -591,6 +584,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  margin-top: auto;
 }
 
 .store-card-meta {
@@ -617,10 +611,30 @@ onMounted(() => {
 }
 
 .store-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
   color: var(--vp-c-text-3);
   font-size: 0.85rem;
-  padding: 1rem 0;
+  padding: 1.5rem 0;
   text-align: center;
+}
+
+.store-empty-reset {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--vp-c-default-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vp-c-brand-1);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.store-empty-reset:hover {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
 }
 
 .store-pagination {
