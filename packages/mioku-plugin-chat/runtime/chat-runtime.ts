@@ -12,21 +12,21 @@ import { executeChatRuntimeRequest } from "../core/chat-turn";
 
 function resolveRuntimeGroupId(
   options: ChatRuntimeNoticeOptions | ChatRuntimeInformationRequestOptions,
-): number | undefined {
+): string | undefined {
   if ("event" in options) {
     const event = options.event;
     if (event?.kind !== "message" || event.message_type !== "group") {
       return undefined;
     }
-    const groupId: unknown = event.group_id;
-    return typeof groupId === "number" ? groupId : undefined;
+    const groupId = String(event.group_id ?? "").trim();
+    return groupId || undefined;
   }
   return "groupId" in options ? options.groupId : undefined;
 }
 
 export function createChatRuntime(
   pluginCtx: ChatPluginContext,
-  getConfig: (groupId?: number) => Promise<ChatConfig>,
+  getConfig: (groupId?: string) => Promise<ChatConfig>,
 ): ChatRuntime {
   return {
     async requestInformation(

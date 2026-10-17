@@ -25,7 +25,7 @@ import { finalizeChatTurn } from "../core/chat-turn";
 import { extractContent, getBotRole } from "../utils";
 
 interface DynamicDelayQueueData {
-  messages: Array<{ event: any; content: string; userName: string; userId: number; messageId: string; timestamp: number }>;
+  messages: Array<{ event: any; content: string; userName: string; userId: string; messageId: string; timestamp: number }>;
   timer: NodeJS.Timeout | null;
   delayUntil: number;
 }
@@ -91,7 +91,7 @@ export class QueueProcessor {
     queueData.messages.push({ event, content, userName, userId: event.user_id, messageId: event.message_id, timestamp: Date.now() });
   }
 
-  startDynamicDelayTimer(groupSessionId: string, groupId: number, delayMs: number, selfId: number): void {
+  startDynamicDelayTimer(groupSessionId: string, groupId: string, delayMs: number, selfId: string): void {
     let queueData = this.dynamicDelayQueues.get(groupSessionId);
     if (!queueData) {
       queueData = { messages: [], timer: null, delayUntil: Date.now() + delayMs };
@@ -132,7 +132,7 @@ export class QueueProcessor {
     return queue != null && Date.now() < queue.delayUntil;
   }
 
-  scheduleQueuedMessages(groupSessionId: string, selfId: number): void {
+  scheduleQueuedMessages(groupSessionId: string, selfId: string): void {
     void this.sessionTurnScheduler
       .run(
         groupSessionId,
@@ -156,8 +156,8 @@ export class QueueProcessor {
 
   private async processDynamicDelayMessages(
     groupSessionId: string,
-    groupId: number,
-    selfId: number,
+    groupId: string,
+    selfId: string,
     messages: DynamicDelayQueueData["messages"],
   ): Promise<void> {
     this.ctx.logger.info(`[DynamicDelay] group ${groupId} processes ${messages.length} delayed messages`);
@@ -217,7 +217,7 @@ export class QueueProcessor {
     });
   }
 
-  async processQueuedMessages(groupSessionId: string, selfId: number): Promise<void> {
+  async processQueuedMessages(groupSessionId: string, selfId: string): Promise<void> {
     try {
       const queue = this.queueManager.getQueue(groupSessionId);
       if (!queue || queue.length === 0) {
@@ -225,7 +225,8 @@ export class QueueProcessor {
         return;
       }
 
-      const groupId = parseInt(groupSessionId.split(":")[1], 10);
+      const groupId = String(groupSessionId.split(":")[1] ?? "").trim();
+      if (!groupId) return;
       this.ctx.logger.info(`[Queue] group ${groupSessionId} batch ${queue.length} messages`);
 
       const queuedContents: string[] = [];
@@ -255,7 +256,7 @@ export class QueueProcessor {
       const mergedContent = queuedContents.join("\n");
 
       const targetMessage: TargetMessage = {
-        userName, userId: firstItem.event.user_id || firstItem.event.sender?.user_id,
+        userName, userId: String(firstItem.event.user_id ?? firstItem.event.sender?.user_id ?? "").trim(),
         userRole: firstItem.event.sender?.role || "member", content: mergedContent,
         messageId: firstItem.event.message_id, timestamp: Date.now(),
       };

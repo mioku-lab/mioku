@@ -16,9 +16,11 @@ const RESTART_MARKER_PATH = path.join(getPluginDataDir("core"), "restart.json");
 
 export interface RestartMarker {
   initiatedAt: number;
-  selfId: number;
-  groupId: number | null;
-  userId: number;
+  selfId: string;
+  groupId: string | null;
+  userId: string;
+  /** 发起重启的适配器,用于重启后把通知发回同一平台 */
+  adapter?: string;
 }
 
 function ensureDataDir(): void {
@@ -133,11 +135,21 @@ export function formatUptime(ms: number): string {
   return formatDuration(ms);
 }
 
-async function waitForBot(timeoutMs = 60000): Promise<any | null> {
+async function waitForBot(
+  timeoutMs = 60000,
+  adapter?: string,
+  botId?: string,
+): Promise<any | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const bots = Array.from(connectedBots.values());
-    if (bots.length > 0) return bots[0];
+    const matched = bots.find(
+      (bot) =>
+        (adapter ? bot.adapter === adapter : true) &&
+        (botId ? String(bot.bot_id) === botId : true),
+    );
+    if (matched) return matched;
+    if (!adapter && !botId && bots.length > 0) return bots[0];
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   return null;
@@ -147,7 +159,7 @@ export async function notifyRestartComplete(
   ctx: MiokuContext | undefined,
   marker: RestartMarker,
 ): Promise<void> {
-  const bot = await waitForBot();
+  const bot = await waitForBot(60000, marker.adapter, marker.selfId);
   if (!bot) {
     logger.warn("[core] 重启完成但未等到 bot 上线，跳过通知");
     return;

@@ -114,33 +114,34 @@ export function parseLineMarkers(
   quoteMode?: "skip",
 ): {
   cleanText: string;
-  atUsers: number[];
-  pokeUsers: number[];
+  atUsers: string[];
+  pokeUsers: string[];
   quoteId?: string;
   audioText?: string;
 } {
-  const atUsers: number[] = [];
-  const pokeUsers: number[] = [];
+  const atUsers: string[] = [];
+  const pokeUsers: string[] = [];
   let quoteId: string | undefined;
   let audioText: string | undefined;
 
   // 提取 AT 标记
-  const atPatterns = [/\[at:(\d+)\]/g];
+  // 标记里是平台用户 id:QQ 号或 openid 都可能出现
+  const atPatterns = [/\[at:([^\]\s]+)\]/g];
   for (const pattern of atPatterns) {
     const matches = [...line.matchAll(pattern)];
     for (const match of matches) {
-      const userId = parseInt(match[1], 10);
-      atUsers.push(userId);
+      const userId = String(match[1]).trim();
+      if (userId) atUsers.push(userId);
     }
   }
 
   // 提取戳人标记
-  const pokePatterns = [/\[poke:(\d+)\]/g];
+  const pokePatterns = [/\[poke:([^\]\s]+)\]/g];
   for (const pattern of pokePatterns) {
     const matches = [...line.matchAll(pattern)];
     for (const match of matches) {
-      const userId = parseInt(match[1], 10);
-      pokeUsers.push(userId);
+      const userId = String(match[1]).trim();
+      if (userId) pokeUsers.push(userId);
     }
   }
 
@@ -169,7 +170,7 @@ export function parseLineMarkers(
 
   // 清理标记
   let cleanText = line
-    .replace(/\[at:\d+\]/g, "")
+    .replace(/\[at:[^\]\s]+\]/g, "")
     .replace(/\[poke:\d+\]/g, "")
     .replace(/\[reply:[^\]\n]+\]/g, "")
     .replace(/\[audio:[^\]]+\]/gi, "")

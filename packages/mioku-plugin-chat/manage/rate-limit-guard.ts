@@ -52,8 +52,8 @@ export class RateLimitGuard {
   async run<T>(
     request: () => Promise<T>,
     opts?: {
-      userId?: number;
-      groupId?: number;
+      userId?: string;
+      groupId?: string;
       label?: string;
       skipRetryOnRateLimit?: boolean;
     },

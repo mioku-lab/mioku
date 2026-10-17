@@ -69,7 +69,7 @@ export interface AIUsageRecord extends AIUsageCompletionMeta {
 export interface AIUsageStore {
   record(record: AIUsageCompletionMeta): void;
   updateFinalization(usageId: string, finalization: AIUsageFinalization): boolean;
-  getSummary(options: { range: AIUsageRange; botId?: number }): AIUsageSummary;
+  getSummary(options: { range: AIUsageRange; botId?: string }): AIUsageSummary;
   listRecords(options: AIUsageRecordQuery): AIUsageRecordSummary[];
   cleanup(retentionMs?: number): number;
   close(): void;

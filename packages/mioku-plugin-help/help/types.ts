@@ -14,6 +14,13 @@ export type HelpImageIntent =
   | { type: "detail"; pluginName: string; pluginHelp: PluginHelp }
   | { type: "unknown"; keyword: string };
 
+export interface HelpAccessFilter {
+  /** 观看者能否访问整个插件（access-control 的 plugin 级规则） */
+  canUsePlugin?(pluginName: string): boolean;
+  /** 观看者能否触发某条命令（id / name / 显示名） */
+  canUseCommand?(pluginName: string, command: string): boolean;
+}
+
 /** Internal record used while ranking fuzzy keyword matches. */
 export interface HelpRenderableEntry {
   pluginName: string;

@@ -38,7 +38,7 @@ export interface ChatPluginContext {
   ctx: MiokuContext;
   defaultConfig: ChatConfig;
   configProvider: ChatConfigProvider;
-  getConfig: (groupId?: number) => Promise<ChatConfig>;
+  getConfig: (groupId?: string) => Promise<ChatConfig>;
   db: ChatDatabase;
   aiInstance: AIInstance;
   workAIInstance: AIInstance;
@@ -75,8 +75,8 @@ export interface ChatPluginContext {
   runChat: RunChat;
   startCooldownTimer: (
     groupSessionId: string,
-    groupId: number,
-    selfId: number,
+    groupId: string,
+    selfId: string,
   ) => void;
   recordGroupMessageForLearning: (
     userMsg: ChatMessage,
@@ -91,12 +91,12 @@ export interface ChatRuntimeState {
 }
 
 export interface ChatHandlerState {
-  getConfig: (groupId?: number) => Promise<ChatConfig>;
+  getConfig: (groupId?: string) => Promise<ChatConfig>;
   matchMessageCommands?: (
     text: string,
   ) => Array<{ plugin: string; command: string }>;
   runtimeState: ChatRuntimeState;
-  pokeCooldowns: Map<number, number>;
+  pokeCooldowns: Map<string, number>;
 }
 
 export interface ChatRuntime {

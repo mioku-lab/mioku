@@ -22,6 +22,7 @@ import type { RuntimeAdapterState } from "./context";
 import { MiokuContext } from "./mioku-context";
 import { EventCorrelator } from "./event-correlator";
 import { CommandManager, setActiveCommandManager } from "./commands";
+import { registerPluginArtifacts } from "./plugin-artifacts";
 import { BUILTIN_PLUGINS as DEFAULT_BUILTIN_PLUGINS } from "../builtin";
 import {
   createImportContext,
@@ -205,6 +206,7 @@ export class MiokuRuntime {
       const plugin = await loadLocalPlugin(jiti, name, local.absPath);
       await this.#loadPlugin(plugin, "external");
       setPluginMetadata(buildPluginMetadata(name, local.absPath, pkg));
+      await this.#refreshPluginArtifacts();
       return;
     }
     const candidates = discoverPluginCandidates(this.#cwd, appPkg);
@@ -219,6 +221,7 @@ export class MiokuRuntime {
           candidate.packageJson,
         ),
       );
+      await this.#refreshPluginArtifacts();
       return;
     }
     throw new Error(`插件 ${name} 不存在`);
@@ -238,6 +241,7 @@ export class MiokuRuntime {
       this.#enabledPlugins.delete(key);
       removePluginMetadata(name);
     }
+    await this.#refreshPluginArtifacts();
     this.#logger.info(`禁用插件 => ${name}`);
   }
 
@@ -254,10 +258,20 @@ export class MiokuRuntime {
       await this.#enabledPlugins.get(`builtin:${name}`)?.cleanup?.();
       this.#enabledPlugins.delete(`builtin:${name}`);
       await this.#loadPlugin(plugin, "builtin");
+      await this.#refreshPluginArtifacts();
       return;
     }
     await this.disablePlugin(name);
     await this.enablePlugin(name);
+  }
+
+  /** 插件增删后同步帮助注册表；失败只告警，不能影响插件本身 */
+  async #refreshPluginArtifacts(): Promise<void> {
+    try {
+      await registerPluginArtifacts();
+    } catch (error) {
+      this.#logger.warn(`刷新插件帮助注册表失败: ${error}`);
+    }
   }
 
   async #emitLifecycle(event: BotLifecycleEvent): Promise<void> {

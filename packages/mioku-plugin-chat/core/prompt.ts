@@ -274,7 +274,7 @@ function buildResponseFormatSection(
 - For action markers like [] , put them on their own line when they are meant to be a separate action.
 
 - **SPECIAL ACTIONS in your text (auto-parsed and removed from message):**
-  - Use [at:123456] in your text to @ someone (123456 is the QQ number)
+  - Use [at:<user_id>] in your text to @ someone (<user_id> is the platform user id shown in history)
   - Use [poke:123456] in your text to poke someone. IMPORTANT: when you plan to poke a user, DON't describe your poke actions.
   - Use [reply:message_id] at the START of a line to quote-reply that message (copy the message_id EXACTLY as shown after # in the chat history; it may contain letters, e.g. [reply:P2rW...pMB])
   - **You can use MULTIPLE [reply:xxx] markers in different lines to quote multiple messages!**`);

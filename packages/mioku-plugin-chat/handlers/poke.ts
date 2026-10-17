@@ -15,12 +15,13 @@ export function createPokeHandler(
   const { getConfig, runtimeState, pokeCooldowns } = state;
 
   return async (e: NoticeEvent) => {
-    const selfId = Number(e.self_id || 0);
-    const targetId = Number(
-      (e.raw as { target_id?: string } | undefined)?.target_id ?? 0,
-    );
-    if (targetId !== selfId) return;
-    const groupId = Number(e.group_id || 0);
+    const selfId = String(e.self_id ?? "").trim();
+    const raw = e.raw as { target_id?: unknown; user_id?: unknown } | undefined;
+    const targetId = String(
+      raw?.target_id ?? raw?.user_id ?? e.user_id ?? "",
+    ).trim();
+    if (!targetId || targetId !== selfId) return;
+    const groupId = String(e.group_id ?? "").trim();
     const cfg = groupId ? await getConfig(groupId) : await getConfig();
     if (!cfg.model && !cfg.apiKey) return;
     if (!groupId || !isGroupAllowed(groupId, cfg)) return;
@@ -42,10 +43,9 @@ export function createPokeHandler(
             "group",
             groupId,
           );
-          const userId = Number(e.user_id || 0);
+          const userId = String(e.user_id ?? "").trim();
           const botRole = await getBotRole(groupId, ctx, selfId);
-          const botNickname =
-            cfg.nicknames[0] || e.bot?.nickname || "Bot";
+          const botNickname = cfg.nicknames[0] || e.bot?.nickname || "Bot";
 
           let senderName = String(userId);
           try {
@@ -54,9 +54,7 @@ export function createPokeHandler(
               ? await bot.getMemberInfo(groupId, userId)
               : undefined;
             senderName =
-              memberInfo?.card ||
-              memberInfo?.nickname ||
-              String(userId);
+              memberInfo?.card || memberInfo?.nickname || String(userId);
           } catch {}
 
           const targetMessage: TargetMessage = {
@@ -76,8 +74,11 @@ export function createPokeHandler(
             selfId,
             pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
           );
-          const { groupName, memberCount } =
-            await pluginCtx.getGroupInfoData(ctx, groupId, selfId);
+          const { groupName, memberCount } = await pluginCtx.getGroupInfoData(
+            ctx,
+            groupId,
+            selfId,
+          );
 
           const toolCtx = pluginCtx.buildToolContext({
             ctx,

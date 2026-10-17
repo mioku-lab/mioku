@@ -22,7 +22,7 @@ const ACCESS_HOOK_KEYS = new Set([
 
 const HELP_KEYS = new Set(["title", "description", "commands"]);
 
-const HELP_COMMAND_KEYS = new Set(["cmd", "desc", "usage", "role"]);
+const HELP_COMMAND_KEYS = new Set(["cmd", "id", "desc", "usage", "role"]);
 
 function warnUnknownFields(
   prefix: string,
@@ -84,6 +84,7 @@ function validateHelp(value: unknown, pluginName: string): PluginHelp | undefine
     }
     commands.push({
       cmd: cmdName,
+      id: typeof cmd.id === "string" && cmd.id.trim() ? cmd.id.trim() : undefined,
       desc,
       usage: typeof cmd.usage === "string" ? cmd.usage : undefined,
       role: typeof cmd.role === "string" ? (cmd.role as never) : undefined,

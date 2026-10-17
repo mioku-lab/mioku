@@ -21,5 +21,10 @@ export {
 export { buildHelpInfoText } from "./info";
 export { generateHelpHtml } from "./html-generator";
 export { canInvokeCommand, resolveViewerRole } from "./role";
-export type { HelpImageIntent, HelpRenderableEntry } from "./types";
+export { createHelpAccessFilter } from "./access";
+export type {
+  HelpAccessFilter,
+  HelpImageIntent,
+  HelpRenderableEntry,
+} from "./types";
 export { ROLE_CONFIG, STOPWORDS } from "./role-config";

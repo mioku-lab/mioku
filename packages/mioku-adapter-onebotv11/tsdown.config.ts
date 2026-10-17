@@ -13,7 +13,7 @@ const config: UserConfig = defineConfig({
   treeshake: true,
   failOnWarn: false,
   cjsDefault: true,
-  external: ['mioku', 'napcat-sdk'],
+  external: ['mioku', 'napcat-sdk', 'ws'],
 })
 
 export default config

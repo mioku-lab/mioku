@@ -28,7 +28,7 @@ export function buildHistoryMediaProcessingOptions(
     saveMediaSummary(summary: MediaSummaryRecord): void;
   },
   bot: Bot,
-  groupId: number,
+  groupId: string,
   log: HistoryMediaProcessingOptions["logger"],
   runAIRequest?: <T>(request: () => Promise<T>) => Promise<T | null>,
 ): HistoryMediaProcessingOptions {
@@ -81,7 +81,7 @@ export function getCardData(seg: unknown): string | null {
 
 export function isMediaAnalysisBlocked(
   config: ChatConfig,
-  userId: number,
+  userId: string,
 ): boolean {
   return Boolean(config.mediaAnalysisBlacklistUsers?.includes(userId));
 }

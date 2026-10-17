@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { rootLogger as logger } from "../../../logger";
+import { compareVersions, pickHighestVersion } from "../../../internal/version";
 
 const NPM_REGISTRY = "https://registry.npmjs.org";
 const OFFICIAL_REGISTRY_URL =
@@ -51,6 +52,7 @@ interface OfficialRegistryEntry {
 interface OfficialRegistry {
   plugins?: Record<string, OfficialRegistryEntry>;
   services?: Record<string, OfficialRegistryEntry>;
+  hidden?: Partial<Record<"plugins" | "services" | "adapters", string[]>>;
 }
 
 interface NpmSearchObject {
@@ -94,7 +96,10 @@ function shortNameOf(name: string): string {
   return name;
 }
 
-export async function runBun(args: string[], cwd?: string): Promise<BunRunResult> {
+export async function runBun(
+  args: string[],
+  cwd?: string,
+): Promise<BunRunResult> {
   const runCwd = cwd ?? projectRoot();
   logger.info(`[core] 执行: bun ${args.join(" ")}  (cwd: ${runCwd})`);
   const startedAt = Date.now();
@@ -142,32 +147,42 @@ function readPackageJson(dir: string): any | null {
 }
 
 export function getInstalledVersion(pkgName: string): string {
-  const pkg = readPackageJson(path.join(projectRoot(), "node_modules", pkgName));
+  const pkg = readPackageJson(
+    path.join(projectRoot(), "node_modules", pkgName),
+  );
   return String(pkg?.version || "0.0.0");
 }
 
-export function listInstalledPackages(): InstalledPackage[] {
-  const modulesPath = path.join(projectRoot(), "node_modules");
+/** 项目 package.json 声明的 mioku 依赖，不含被 hoist 上来的传递依赖 */
+export function listDeclaredPackages(): InstalledPackage[] {
+  const pkg = readPackageJson(projectRoot());
+  if (!pkg) return [];
+  const deps = {
+    ...(pkg.dependencies ?? {}),
+    ...(pkg.devDependencies ?? {}),
+    ...(pkg.optionalDependencies ?? {}),
+  };
   const result: InstalledPackage[] = [];
-  if (!fs.existsSync(modulesPath)) return result;
-
-  const entries = fs.readdirSync(modulesPath, { withFileTypes: true });
-  for (const entry of entries) {
-    const type = detectType(entry.name);
+  for (const name of Object.keys(deps)) {
+    const type = detectType(name);
     if (!type) continue;
-    const fullPath = path.join(modulesPath, entry.name);
-    const stat = fs.lstatSync(fullPath);
-    if (!stat.isDirectory() && !stat.isSymbolicLink()) continue;
-    const pkg = readPackageJson(fullPath);
+    const fullPath = path.join(projectRoot(), "node_modules", name);
+    const installed = readPackageJson(fullPath);
+    if (!installed) continue;
     result.push({
-      name: entry.name,
+      name,
       type,
-      shortName: shortNameOf(entry.name),
-      version: String(pkg?.version || "0.0.0"),
+      shortName: shortNameOf(name),
+      version: String(installed.version || "0.0.0"),
       path: fullPath,
     });
   }
   return result.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** .update all 的作用范围：声明的插件与服务，不含框架与传递依赖 */
+export function listManagedPackages(): InstalledPackage[] {
+  return listDeclaredPackages().filter((pkg) => pkg.type !== "framework");
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -180,6 +195,10 @@ async function fetchJson(url: string): Promise<any> {
 
 interface NpmPackageMeta {
   latest: string;
+  /** registry 上的 latest 标签原值 */
+  distTag: string;
+  /** latest 标签指向了版本列表里不存在的版本 */
+  staleTag: boolean;
   description: string;
   keywords: string[];
   homepage: string;
@@ -193,8 +212,20 @@ async function fetchNpmMeta(pkgName: string): Promise<NpmPackageMeta | null> {
     const data = await fetchJson(
       `${NPM_REGISTRY}/${encodeURIComponent(pkgName)}`,
     );
-    const latest = String(data?.["dist-tags"]?.latest || "").trim();
-    const version = latest ? data?.versions?.[latest] || {} : {};
+    const versions = Object.keys(data?.versions ?? {});
+    const distTag = String(data?.["dist-tags"]?.latest || "").trim();
+    // 刚发布时 registry 可能先更新 latest 标签、后同步版本信息
+    const staleTag = distTag !== "" && !versions.includes(distTag);
+    const latest = staleTag
+      ? (pickHighestVersion(versions) ?? distTag)
+      : distTag || (pickHighestVersion(versions) ?? "");
+    if (!latest) return null;
+    if (staleTag) {
+      logger.debug(
+        `[core] ${pkgName} 的 latest 标签 ${distTag} 不存在，改用 ${latest}`,
+      );
+    }
+    const version = data?.versions?.[latest] || {};
     const repository = version?.repository || data?.repository;
     let repoUrl = "";
     if (typeof repository === "string") repoUrl = repository;
@@ -202,7 +233,11 @@ async function fetchNpmMeta(pkgName: string): Promise<NpmPackageMeta | null> {
     repoUrl = repoUrl.replace(/^git\+/, "").replace(/\.git$/, "");
     return {
       latest,
-      description: String(version?.description || data?.description || "").trim(),
+      distTag,
+      staleTag,
+      description: String(
+        version?.description || data?.description || "",
+      ).trim(),
       keywords: Array.isArray(version?.keywords) ? version.keywords : [],
       homepage: String(version?.homepage || data?.homepage || "").trim(),
       repository: repoUrl,
@@ -215,7 +250,7 @@ async function fetchNpmMeta(pkgName: string): Promise<NpmPackageMeta | null> {
 }
 
 export async function checkUpdates(): Promise<UpdateAvailable[]> {
-  const installed = listInstalledPackages();
+  const installed = listDeclaredPackages();
   const metas = await Promise.all(
     installed.map(async (pkg) => {
       const meta = await fetchNpmMeta(pkg.name);
@@ -226,7 +261,7 @@ export async function checkUpdates(): Promise<UpdateAvailable[]> {
   const updates: UpdateAvailable[] = [];
   for (const { pkg, meta } of metas) {
     if (!meta || !meta.latest) continue;
-    if (meta.latest === pkg.version) continue;
+    if (compareVersions(meta.latest, pkg.version) <= 0) continue;
     updates.push({
       name: pkg.name,
       type: pkg.type,
@@ -238,11 +273,35 @@ export async function checkUpdates(): Promise<UpdateAvailable[]> {
   return updates;
 }
 
-export interface UpdatedPackageResult {
+export interface PackageUpdateOutcome {
   name: string;
+  ok: boolean;
   before: string;
   after: string;
   changed: boolean;
+  /** 失败原因，取 bun 输出里的错误行 */
+  error?: string;
+}
+
+export interface UpdateReport {
+  outcomes: PackageUpdateOutcome[];
+  /** 仍停留在更新前版本的包 */
+  failures: PackageUpdateOutcome[];
+}
+
+/** 取 bun 输出里最有用的一行：优先 error: 行，去掉颜色与前缀，超长截断 */
+function errorSummary(text: string): string {
+  const lines = String(text ?? "")
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const line = (
+    lines.find((item) => /^error:/i.test(item)) ??
+    lines[0] ??
+    "更新失败"
+  ).replace(/^error:\s*/i, "");
+  return line.length > 160 ? `${line.slice(0, 157)}...` : line;
 }
 
 function snapshotVersions(names: string[]): Map<string, string> {
@@ -253,37 +312,68 @@ function snapshotVersions(names: string[]): Map<string, string> {
   return map;
 }
 
-export async function updatePackages(names: string[]): Promise<BunRunResult> {
-  if (names.length === 0) return { code: 0, stdout: "", stderr: "" };
-  return runBun(["update", ...names, "--latest"]);
-}
-
-export async function updateAllManaged(): Promise<{
-  result: BunRunResult;
-  names: string[];
-}> {
-  const managed = listInstalledPackages()
-    .filter((pkg) => pkg.type !== "framework")
-    .map((pkg) => pkg.name);
-  if (managed.length === 0) {
-    return { result: { code: 0, stdout: "", stderr: "" }, names: [] };
-  }
-  return { result: await updatePackages(managed), names: managed };
-}
-
-export function diffVersions(
-  names: string[],
+function outcomeOf(
+  name: string,
   before: Map<string, string>,
-): UpdatedPackageResult[] {
-  return names.map((name) => {
-    const after = getInstalledVersion(name);
-    const prev = before.get(name) || "0.0.0";
-    return { name, before: prev, after, changed: prev !== after };
-  });
+  ok = true,
+  error?: string,
+): PackageUpdateOutcome {
+  const prev = before.get(name) ?? "0.0.0";
+  const after = getInstalledVersion(name);
+  return { name, ok, before: prev, after, changed: prev !== after, error };
 }
 
-export function snapshotAll(names: string[]): Map<string, string> {
-  return snapshotVersions(names);
+/** latest 标签不可解析时，改用 npm 上真实存在的最高版本 */
+async function updateWithPinnedVersion(name: string): Promise<boolean> {
+  const meta = await fetchNpmMeta(name);
+  const target = meta?.latest ?? "";
+  if (!target) return false;
+  // 已是最新版本：标签损坏但无需更新
+  if (compareVersions(target, getInstalledVersion(name)) <= 0) return true;
+  logger.info(`[core] ${name} 的 latest 标签不可用，改用 ${target} 更新`);
+  const result = await runBun(["update", `${name}@${target}`]);
+  return result.code === 0;
+}
+
+async function updateOne(
+  name: string,
+  before: Map<string, string>,
+): Promise<PackageUpdateOutcome> {
+  const single = await runBun(["update", name, "--latest"]);
+  if (single.code === 0) return outcomeOf(name, before);
+  if (await updateWithPinnedVersion(name)) return outcomeOf(name, before);
+  return outcomeOf(
+    name,
+    before,
+    false,
+    errorSummary(single.stderr || single.stdout),
+  );
+}
+
+export async function updatePackages(names: string[]): Promise<UpdateReport> {
+  if (names.length === 0) {
+    return { outcomes: [], failures: [] };
+  }
+  const before = snapshotVersions(names);
+  const batch = await runBun(["update", ...names, "--latest"]);
+  if (batch.code === 0) {
+    return {
+      outcomes: names.map((name) => outcomeOf(name, before)),
+      failures: [],
+    };
+  }
+
+  logger.warn(
+    `[core] 批量更新失败，改为逐个更新: ${errorSummary(batch.stderr || batch.stdout)}`,
+  );
+  const outcomes: PackageUpdateOutcome[] = [];
+  for (const name of names) {
+    outcomes.push(await updateOne(name, before));
+  }
+  return {
+    outcomes,
+    failures: outcomes.filter((outcome) => !outcome.ok),
+  };
 }
 
 function appendToMiokuPlugins(pkgName: string): boolean {
@@ -339,7 +429,9 @@ export async function installPackage(
   logger.info(`[core] 开始安装 ${type} 包: ${packageName}`);
   const result = await runBun(["add", packageName]);
   if (result.code !== 0) {
-    logger.error(`[core] 安装 ${packageName} 失败: ${result.stderr || result.stdout}`);
+    logger.error(
+      `[core] 安装 ${packageName} 失败: ${result.stderr || result.stdout}`,
+    );
     return {
       ok: false,
       packageName,
@@ -380,7 +472,9 @@ export async function uninstallPackage(
   logger.info(`[core] 开始卸载 ${type} 包: ${packageName}`);
   const result = await runBun(["remove", packageName]);
   if (result.code !== 0) {
-    logger.error(`[core] 卸载 ${packageName} 失败: ${result.stderr || result.stdout}`);
+    logger.error(
+      `[core] 卸载 ${packageName} 失败: ${result.stderr || result.stdout}`,
+    );
     return {
       ok: false,
       packageName,
@@ -428,8 +522,7 @@ function buildMarketItem(
 ): MarketItem {
   const type = detectType(pkgName) as "plugin" | "service";
   const installedVersion = getInstalledVersion(pkgName);
-  const installed =
-    installedVersion !== "0.0.0" && installedVersion !== "";
+  const installed = installedVersion !== "0.0.0" && installedVersion !== "";
   const latest = String(meta?.latest || "");
   return {
     name: shortNameOf(pkgName),
@@ -451,15 +544,18 @@ export async function getMarketItems(
   type: "plugin" | "service",
 ): Promise<MarketItem[]> {
   const registry = await fetchOfficialRegistry();
-  const officialEntries =
-    type === "plugin" ? registry.plugins || {} : registry.services || {};
+  const registryKey = type === "plugin" ? "plugins" : "services";
+  const officialEntries = registry[registryKey] || {};
   const officialNpmNames = new Set(
     Object.values(officialEntries)
       .map((entry) => String(entry?.npm || ""))
       .filter(Boolean),
   );
+  const hiddenShorts = new Set(registry.hidden?.[registryKey] ?? []);
 
-  const searchObjects = await searchNpmPackages().catch(() => [] as NpmSearchObject[]);
+  const searchObjects = await searchNpmPackages().catch(
+    () => [] as NpmSearchObject[],
+  );
   const prefix = type === "plugin" ? PLUGIN_PREFIX : SERVICE_PREFIX;
 
   const candidateNames = new Set<string>();
@@ -469,6 +565,11 @@ export async function getMarketItems(
   }
   for (const name of officialNpmNames) {
     if (name.startsWith(prefix)) candidateNames.add(name);
+  }
+  // hidden 名单内的包不出现在市场
+  for (const name of Array.from(candidateNames)) {
+    if (hiddenShorts.has(name.slice(prefix.length)))
+      candidateNames.delete(name);
   }
 
   const metas = await Promise.all(
@@ -481,9 +582,7 @@ export async function getMarketItems(
   const items = metas
     .filter((entry) => entry.meta !== null)
     .filter((entry) => (entry.meta?.keywords ?? []).includes("mioku"))
-    .map((entry) =>
-      buildMarketItem(entry.pkgName, entry.meta, entry.official),
-    );
+    .map((entry) => buildMarketItem(entry.pkgName, entry.meta, entry.official));
 
   return items.sort((a, b) => {
     if (a.installed !== b.installed) return a.installed ? -1 : 1;

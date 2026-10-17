@@ -23,10 +23,10 @@ interface UsageRow {
   id: number;
   source: string | null;
   usage_id: string | null;
-  bot_id: number | null;
-  group_id: number | null;
+  bot_id: string | null;
+  group_id: string | null;
   group_name: string | null;
-  user_id: number | null;
+  user_id: string | null;
   user_name: string | null;
   session_id: string | null;
   model: string;
@@ -56,7 +56,7 @@ interface UsageRow {
 }
 
 interface GroupAggregateRow {
-  group_id: number | null;
+  group_id: string | null;
   group_name: string | null;
   requests: number;
   total_tokens: number;
@@ -356,7 +356,7 @@ function listRecords(
     usage_id: string | null;
     source: string | null;
     session_id: string | null;
-    user_id: number | null;
+    user_id: string | null;
     model: string;
     success: number;
     started_at: number;
@@ -396,7 +396,7 @@ function listRecords(
 function buildSummary(
   db: UsageDatabase,
   range: AIUsageRange,
-  botId?: number,
+  botId?: string,
 ): AIUsageSummary {
   const startedAt = getRangeStart(range);
   const now = Date.now();
@@ -543,14 +543,14 @@ function getRangeStart(range: AIUsageRange): number {
 
 function buildWhere(
   startedAt: number,
-  botId: number | undefined,
+  botId: string | undefined,
   includeUnscopedBotRecords: boolean = false,
 ): {
   whereSql: string;
-  params: Record<string, number>;
+  params: Record<string, number | string>;
   scope: AIUsageScope;
 } {
-  const params: Record<string, number> = { $startedAt: startedAt };
+  const params: Record<string, number | string> = { $startedAt: startedAt };
   const conditions = ["started_at >= $startedAt"];
   if (botId != null) {
     params.$botId = botId;
@@ -607,7 +607,7 @@ function getBotOptions(
       ORDER BY requests DESC
     `,
     )
-    .all(startedAt) as Array<{ bot_id: number; requests: number }>;
+    .all(startedAt) as Array<{ bot_id: string; requests: number }>;
   return rows.map((row) => ({
     botId: row.bot_id,
     label: `${row.bot_id}`,
@@ -630,7 +630,7 @@ function buildToolRanking(rows: UsageRow[]): AIUsageSummary["toolRanking"] {
 function getGroupRanking(
   db: UsageDatabase,
   whereSql: string,
-  params: Record<string, number>,
+  params: Record<string, number | string>,
 ): AIUsageSummary["groupRanking"] {
   const rows = db
     .prepare(
@@ -657,7 +657,7 @@ function getGroupRanking(
   return rows
     .filter((row) => row.group_id != null)
     .map((row) => ({
-      groupId: Number(row.group_id),
+      groupId: String(row.group_id),
       groupName: row.group_name || String(row.group_id),
       requests: Number(row.requests || 0),
       totalTokens: Number(row.total_tokens || 0),
@@ -673,7 +673,7 @@ function getGroupRanking(
 function fetchTimeline(
   db: UsageDatabase,
   whereSql: string,
-  params: Record<string, number>,
+  params: Record<string, number | string>,
   format: string,
 ): TimelineRow[] {
   return db
@@ -743,7 +743,7 @@ function mapTimelineMetrics(
 function getDailyActivity(
   db: UsageDatabase,
   whereSql: string,
-  params: Record<string, number>,
+  params: Record<string, number | string>,
   now: number,
 ): AIUsageSummary["dailyActivity"] {
   return fetchTimeline(db, whereSql, params, "%Y-%m-%d").map((row) => ({
@@ -760,7 +760,7 @@ function getDailyActivity(
 function getHourlyActivity(
   db: UsageDatabase,
   whereSql: string,
-  params: Record<string, number>,
+  params: Record<string, number | string>,
   now: number,
 ): AIUsageSummary["hourlyActivity"] {
   return fetchTimeline(db, whereSql, params, "%H:00").map((row) => ({

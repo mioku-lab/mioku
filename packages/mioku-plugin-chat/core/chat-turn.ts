@@ -2,7 +2,12 @@ import type { MiokuContext } from "mioku";
 import type { AITool, Bot, ChatRuntimePromptInjection } from "mioku";
 import type { ChatPluginContext, ChatRuntimeState } from "../context";
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
-import { getGroupHistory, getBotRole, getQuotedContent } from "../utils";
+import {
+  getGroupHistory,
+  getBotRole,
+  getQuotedContent,
+  mainModelSupportsVision,
+} from "../utils";
 import { buildStructuredUserInputFromTarget } from "../manage/group-structured-history";
 
 export type RuntimeReplyContextType =
@@ -14,9 +19,9 @@ export type RuntimeReplyContextType =
 
 export interface ExecuteChatRuntimeRequestOptions {
   event?: any;
-  selfId?: number;
-  groupId?: number;
-  userId?: number;
+  selfId?: string;
+  groupId?: string;
+  userId?: string;
   config: ChatConfig;
   targetMessageContent?: string;
   promptInjections?: ChatRuntimePromptInjection[];
@@ -28,9 +33,9 @@ export interface ExecuteChatRuntimeRequestOptions {
 interface ResolvedRuntimeContext {
   event: any;
   isGroup: boolean;
-  groupId?: number;
-  userId: number;
-  selfId: number;
+  groupId?: string;
+  userId: string;
+  selfId: string;
   sessionId: string;
   personalSessionId?: string;
   senderName: string;
@@ -42,6 +47,53 @@ interface ResolvedRuntimeContext {
 
 const NO_NEW_MESSAGE =
   "[No new user message in this turn. Reply naturally based on the runtime instruction and recent context.]";
+
+/**
+ * 主模型不支持视觉时，引用消息里的图片交给视觉工作模型描述（结果按内容哈希入库复用）。
+ * 主模型支持视觉时返回 undefined：图片会直接附到请求里，不必重复描述。
+ */
+async function describeQuotedImage(
+  pluginCtx: ChatPluginContext,
+  cfg: ChatConfig,
+  imageUrl: string | undefined,
+  userId: string,
+  groupId: string | undefined,
+): Promise<string | undefined> {
+  if (
+    !imageUrl ||
+    mainModelSupportsVision(pluginCtx.aiService, cfg.model)
+  ) {
+    return undefined;
+  }
+  const visionAI =
+    pluginCtx.visionAIInstance ?? pluginCtx.aiService.getDefault();
+  if (!visionAI) return undefined;
+
+  try {
+    const { processImage } = await import("./media/image-analyzer");
+    const record = await processImage(
+      visionAI,
+      imageUrl,
+      cfg.multimodalWorkingModel,
+      pluginCtx.db,
+      {
+        runAIRequest: (request) =>
+          pluginCtx.runWithRateLimitGuard(request, {
+            userId,
+            groupId,
+            label: "quoted-image",
+            skipRetryOnRateLimit: true,
+          }),
+      },
+    );
+    return record?.description?.trim() || undefined;
+  } catch (err) {
+    pluginCtx.ctx.logger.error(
+      `[chat-turn] Failed to describe quoted image: ${err}`,
+    );
+    return undefined;
+  }
+}
 
 function buildRuntimeTargetMessageContent(
   ctx: MiokuContext,
@@ -61,8 +113,12 @@ function resolveRuntimeContext(
   if (options.event) {
     const event = options.event;
     const isGroup = event.message_type === "group";
-    const groupId: number | undefined = isGroup ? event.group_id : undefined;
-    const userId: number = event.user_id || event.sender?.user_id || 0;
+    const groupId: string | undefined = isGroup
+      ? String(event.group_id ?? "").trim() || undefined
+      : undefined;
+    const userId: string = String(
+      event.user_id ?? event.sender?.user_id ?? "",
+    ).trim();
     return {
       event,
       isGroup,
@@ -80,18 +136,18 @@ function resolveRuntimeContext(
     };
   }
 
-  if (typeof options.selfId !== "number") {
+  const selfId = String(options.selfId ?? "").trim();
+  if (!selfId) {
     throw new Error("Chat runtime requires either event or selfId");
   }
-  if (
-    typeof options.groupId !== "number" &&
-    typeof options.userId !== "number"
-  ) {
+  const optionGroupId = String(options.groupId ?? "").trim() || undefined;
+  const optionUserId = String(options.userId ?? "").trim();
+  if (!optionGroupId && !optionUserId) {
     throw new Error("Chat runtime requires groupId or userId");
   }
 
-  const isGroup = typeof options.groupId === "number";
-  const userId = options.userId ?? 0;
+  const isGroup = Boolean(optionGroupId);
+  const userId = optionUserId;
   const event = {
     self_id: options.selfId,
     message_type: isGroup ? "group" : "private",
@@ -110,15 +166,15 @@ function resolveRuntimeContext(
   return {
     event,
     isGroup,
-    groupId: options.groupId,
+    groupId: optionGroupId,
     userId,
-    selfId: options.selfId,
-    sessionId: options.groupId
-      ? `group:${options.groupId}`
+    selfId,
+    sessionId: optionGroupId
+      ? `group:${optionGroupId}`
       : `personal:${userId}`,
     personalSessionId:
-      options.groupId && userId ? `personal:${userId}` : undefined,
-    senderName: options.groupId ? "system" : String(userId),
+      optionGroupId && userId ? `personal:${userId}` : undefined,
+    senderName: optionGroupId ? "system" : String(userId),
     userRole: "member",
     userTitle: undefined,
     groupName: undefined,
@@ -133,10 +189,10 @@ export async function finalizeChatTurn(
     event: any;
     cfg: ChatConfig;
     result: { messages: string[]; emojiPath?: string | null };
-    groupId?: number;
+    groupId?: string;
     groupSessionId: string;
-    userId: number;
-    selfId: number;
+    userId: string;
+    selfId: string;
     toolCtx: { sentMessageIndices?: Set<number> };
     send: boolean;
     isLive: boolean;
@@ -247,8 +303,8 @@ export async function processChat(
 ): Promise<void> {
   const { ctx } = pluginCtx;
   const isGroup = e.message_type === "group";
-  const groupId: number | undefined = isGroup ? e.group_id : undefined;
-  const userId: number = e.user_id || e.sender?.user_id;
+  const groupId: string | undefined = isGroup ? e.group_id : undefined;
+  const userId: string = e.user_id || e.sender?.user_id;
   const selfId = options.replyBot ? Number(options.replyBot.bot_id) : e.self_id;
   const cfg = await pluginCtx.getConfig(groupId);
 
@@ -285,16 +341,14 @@ export async function processChat(
     }
     if (quotedInfo?.imageUrl) imageUrls.push(quotedInfo.imageUrl);
 
-    let messageContent = ctx.text(e) || "";
-    let extraContext = "";
-    if (quotedInfo) {
-      const parts = [
-        `[Quoted message #${quotedInfo.messageId} from ${quotedInfo.senderName}: ${quotedInfo.content}]`,
-      ];
-      if (quotedInfo.imageUrl) parts.push("[Quoted message contains an image]");
-      extraContext = parts.join(" ");
-    }
-    if (extraContext) messageContent = extraContext + " " + messageContent;
+    // 与历史拉取并行，省掉视觉描述带来的额外等待
+    const quotedImageNotePromise = describeQuotedImage(
+      pluginCtx,
+      cfg,
+      quotedInfo?.imageUrl,
+      userId,
+      groupId,
+    );
 
     const rawHistory = groupId
       ? await getGroupHistory(
@@ -345,6 +399,24 @@ export async function processChat(
       history,
       userId,
     );
+
+    const quotedImageNote = await quotedImageNotePromise;
+    let messageContent = ctx.text(e) || "";
+    if (quotedInfo) {
+      const quotedText =
+        quotedInfo.content || (quotedInfo.imageUrl ? "[image]" : "");
+      const parts = [
+        `[Quoted message #${quotedInfo.messageId} from ${quotedInfo.senderName}: ${quotedText}]`,
+      ];
+      if (quotedInfo.imageUrl) {
+        parts.push(
+          quotedImageNote
+            ? `[Quoted message image: ${quotedImageNote}]`
+            : "[Quoted message contains an image]",
+        );
+      }
+      messageContent = `${parts.join(" ")} ${messageContent}`;
+    }
 
     const targetMessage: TargetMessage = {
       userName: senderName,

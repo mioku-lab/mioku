@@ -1,4 +1,9 @@
 {
+  "hidden": {
+    "plugins": ["boot"],
+    "services": [],
+    "adapters": []
+  },
   "plugins": {
     "60s": {
       "npm": "mioku-plugin-60s"
@@ -55,6 +60,9 @@
     "netease": {
       "npm": "mioku-service-netease"
     },
+    "ncmdump": {
+      "npm": "mioku-service-ncmdump"
+    },
     "ai": {
       "npm": "mioku-service-ai",
       "builtin": true
@@ -88,6 +96,12 @@
     },
     "qq-official": {
       "npm": "mioku-adapter-qq-official"
+    },
+    "milky": {
+      "npm": "mioku-adapter-milky"
+    },
+    "ilink": {
+      "npm": "mioku-adapter-ilink"
     }
   }
 }

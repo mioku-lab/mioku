@@ -6,12 +6,12 @@ import type { StatusIntent } from "./types";
 
 const FORCE_NIGHT_MODE = false;
 
-const RENDER_TIMEOUT_MS = 12_000;
+const RENDER_TIMEOUT_MS = 20_000;
 
 function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error("status_render_timeout")),
+      () => reject(new Error(`截图服务 ${ms}ms 未返回`)),
       ms,
     );
     p.then(
@@ -76,6 +76,8 @@ export async function generateStatusImage(
     }
     return { ok: true, imagePath };
   } catch (err: any) {
-    return { ok: false, error: String(err?.message || err) };
+    const message = String(err?.message || err);
+    ctx.logger.warn(`状态图片生成失败: ${message}`);
+    return { ok: false, error: message };
   }
 }

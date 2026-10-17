@@ -9,8 +9,8 @@ export class ExpressionLearner {
   private ai: AIInstance;
   private getConfig: ChatConfigProvider;
   private db: ChatDatabase;
-  private pendingMessagesByUser: Map<number, ChatMessage[]> = new Map();
-  private learningUsers: Set<number> = new Set();
+  private pendingMessagesByUser: Map<string, ChatMessage[]> = new Map();
+  private learningUsers: Set<string> = new Set();
 
   constructor(ai: AIInstance, configProvider: ChatConfigProvider, db: ChatDatabase) {
     this.ai = ai;
@@ -33,9 +33,9 @@ export class ExpressionLearner {
   }
 
   getExpressionContextForUser(
-    userId: number,
+    userId: string,
     userName: string,
-    groupId?: number,
+    groupId?: string,
   ): string {
     const cfg = this.getConfig(groupId);
     if (!cfg.expression?.enabled) return "";
@@ -62,7 +62,7 @@ export class ExpressionLearner {
     return context;
   }
 
-  private async tryLearn(userId: number, cfg = this.getConfig()): Promise<void> {
+  private async tryLearn(userId: string, cfg = this.getConfig()): Promise<void> {
     if (this.learningUsers.has(userId)) return;
 
     const threshold = Math.max(
@@ -95,7 +95,7 @@ export class ExpressionLearner {
   }
 
   private async learnForUser(
-    userId: number,
+    userId: string,
     messages: ChatMessage[],
     cfg = this.getConfig(),
   ): Promise<void> {

@@ -1,5 +1,5 @@
 import { buildPayload, sentFromOneBot } from "./message";
-import { buildSegments } from "./event";
+import { buildSegments, replyIdOf } from "./event";
 
 import type { ApiCaller } from "./gateway";
 import type {
@@ -376,22 +376,27 @@ export const createOneBot = (params: {
       const list = Array.isArray(raw)
         ? raw
         : ((raw as { messages?: unknown[] }).messages ?? []);
-      return (list as Record<string, unknown>[]).map((entry) => ({
-        message_id: String(entry.message_id ?? "") as string,
-        time:
-          typeof entry.time === "number"
-            ? (entry.time as number) * 1000
-            : undefined,
-        user_id: entry.user_id != null ? String(entry.user_id) : undefined,
-        nickname:
-          (entry.sender as { nickname?: unknown } | undefined)?.nickname != null
-            ? String((entry.sender as { nickname?: unknown }).nickname)
-            : undefined,
-        message: buildSegments(
-          Array.isArray(entry.message) ? (entry.message as unknown[]) : [],
-        ),
-        source: entry.source ?? undefined,
-      }));
+      return (list as Record<string, unknown>[]).map((entry) => {
+        const rawSegments = Array.isArray(entry.message)
+          ? (entry.message as unknown[])
+          : [];
+        // OneBot v11 历史不带 source 字段，引用关系只在 reply 段里，这里补成统一形状
+        const quotedId = replyIdOf(rawSegments);
+        return {
+          message_id: String(entry.message_id ?? "") as string,
+          time:
+            typeof entry.time === "number"
+              ? (entry.time as number) * 1000
+              : undefined,
+          user_id: entry.user_id != null ? String(entry.user_id) : undefined,
+          nickname:
+            (entry.sender as { nickname?: unknown } | undefined)?.nickname != null
+              ? String((entry.sender as { nickname?: unknown }).nickname)
+              : undefined,
+          message: buildSegments(rawSegments),
+          source: entry.source ?? (quotedId ? { id: quotedId } : undefined),
+        };
+      });
     },
     async sendLike(userId: string, times = 1) {
       try {

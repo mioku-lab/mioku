@@ -1,7 +1,7 @@
 {
   "name": "mioku-adapter-stdin",
   "type": "module",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Stdin adapter for mioku: drive your bot directly from the terminal.",
   "keywords": [
     "mioku"
@@ -10,7 +10,8 @@
     "node": ">= 22.18.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "config.md"
   ],
   "scripts": {
     "dev": "tsdown -w",

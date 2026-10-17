@@ -31,27 +31,27 @@ export type HistoryMediaOptions = {
 export type RunRateLimitGuard = <T>(
   request: () => Promise<T>,
   opts?: {
-    userId?: number;
-    groupId?: number;
+    userId?: string;
+    groupId?: string;
     label?: string;
     skipRetryOnRateLimit?: boolean;
   },
 ) => Promise<T | null>;
 
 export type GetGroupHistoryMessages = (
-  groupId: number,
+  groupId: string,
   groupSessionId: string,
   ctx: MiokuContext,
   historyCount: number,
   db: ChatDatabase,
-  selfId: number,
+  selfId: string,
   mediaOptions?: HistoryMediaOptions,
 ) => Promise<{ history: ChatMessage[] }>;
 
 export type GetGroupInfoData = (
   ctx: MiokuContext,
-  groupId: number,
-  selfId: number,
+  groupId: string,
+  selfId: string,
   fallbackGroupName?: string,
 ) => Promise<GroupInfoResult>;
 
@@ -60,16 +60,16 @@ export type GetHumanizeContexts = (
   groupSessionId: string,
   userName: string,
   history: ChatMessage[],
-  triggerUserId?: number,
+  triggerUserId?: string,
 ) => Promise<HumanizeContextsResult>;
 
 export type SendAIResponse = (
   options: SendAIResponseOptions,
-  selfId: number,
+  selfId: string,
 ) => Promise<Array<string | undefined>>;
 
 export type SaveBotMessages = (
-  groupId: number,
+  groupId: string,
   groupSessionId: string,
   messages: string[],
   timestamp: number,
@@ -82,28 +82,28 @@ export type SaveBotMessages = (
 
 export type SendEmoji = (
   ctx: MiokuContext,
-  groupId: number,
+  groupId: string,
   emojiPath: string | null | undefined,
   bot?: import("mioku").Bot,
 ) => Promise<void>;
 
 export type SendMessage = (
   ctx: MiokuContext,
-  groupId: number | undefined,
-  userId: number,
+  groupId: string | undefined,
+  userId: string,
   text: string,
   config: ChatConfig,
-  selfId: number,
+  selfId: string,
   audioService?: import("mioku-service-audio").AudioServiceApi,
 ) => Promise<void>;
 
 export type BuildToolContext = (options: {
   ctx: MiokuContext;
   event: any;
-  selfId: number;
+  selfId: string;
   groupSessionId: string;
-  groupId?: number;
-  userId: number;
+  groupId?: string;
+  userId: string;
   config: ChatConfig;
   aiService: AIService;
   db: ChatDatabase;

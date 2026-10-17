@@ -111,7 +111,7 @@ export async function getQuotedContent(
   }
 }
 
-export function isGroupAllowed(groupId: number, cfg: ChatConfig): boolean {
+export function isGroupAllowed(groupId: string, cfg: ChatConfig): boolean {
   if (cfg.whitelistGroups.length > 0) {
     return cfg.whitelistGroups.includes(groupId);
   }
@@ -190,9 +190,9 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function getBotRole(
-  groupId: number,
+  groupId: string,
   ctx: MiokuContext,
-  selfId: number,
+  selfId: string,
 ): Promise<"owner" | "admin" | "member"> {
   try {
     const bot = ctx.pickBot(selfId);
@@ -205,7 +205,7 @@ export async function getBotRole(
 }
 
 interface FormattedHistoryMessage {
-  userId: number;
+  userId: string;
   userName: string;
   userRole: string;
   content: string;
@@ -223,7 +223,7 @@ interface HistoryFormatContext {
       }
     | undefined;
   historyMediaOptions: HistoryMediaProcessingOptions;
-  botUin: number;
+  botUin: string;
   /** 本运行时全部已连接 bot 的 id：这些账号的消息一律不作为用户历史（防 bot 互触循环） */
   botIds: Set<string>;
   memberNameCache: Map<string, string>;
@@ -283,10 +283,17 @@ function extractQuotedText(messageSegs: any): string {
   return parts.join(" ").trim();
 }
 
-function buildReplyAnnotation(
+/** 引用关系：id 必有，发送者与原文可能缺失（例如 onebot 历史只给 id） */
+interface ReplyRef {
+  id: string;
+  name?: string;
+  text?: string;
+}
+
+function extractReplyRef(
   source: any,
   ctx: HistoryFormatContext,
-): string | null {
+): ReplyRef | null {
   if (!source || typeof source !== "object") return null;
   const sourceId = source.id ?? source.message_id ?? source.message_seq;
   const sourceUserId = source.user_id;
@@ -294,18 +301,38 @@ function buildReplyAnnotation(
     source.sender?.card || source.sender?.nickname || source.nickname;
   const sourceText = extractQuotedText(source.message);
 
-  if (sourceUserId == null && !sourceText && !sourceNickname) return null;
-
-  const idStr = sourceId != null ? String(sourceId) : "?";
-  let displayName: string | undefined;
-  if (sourceUserId != null) {
-    displayName =
-      ctx.memberNameCache.get(String(sourceUserId)) || String(sourceUserId);
+  if (
+    sourceId == null &&
+    sourceUserId == null &&
+    !sourceText &&
+    !sourceNickname
+  ) {
+    return null;
   }
-  if (!displayName) displayName = sourceNickname || "unknown";
 
-  const text = sourceText || "(empty)";
-  return `↪ reply to #${idStr} ${displayName}: "${text}"`;
+  let name: string | undefined;
+  if (sourceUserId != null) {
+    name = ctx.memberNameCache.get(String(sourceUserId)) || String(sourceUserId);
+  }
+  if (!name) name = sourceNickname || undefined;
+
+  return {
+    id: sourceId != null ? String(sourceId) : "",
+    name,
+    text: sourceText || undefined,
+  };
+}
+
+function renderReplyRef(ref: ReplyRef): string {
+  const head = `↪ reply to #${ref.id || "?"}`;
+  if (!ref.name && !ref.text) return head;
+  if (!ref.text) return `${head} ${ref.name}`;
+  return ref.name ? `${head} ${ref.name}: "${ref.text}"` : `${head}: "${ref.text}"`;
+}
+
+function summarizeQuotedContent(content: string): string {
+  const flat = content.replace(/\s+/g, " ").trim();
+  return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat;
 }
 
 async function getImageTagWithHashCache(
@@ -345,11 +372,13 @@ async function getImageTagWithHashCache(
 async function formatHistoryMessage(
   msg: HistoryMessage,
   ctx: HistoryFormatContext,
-): Promise<FormattedHistoryMessage | null> {
+): Promise<{ formatted: FormattedHistoryMessage; reply: ReplyRef | null } | null> {
   // 自己或本运行时其它 bot 的消息不作为用户历史，
   // 否则多 bot 同群时会把彼此的消息当作用户接话，形成循环触发
   if (String(msg.user_id) === String(ctx.botUin)) return null;
   if (ctx.botIds.has(String(msg.user_id))) return null;
+
+  const reply = extractReplyRef((msg as { source?: unknown }).source, ctx);
 
   let content = "";
   try {
@@ -359,19 +388,22 @@ async function formatHistoryMessage(
     return null;
   }
 
-  if (!content.trim()) return null;
+  if (!content.trim() && !reply) return null;
 
   return {
-    userId: Number(msg.user_id || 0),
-    userName: msg.nickname || String(msg.user_id || "unknown"),
-    userRole: "member",
-    content,
-    messageId:
-      msg.message_id != null && msg.message_id !== ""
-        ? String(msg.message_id)
-        : "",
-    timestamp: msg.time ?? Date.now(),
-    role: "user",
+    formatted: {
+      userId: String(msg.user_id ?? "").trim(),
+      userName: msg.nickname || String(msg.user_id ?? "unknown"),
+      userRole: "member",
+      content,
+      messageId:
+        msg.message_id != null && msg.message_id !== ""
+          ? String(msg.message_id)
+          : "",
+      timestamp: msg.time ?? Date.now(),
+      role: "user",
+    },
+    reply,
   };
 }
 
@@ -384,9 +416,6 @@ async function buildMessageContent(
   }
   const { db, historyMediaOptions } = ctx;
   const parts: string[] = [];
-
-  const replyAnnotation = buildReplyAnnotation(msg.source, ctx);
-  if (replyAnnotation) parts.push(replyAnnotation);
 
   const textSegs = msg.message.filter((seg: any) => seg.type === "text");
   const textContent = textSegs
@@ -501,12 +530,12 @@ async function buildMessageContent(
  * 返回格式化为 ChatMessage 数组
  */
 export async function getGroupHistory(
-  groupId: number,
+  groupId: string,
   ctx: MiokuContext,
   count: number = 100,
-  selfId: number,
+  selfId: string,
   db?: {
-    getBotMessages(groupId: number, limit: number): ChatMessage[];
+    getBotMessages(groupId: string, limit: number): ChatMessage[];
     getImageByHash?(hash: string): ImageRecord | null;
     getImageByUrl?(url: string): ImageRecord | null;
     getMediaSummary?(key: string): MediaSummaryRecord | null;
@@ -514,7 +543,7 @@ export async function getGroupHistory(
     getMediaSummaryBySource?(sourceKey: string): MediaSummaryRecord | null;
     saveMediaSummarySource?(sourceKey: string, summaryKey: string): void;
     getStoredGroupNoticeMessages?(
-      groupId: number,
+      groupId: string,
       limit?: number,
     ): ChatMessage[];
   },
@@ -525,7 +554,7 @@ export async function getGroupHistory(
   },
 ): Promise<
   Array<{
-    userId: number;
+    userId: string;
     userName: string;
     userRole: string;
     content: string;
@@ -536,7 +565,7 @@ export async function getGroupHistory(
 > {
   // 先获取 bot 从数据库发送的消息
   const botMessages: Array<{
-    userId: number;
+    userId: string;
     userName: string;
     userRole: string;
     content: string;
@@ -549,7 +578,7 @@ export async function getGroupHistory(
     const storedBotMessages = db.getBotMessages(groupId, count);
     for (const msg of storedBotMessages) {
       botMessages.push({
-        userId: msg.userId ?? 0,
+        userId: String(msg.userId ?? ""),
         userName: msg.userName || "Miku",
         userRole: msg.userRole || "member",
         content: msg.content,
@@ -563,8 +592,8 @@ export async function getGroupHistory(
       db.getStoredGroupNoticeMessages?.(groupId, Math.min(count, 20)) || [];
     for (const msg of storedNoticeMessages) {
       botMessages.push({
-        userId: msg.userId ?? 0,
-        userName: msg.userName || String(msg.userId || "unknown"),
+        userId: String(msg.userId ?? ""),
+        userName: msg.userName || String(msg.userId ?? "unknown"),
         userRole: msg.userRole || "member",
         content: msg.content,
         messageId: msg.messageId ?? "",
@@ -623,14 +652,50 @@ export async function getGroupHistory(
       hashLookupCache,
     };
 
-    const formattedResults = await mapWithConcurrency(
+    const processed = await mapWithConcurrency(
       messages,
       HISTORY_MEDIA_CONCURRENCY,
       (msg: any) => formatHistoryMessage(msg, formatCtx),
     );
-    const formatted = formattedResults.filter(
-      (msg): msg is FormattedHistoryMessage => Boolean(msg),
+    const entries = processed.filter(
+      (
+        item,
+      ): item is {
+        formatted: FormattedHistoryMessage;
+        reply: ReplyRef | null;
+      } => Boolean(item),
     );
+
+    // 引用关系单独渲染：被引用的消息若也在本批历史里，直接补上发送者与原文
+    const byMessageId = new Map<string, FormattedHistoryMessage>();
+    for (const item of entries) {
+      if (item.formatted.messageId) {
+        byMessageId.set(item.formatted.messageId, item.formatted);
+      }
+    }
+    for (const botMessage of botMessages) {
+      if (botMessage.messageId && !byMessageId.has(botMessage.messageId)) {
+        byMessageId.set(botMessage.messageId, botMessage);
+      }
+    }
+
+    const formatted = entries.map(({ formatted: message, reply }) => {
+      if (!reply) return message;
+      const quoted = reply.id ? byMessageId.get(reply.id) : undefined;
+      const annotation = renderReplyRef({
+        ...reply,
+        name: reply.name ?? quoted?.userName,
+        text:
+          reply.text ??
+          (quoted ? summarizeQuotedContent(quoted.content) || undefined : undefined),
+      });
+      return {
+        ...message,
+        content: message.content
+          ? `${annotation} ${message.content}`
+          : annotation,
+      };
+    });
 
     // 合并 bot 消息
     const allMessages = [...botMessages, ...formatted];
@@ -652,9 +717,9 @@ export function buildChatMessageFromEvent(
   e: any,
   text: string,
   isGroup: boolean,
-  groupId: number | undefined,
+  groupId: string | undefined,
 ): ChatMessage {
-  const userId: number = e.user_id || e.sender?.user_id;
+  const userId: string = e.user_id || e.sender?.user_id;
   return {
     sessionId: groupId ? `group:${groupId}` : `personal:${userId}`,
     role: "user" as const,
@@ -670,13 +735,13 @@ export function buildChatMessageFromEvent(
   };
 }
 
-export function normalizeIdList(input: unknown): number[] {
+export function normalizeIdList(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return Array.from(
     new Set(
       input
-        .map((item) => Math.floor(Number(item)))
-        .filter((id) => Number.isFinite(id) && id > 0),
+        .map((item) => String(item ?? "").trim())
+        .filter((id) => id.length > 0),
     ),
   );
 }

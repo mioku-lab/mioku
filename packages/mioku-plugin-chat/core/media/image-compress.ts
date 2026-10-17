@@ -5,6 +5,13 @@ const IMAGE_MAX_BYTES = 1 * 1024 * 1024;
 const COMPRESS_MAX_WIDTH = 1280;
 const COMPRESS_JPEG_QUALITY = 80;
 
+const INLINE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
 export const QQ_IMAGE_FETCH_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -13,26 +20,24 @@ export const QQ_IMAGE_FETCH_HEADERS = {
 
 const FETCH_HEADERS = QQ_IMAGE_FETCH_HEADERS;
 
-/**
- * 准备发给模型的图片 URL：体积超过 1MB 时压缩为 JPEG data URL，否则原样返回。
- * data URL（如 GIF 抽帧结果）与非 http(s) 链接直接放行。
- */
 export async function prepareImageUrlForModel(url: string): Promise<string> {
   if (url.startsWith("data:")) return url;
   if (!/^https?:\/\//i.test(url)) return url;
 
-  const size = await probeImageSize(url);
-  if (size !== null && size <= IMAGE_MAX_BYTES) return url;
-
   let buffer: Buffer;
+  let mimeType: string;
   try {
-    buffer = await downloadImageBuffer(url);
+    const downloaded = await downloadImage(url);
+    buffer = downloaded.buffer;
+    mimeType = downloaded.mimeType;
   } catch (err) {
     logger.warn(`[image-compress] download failed, using original: ${err}`);
     return url;
   }
 
-  if (buffer.length <= IMAGE_MAX_BYTES) return url;
+  if (buffer.length <= IMAGE_MAX_BYTES && INLINE_MIME_TYPES.has(mimeType)) {
+    return `data:${mimeType};base64,${buffer.toString("base64")}`;
+  }
 
   try {
     const compressed = await sharp(buffer)
@@ -44,8 +49,8 @@ export async function prepareImageUrlForModel(url: string): Promise<string> {
     );
     return `data:image/jpeg;base64,${compressed.toString("base64")}`;
   } catch (err) {
-    logger.warn(`[image-compress] compress failed, using original: ${err}`);
-    return url;
+    logger.warn(`[image-compress] compress failed, inlining original: ${err}`);
+    return `data:${mimeType};base64,${buffer.toString("base64")}`;
   }
 }
 
@@ -55,23 +60,29 @@ export async function prepareImageUrlsForModel(
   return Promise.all(urls.map(prepareImageUrlForModel));
 }
 
-async function probeImageSize(url: string): Promise<number | null> {
-  try {
-    const head = await fetch(url, { method: "HEAD", headers: FETCH_HEADERS });
-    if (!head.ok) return null;
-    const len = head.headers.get("content-length");
-    if (!len) return null;
-    const n = Number(len);
-    return Number.isFinite(n) ? n : null;
-  } catch {
-    return null;
-  }
-}
-
-async function downloadImageBuffer(url: string): Promise<Buffer> {
+async function downloadImage(
+  url: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
   const response = await fetch(url, { headers: FETCH_HEADERS });
   if (!response.ok) {
-    throw new Error(`download failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `download failed: ${response.status} ${response.statusText}`,
+    );
   }
-  return Buffer.from(await response.arrayBuffer());
+
+  const mimeType = normalizeImageMimeType(
+    response.headers.get("content-type") || "",
+  );
+  if (!mimeType) {
+    throw new Error(
+      `not an image response: ${response.headers.get("content-type") || "unknown"}`,
+    );
+  }
+
+  return { buffer: Buffer.from(await response.arrayBuffer()), mimeType };
+}
+
+function normalizeImageMimeType(contentType: string): string | null {
+  const mimeType = contentType.split(";")[0]?.trim().toLowerCase() || "";
+  return mimeType.startsWith("image/") ? mimeType : null;
 }

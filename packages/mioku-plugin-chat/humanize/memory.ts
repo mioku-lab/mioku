@@ -6,7 +6,7 @@ import { extractGroupIdFromSession } from "../utils/group-config";
 import type { ChatConfigProvider } from "./index";
 
 export interface MemoryUserHistoryChunk {
-  userId: number;
+  userId: string;
   messages: ChatMessage[];
 }
 

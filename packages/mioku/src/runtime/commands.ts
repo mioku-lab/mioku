@@ -99,7 +99,7 @@ const normalizeRole = (role: unknown): CommandRole => {
   return "member";
 };
 
-const userIdOf = (event: MessageEvent): string | undefined => toUserId(event);
+const userIdOf = (event: Event): string | undefined => toUserId(event);
 
 const textHookMatches = (text: string, raw: string | undefined): boolean => {
   const source = String(raw ?? "").trim();
@@ -286,6 +286,20 @@ export class CommandManager {
     this.#access = config;
   }
 
+  canUsePlugin(plugin: string, event: Event): boolean {
+    return this.#pluginAllowed(plugin, event);
+  }
+
+  canUseCommand(plugin: string, command: string, event: Event): boolean {
+    const registered = this.#resolveRegistered(plugin, command);
+    if (registered) return this.#canUse(registered, event);
+    const key = commandKey(command);
+    const action =
+      this.#resolveAction(plugin, key, event) ??
+      this.#resolveAction(plugin, command, event);
+    return action !== "block";
+  }
+
   syncMetadata(metadata: PluginMetadata): void {
     this.#legacy.set(metadata.name, { metadata });
   }
@@ -330,6 +344,7 @@ export class CommandManager {
         seen.add(key);
         commands.push({
           cmd,
+          id: runtimeCommand.id,
           desc: runtimeCommand.description || command.desc || cmd,
           usage: runtimeCommand.usage ?? command.usage,
           role: runtimeCommand.permission,
@@ -345,6 +360,7 @@ export class CommandManager {
       seen.add(commandKey(cmd));
       commands.push({
         cmd,
+        id: command.id,
         desc: command.description || cmd,
         usage: command.usage,
         role: command.permission,
@@ -505,7 +521,24 @@ export class CommandManager {
     return undefined;
   }
 
-  #canUse(command: RegisteredCommand, event: MessageEvent): boolean {
+  #resolveRegistered(plugin: string, ref: string): StoredCommand | undefined {
+    const raw = String(ref ?? "").trim();
+    if (!raw) return undefined;
+    const key = commandKey(raw);
+    const candidates = this.#commands.filter((item) => item.plugin === plugin);
+    return (
+      candidates.find((item) => item.id === raw) ??
+      candidates.find((item) => item.name === raw) ??
+      candidates.find((item) => item.aliases.includes(raw)) ??
+      candidates.find((item) => commandKey(item.id) === key) ??
+      candidates.find((item) => commandKey(item.name) === key) ??
+      candidates.find((item) =>
+        item.aliases.some((alias) => commandKey(alias) === key),
+      )
+    );
+  }
+
+  #canUse(command: RegisteredCommand, event: Event): boolean {
     const userId = userIdOf(event);
     const master = Boolean(userId && this.#isMaster(userId));
     const owner = master || this.#isGroupOwner(event);

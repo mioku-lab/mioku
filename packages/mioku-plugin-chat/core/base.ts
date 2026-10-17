@@ -25,7 +25,7 @@ import {
 
 export interface SendAIResponseOptions {
   ctx: MiokuContext;
-  groupId: number;
+  groupId: string;
   messages: string[];
   config: ChatConfig;
   sentIndices?: Set<number>;
@@ -78,7 +78,7 @@ async function waitTypingDelay(
 
 export async function sendAIResponse(
   options: SendAIResponseOptions,
-  selfId: number,
+  selfId: string,
 ): Promise<Array<string | undefined>> {
   const {
     ctx,
@@ -252,11 +252,11 @@ export async function sendAIResponse(
 
 export async function sendMessage(
   ctx: MiokuContext,
-  groupId: number | undefined,
-  userId: number,
+  groupId: string | undefined,
+  userId: string,
   text: string,
   config: ChatConfig,
-  selfId: number,
+  selfId: string,
   audioService?: AudioServiceApi,
 ): Promise<void> {
   const typingDelayEnabled = config.enableTypingDelay ?? false;
@@ -555,8 +555,8 @@ async function buildMarkdownImage(
 
 async function dispatchSegments(
   bot: any,
-  groupId: number | undefined,
-  userId: number | undefined,
+  groupId: string | undefined,
+  userId: string | undefined,
   buildSegments: (imageSource?: string) => any[],
   fallbackImagePath?: string,
 ): Promise<string | undefined> {
@@ -583,8 +583,8 @@ async function dispatchSegments(
 
 async function sendByTarget(
   bot: Bot,
-  groupId: number | undefined,
-  userId: number | undefined,
+  groupId: string | undefined,
+  userId: string | undefined,
   segments: readonly any[],
 ): Promise<import("mioku").SentMessage | undefined> {
   if (groupId) {
@@ -668,12 +668,12 @@ export interface GroupHistoryResult {
 }
 
 export async function getGroupHistoryMessages(
-  groupId: number,
+  groupId: string,
   groupSessionId: string,
   ctx: MiokuContext,
   historyCount: number,
   db: ChatDatabase,
-  selfId: number,
+  selfId: string,
   mediaOptions?: {
     ai?: AIInstance;
     workingModel?: string;
@@ -710,8 +710,8 @@ export interface GroupInfoResult {
 
 export async function getGroupInfoData(
   ctx: MiokuContext,
-  groupId: number,
-  selfId: number,
+  groupId: string,
+  selfId: string,
   fallbackGroupName?: string,
 ): Promise<GroupInfoResult> {
   let groupName: string | undefined;
@@ -746,7 +746,7 @@ export async function getHumanizeContexts(
   groupSessionId: string,
   userName: string,
   history: ChatMessage[],
-  triggerUserId?: number,
+  triggerUserId?: string,
 ): Promise<HumanizeContextsResult> {
   const historyStartAt = history.length > 0 ? history[0].timestamp : undefined;
 
@@ -775,10 +775,10 @@ export async function getHumanizeContexts(
 export interface BuildToolContextOptions {
   ctx: MiokuContext;
   event: any;
-  selfId: number;
+  selfId: string;
   groupSessionId: string;
-  groupId?: number;
-  userId: number;
+  groupId?: string;
+  userId: string;
   config: ChatConfig;
   aiService: AIService;
   db: ChatDatabase;
@@ -867,7 +867,7 @@ export function buildToolContext(
 }
 
 export function saveBotMessages(
-  groupId: number,
+  groupId: string,
   groupSessionId: string,
   messages: string[],
   timestamp: number,
@@ -891,7 +891,7 @@ export function saveBotMessages(
       sessionId: groupSessionId,
       role: "assistant",
       content: msg ?? "",
-      userId: selfId ?? 0,
+      userId: String(selfId ?? ""),
       userName: botNickname ?? "Miku",
       userRole: "member",
       groupId,
@@ -904,7 +904,7 @@ export function saveBotMessages(
 
 export async function sendEmoji(
   ctx: MiokuContext,
-  groupId: number,
+  groupId: string,
   emojiPath: string | null | undefined,
   bot: Bot | undefined,
 ): Promise<void> {

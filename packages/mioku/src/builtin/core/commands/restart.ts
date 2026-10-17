@@ -14,21 +14,22 @@ export function registerRestartCommand(ctx: MiokuContext): () => void {
     priority: -1000,
     description: "重启机器人进程",
     handler: async ({ event }) => {
-      if (event?.user_id === event?.self_id) return;
+      if (String(event?.user_id ?? "") === String(event?.self_id ?? "")) return;
 
     const uptimeMs = process.uptime() * 1000;
-    const selfId = Number(event?.self_id || 0);
+    const selfId = String(event?.self_id ?? "");
     const groupId =
       event?.message_type === "group" && event?.group_id
-        ? Number(event.group_id)
+        ? String(event.group_id)
         : null;
-    const userId = Number(event?.user_id || 0);
+    const userId = String(event?.user_id ?? "");
 
     const marker: RestartMarker = {
       initiatedAt: Date.now(),
       selfId,
       groupId,
       userId,
+      adapter: event?.bot?.adapter,
     };
 
     try {

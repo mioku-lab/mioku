@@ -23,14 +23,11 @@ function resolveUserHistoryLimit(value: unknown): number {
 
 function extractTargetUserIdsFromQuestion(
   question: string,
-  requesterUserId: number,
-): number[] {
+  requesterUserId: string,
+): string[] {
   const matches = question.match(/\b\d{5,12}\b/g) || [];
-  const parsed = matches
-    .map((item) => Number(item))
-    .filter((item) => Number.isFinite(item) && item > 0);
-  const ids = [requesterUserId, ...parsed].filter(
-    (item) => Number.isFinite(item) && item > 0,
+  const ids = [String(requesterUserId ?? "").trim(), ...matches].filter(
+    (item) => item.length > 0,
   );
   return [...new Set(ids)].slice(0, 3);
 }
@@ -138,8 +135,8 @@ async function fetchGroupHistoryByMessageIdPaging(
         sessionId: toolCtx.sessionId,
         role: String(raw.user_id) === String(bot.bot_id) ? "assistant" : "user",
         content,
-        userId: Number(raw.user_id || 0),
-        userName: raw.nickname || String(raw.user_id || "unknown"),
+        userId: String(raw.user_id ?? "").trim(),
+        userName: raw.nickname || String(raw.user_id ?? "unknown"),
         userRole: "member",
         groupId: toolCtx.groupId,
         timestamp: ts,

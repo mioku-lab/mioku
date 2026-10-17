@@ -1,7 +1,7 @@
 {
   "name": "mioku-adapter-icqq",
   "type": "module",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "icqq adapter for mioku.",
   "keywords": [
     "mioku"
@@ -11,7 +11,8 @@
   },
   "files": [
     "dist",
-    "vendor/icqq"
+    "vendor/icqq",
+    "config.md"
   ],
   "scripts": {
     "dev": "tsdown -w",

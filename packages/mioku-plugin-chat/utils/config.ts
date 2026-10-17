@@ -33,20 +33,20 @@ export function mergeChatConfig<T extends Record<string, any>>(
   return result as T;
 }
 
-export function normalizeIdList(input: unknown): number[] {
+export function normalizeIdList(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return Array.from(
     new Set(
       input
-        .map((item) => Math.floor(Number(item)))
-        .filter((id) => Number.isFinite(id) && id > 0),
+        .map((item) => String(item ?? "").trim())
+        .filter((id) => id.length > 0),
     ),
   );
 }
 
 export function normalizeMediaAnalysisBlacklist(
   config: Record<string, any>,
-): number[] {
+): string[] {
   const current = config.mediaAnalysisBlacklistUsers;
   const legacy = config.imageAnalysisBlacklistUsers;
   const source =

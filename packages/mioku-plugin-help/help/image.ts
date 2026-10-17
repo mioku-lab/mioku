@@ -19,6 +19,7 @@ import * as fs from "node:fs/promises";
 import type { CommandRole, HelpService, ScreenshotService } from "mioku";
 import { checkNightMode } from "../utils";
 import { generateHelpHtml } from "./html-generator";
+import type { HelpAccessFilter } from "./types";
 
 /** POSIX or Windows absolute path → `file://...`; anything else passes through. */
 function isLocalFilePath(value: string): boolean {
@@ -55,7 +56,8 @@ export function normalizeImageSource(file: string): string {
  *
  * `viewerRole` controls which commands are rendered — the image only
  * shows commands the requester is allowed to invoke, so members don't
- * see admin/master-only commands cluttering the panel.
+ * see admin/master-only commands cluttering the panel. `accessFilter`
+ * carries the same viewer's access-control verdicts.
  */
 export async function generateHelpImage(options: {
   helpService?: HelpService;
@@ -66,6 +68,7 @@ export async function generateHelpImage(options: {
   botAvatarUrl?: string;
   targetPluginName?: string;
   viewerRole?: CommandRole;
+  accessFilter?: HelpAccessFilter;
 }): Promise<string | null> {
   const {
     helpService,
@@ -76,6 +79,7 @@ export async function generateHelpImage(options: {
     botAvatarUrl,
     targetPluginName,
     viewerRole,
+    accessFilter,
   } = options;
   if (!helpService || !screenshotService) {
     return null;
@@ -94,6 +98,7 @@ export async function generateHelpImage(options: {
     botAvatarUrl,
     hasTarget ? targetPluginName : undefined,
     viewerRole,
+    accessFilter,
   );
 
   return screenshotService.screenshot(htmlContent, {
@@ -108,22 +113,38 @@ export async function generateHelpImage(options: {
  * Pick a bot's nickname + avatar URL. Used so the help card can greet
  * the user with their bot's identity rather than a generic string.
  */
-export function resolveHelpBotProfile(
+export async function resolveHelpBotProfile(
   ctx: any,
   event?: any,
-): { botNickname: string; botAvatarUrl?: string } {
+): Promise<{ botNickname: string; botAvatarUrl?: string }> {
   const fallbackNickname = "Mioku Bot";
   const selfId = event?.self_id;
   const bot =
     event?.bot ??
     (ctx?.bots instanceof Map ? Array.from(ctx.bots.values())[0] : null);
-  const botId = selfId || bot?.bot_id;
+  const botId = String(selfId ?? bot?.bot_id ?? "").trim();
   const botNickname = bot?.nickname || bot?.name || fallbackNickname;
-  const botAvatarUrl = botId
-    ? `https://q1.qlogo.cn/g?b=qq&nk=${botId}&s=640`
-    : undefined;
+  const botAvatarUrl = await resolveBotAvatar(bot, botId);
 
   return { botNickname, botAvatarUrl };
+}
+
+/** QQ 系的 qlogo 头像服务只认数字 QQ 号,openid/AppID 一律走平台接口 */
+export async function resolveBotAvatar(
+  bot: any,
+  botId: string,
+): Promise<string | undefined> {
+  try {
+    const avatar = await bot?.getAvatar?.();
+    if (typeof avatar === "string" && avatar) return avatar;
+  } catch {
+    // 平台不支持时回退
+  }
+  const adapter = String(bot?.adapter ?? "");
+  if ((adapter === "onebotv11" || adapter === "icqq") && /^\d+$/.test(botId)) {
+    return `https://q1.qlogo.cn/g?b=qq&nk=${botId}&s=640`;
+  }
+  return undefined;
 }
 
 /**
