@@ -99,6 +99,9 @@
     },
     "milky": {
       "npm": "mioku-adapter-milky"
+    },
+    "ilink": {
+      "npm": "mioku-adapter-ilink"
     }
   }
 }
