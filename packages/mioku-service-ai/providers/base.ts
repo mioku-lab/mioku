@@ -21,19 +21,17 @@ export const DEFAULT_API_URLS: Record<AIProviderConfig["protocol"], string> = {
 /**
  * OpenAI 系（chat / responses）的 reasoning effort 映射：
  * - off 不下发参数（保留服务商默认行为）
- * - max 归一到 xhigh（OpenAI 当前最高档）
- */
+ * */
 export function toOpenAIReasoningEffort(
   level?: AIThinkingLevel,
-): "low" | "medium" | "high" | "xhigh" | undefined {
+): "low" | "medium" | "high" | "xhigh" | "max" | undefined {
   switch (level) {
     case "low":
     case "medium":
     case "high":
     case "xhigh":
-      return level;
     case "max":
-      return "xhigh";
+      return level;
     default:
       return undefined;
   }
@@ -82,9 +80,7 @@ export function toGeminiThinkingBudget(
   }
 }
 
-export function preferCache(
-  options: ProviderCompleteOptions,
-): boolean {
+export function preferCache(options: ProviderCompleteOptions): boolean {
   return options.cachePreference !== "none";
 }
 
@@ -131,7 +127,9 @@ export function markStablePrefixCacheable(
     if (typeof message.content === "string") {
       return {
         ...message,
-        content: [{ type: "text" as const, text: message.content, cacheable: true }],
+        content: [
+          { type: "text" as const, text: message.content, cacheable: true },
+        ],
       };
     }
     if (!Array.isArray(message.content)) return message;
@@ -152,7 +150,9 @@ export function markStablePrefixCacheable(
   return { messages: nextMessages, tools: nextTools };
 }
 
-export function guessCapabilities(modelId: string): AIModelDescriptor["capabilities"] {
+export function guessCapabilities(
+  modelId: string,
+): AIModelDescriptor["capabilities"] {
   const id = modelId.toLowerCase();
   const capabilities: AIModelDescriptor["capabilities"] = ["text"];
   if (
