@@ -5,7 +5,19 @@ description: Mioku 机器人部署指南
 
 # 部署方式
 
-机器人本质是一个 Node 进程（`bun run start`），部署的核心问题只有一个：**怎么让它一直活着**。
+## Docker
+
+```bash
+docker run -it --name mioku \
+  -p 3339:3339 \
+  -v "$PWD/mioku:/app" -v mioku-packages:/app/node_modules \
+  mioku:latest
+```
+
+首次启动会在容器里跑创建向导，之后加 `--restart unless-stopped` 后台常驻。
+镜像目前还没发布到仓库，要先 `git clone` 仓库并本地构建一次（一条 `./docker/build.sh`，
+不需要在宿主机装 node / bun）。
+数据持久化、备份迁移、升级与全部参数见 **[Docker 部署](/guide/docker)**。
 
 ## 最简单的方式：pm2
 

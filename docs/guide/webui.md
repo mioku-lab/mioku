@@ -13,13 +13,7 @@ mioku install service webui
 
 ## 访问
 
-启动后 WebUI 默认监听：
-
-```text
-http://0.0.0.0:3339
-```
-
-本机访问直接打开：
+启动后 WebUI 默认只监听本机回环地址：
 
 ```text
 http://127.0.0.1:3339
@@ -30,7 +24,7 @@ http://127.0.0.1:3339
 首次访问会提示设置登录密钥，密钥保存在：
 
 ```text
-config/webui/auth.json
+config/service/webui/auth.json
 ```
 
 ```json
@@ -54,7 +48,7 @@ config/webui/auth.json
 WebUI 自己的设置位于：
 
 ```text
-config/webui/settings.json
+config/service/webui/settings.json
 ```
 
 ```json
