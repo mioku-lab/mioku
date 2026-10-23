@@ -193,7 +193,7 @@ export class QueueProcessor {
     const result = await this.runWithRateLimitGuard(
       () => this.runChat(this.aiInstance, toolCtx, history, targetMessage, {
         config: cfg, groupName, memberCount, botNickname, botRole, aiService: this.aiService, isGroup: true,
-        memoryContext: contexts.memoryContext, topicContext: contexts.topicContext, expressionContext: contexts.expressionContext,
+        styleSamples: contexts.styleSamples, topicContext: contexts.topicContext,
         replyContext: { type: "review", targetUser: targetMessage.userName, targetMessage: targetMessage.content },
         reviewMessages: { contents: mergedContents, userNames, messageIds },
       }, this.humanize, this.skillManager, {
@@ -276,7 +276,7 @@ export class QueueProcessor {
       const result = await this.runWithRateLimitGuard(
         () => this.runChat(this.aiInstance, toolCtx, history, targetMessage, {
           config: cfg, groupName, memberCount, botNickname, botRole: toolCtx.botRole, aiService: this.aiService, isGroup: true,
-          memoryContext: contexts.memoryContext, topicContext: contexts.topicContext, expressionContext: contexts.expressionContext,
+          styleSamples: contexts.styleSamples, topicContext: contexts.topicContext,
           replyContext: { type: "comment", targetUser: targetMessage.userName, targetMessage: targetMessage.content },
         }, this.humanize, this.skillManager, {
           manager: this.groupStructuredHistory, ttlMs: cfg.groupStructuredHistoryTtlMs, currentUserInputs: structuredUserInputs,

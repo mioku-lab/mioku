@@ -5,11 +5,7 @@ import type { SkillSessionManager } from "../manage/skill-session";
 import { filterAllowedExternalSkills } from "./external-skills";
 import { createInfoTools } from "./tools/info";
 import { createLoadSkillTool } from "./tools/load-skill";
-import {
-  createWebSearchTool,
-  createWebReadPageTool,
-  createRecallMemoryTool,
-} from "./tools/web";
+import { createWebSearchTool, createWebReadPageTool } from "./tools/web";
 
 export function createTools(
   toolCtx: ToolContext,
@@ -40,9 +36,6 @@ export function createTools(
   }
   if (activeFeatureTools.includes("web_read_page")) {
     tools.push(createWebReadPageTool(toolCtx));
-  }
-  if (activeFeatureTools.includes("recall_memory")) {
-    tools.push(createRecallMemoryTool(toolCtx));
   }
 
   return { tools };

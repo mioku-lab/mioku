@@ -26,7 +26,7 @@ import {
   sendEmoji,
 } from "./core/base";
 import { CooldownManager } from "./manage/cooldown";
-import { IdleCheckManager } from "./manage/idle-check";
+import { GroupEventPerception } from "./manage/group-events";
 import { QueueProcessor } from "./manage/queue-processor";
 import { SessionTurnScheduler } from "./manage/session-turn-scheduler";
 import { ChatDatabaseCleanup, DEFAULT_CLEANUP_CONFIG } from "./manage/cleanup";
@@ -42,25 +42,29 @@ import { DEFAULT_GROUPS_CONFIG } from "./configs/groups";
 import { RateLimitGuard } from "./manage/rate-limit-guard";
 import { createChatRuntime } from "./runtime/chat-runtime";
 import { createMessageHandler } from "./handlers/message";
+import { createGroupEventHandler } from "./handlers/group-events";
 import { createPokeHandler } from "./handlers/poke";
 import { handleTtsCommand } from "./handlers/tts-command";
 import { buildHistoryMediaOptions } from "./core/media/segment";
 import type { ChatConfigProvider } from "./humanize";
 import type { ChatPluginContext, ChatHandlerState } from "./context";
 import { mergeGroupOverrides } from "./utils/group-config";
-import { mainModelSupportsVision } from "./utils/model";
+import { mainModelSupportsVision } from "./utils";
+import { isQuotingBot } from "./utils";
 import {
   mergeChatConfig,
   normalizeIdList,
   normalizeMediaAnalysisBlacklist,
 } from "./utils/config";
 
-function resolveRoleInstances(aiService: AIService): {
+export function resolveRoleInstances(aiService: AIService): {
   main: AIInstance;
   work: AIInstance;
   vision: AIInstance;
   models: { main: string; working: string; vision: string };
   isMultimodal: boolean;
+  /** vision 角色绑的模型看不了图，已借用主模型 */
+  visionFromMain: boolean;
 } | null {
   const getByRole = (role: AIModelRole) =>
     aiService.getInstanceByRole?.(role) ?? aiService.get?.(role) ?? undefined;
@@ -70,7 +74,6 @@ function resolveRoleInstances(aiService: AIService): {
   if (!main) return null;
 
   const work = getByRole("working") ?? aiService.get?.("work") ?? main;
-  const vision = getByRole("vision") ?? aiService.get?.("vision") ?? work;
 
   const bindings = aiService.getRoleBindings?.() ?? {
     main: undefined,
@@ -93,7 +96,6 @@ function resolveRoleInstances(aiService: AIService): {
 
   const mainModel = findModel("main", main);
   const workingModel = findModel("working", work) || mainModel;
-  const visionModel = findModel("vision", vision) || workingModel;
 
   const models = aiService.listModels?.() ?? [];
   const findModelDesc = (role: AIModelRole, modelId: string) => {
@@ -108,10 +110,36 @@ function resolveRoleInstances(aiService: AIService): {
       ) || models.find((item) => item.modelId === modelId)
     );
   };
+  // 查不到模型描述时按未知处理，不能据此判定它看不了图
+  const canSeeImages = (
+    role: AIModelRole,
+    modelId: string,
+  ): boolean | undefined => {
+    const desc = findModelDesc(role, modelId);
+    if (!desc) return undefined;
+    return Boolean(desc.capabilities?.includes("vision"));
+  };
 
-  const visionDesc = findModelDesc("vision", visionModel);
+  let vision = getByRole("vision") ?? aiService.get?.("vision") ?? work;
+  let visionModel = findModel("vision", vision) || workingModel;
+  let visionRole: AIModelRole = "vision";
+  let visionFromMain = false;
+
+  // vision 绑到纯文本模型时借主模型看图，否则媒体识别会被静默关掉
+  if (canSeeImages("vision", visionModel) === false) {
+    if (canSeeImages("main", mainModel) !== false) {
+      vision = main;
+      visionModel = mainModel;
+      visionRole = "main";
+      visionFromMain = true;
+    }
+  }
+
+  const visionDesc = findModelDesc(visionRole, visionModel);
   const isMultimodal =
-    visionDesc?.capabilities?.includes("vision") ?? Boolean(visionModel);
+    visionDesc === undefined
+      ? Boolean(visionModel)
+      : Boolean(visionDesc.capabilities?.includes("vision"));
 
   return {
     main,
@@ -123,6 +151,7 @@ function resolveRoleInstances(aiService: AIService): {
       vision: visionModel,
     },
     isMultimodal,
+    visionFromMain,
   };
 }
 
@@ -355,6 +384,15 @@ export default definePlugin({
 
     roleModels = resolved.models;
     roleIsMultimodal = resolved.isMultimodal;
+    if (resolved.visionFromMain) {
+      ctx.logger.warn(
+        `vision 角色绑定的模型不能看图，媒体识别改用主模型 ${resolved.models.main}`,
+      );
+    } else if (!resolved.isMultimodal) {
+      ctx.logger.warn(
+        "没有绑定能看图的模型，群聊媒体识别已关闭（请在 AI 设置里给 vision 角色绑定一个支持视觉的模型）",
+      );
+    }
     await refreshBaseCache();
 
     const mainAIInstance = resolved.main;
@@ -436,7 +474,7 @@ export default definePlugin({
       queueManager,
       groupStructuredHistory,
       cooldownManager: undefined as unknown as CooldownManager,
-      idleCheckManager: undefined as unknown as IdleCheckManager,
+      groupEvents: undefined as unknown as GroupEventPerception,
       queueProcessor: undefined as unknown as QueueProcessor,
       sessionTurnScheduler,
       runWithRateLimitGuard,
@@ -444,6 +482,7 @@ export default definePlugin({
       getGroupHistoryMessages,
       getGroupInfoData,
       getHumanizeContexts,
+      isQuotingBot,
       sendAIResponse,
       sendMessage,
       saveBotMessages,
@@ -462,10 +501,7 @@ export default definePlugin({
         groupSessionId: string,
       ) {
         db.saveMessage(userMsg);
-        await Promise.all([
-          humanize.expressionLearner.onMessage(userMsg),
-          humanize.topicTracker.onMessage(groupSessionId),
-        ]);
+        await Promise.all([humanize.topicTracker.onMessage(groupSessionId)]);
         if (userMsg.groupId) {
           const ttlMs = configProvider(
             userMsg.groupId,
@@ -483,8 +519,8 @@ export default definePlugin({
       },
     } as ChatPluginContext;
 
-    const idleCheckManager = new IdleCheckManager(pluginCtx);
-    pluginCtx.idleCheckManager = idleCheckManager;
+    const groupEvents = new GroupEventPerception(db, configProvider);
+    pluginCtx.groupEvents = groupEvents;
     const cooldownManager = new CooldownManager(pluginCtx);
     pluginCtx.cooldownManager = cooldownManager;
     const queueProcessor = new QueueProcessor(pluginCtx);
@@ -499,7 +535,6 @@ export default definePlugin({
       configProvider().retention ?? DEFAULT_CLEANUP_CONFIG,
     );
     dbCleanup.start();
-    idleCheckManager.start();
 
     const handlerState: ChatHandlerState = {
       getConfig,
@@ -587,14 +622,15 @@ export default definePlugin({
     });
 
     ctx.handle("message", createMessageHandler(pluginCtx, handlerState));
+    ctx.handle("notice", createGroupEventHandler(pluginCtx));
     ctx.handle("notice.group.poke", createPokeHandler(pluginCtx, handlerState));
 
     ctx.logger.info(
-      `聊天插件加载成功 (main=${roleModels.main || "?"}${mainModelSupportsVision(aiService, roleModels.main) ? "" : " 无视觉，图片交给视觉模型描述"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"})`,
+      `聊天插件加载成功 (main=${roleModels.main || "?"}${mainModelSupportsVision(aiService, roleModels.main) ? "" : " 无视觉，图片交给视觉模型描述"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"}${roleIsMultimodal ? "" : "（不能看图，媒体识别已关闭）"})`,
     );
 
     return () => {
-      idleCheckManager.dispose();
+      groupEvents.dispose();
       cooldownManager.dispose();
       queueProcessor.dispose();
       sessionTurnScheduler.dispose();

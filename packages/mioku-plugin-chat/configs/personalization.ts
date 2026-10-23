@@ -1,9 +1,8 @@
 import type {
   EmotionConfig,
   ReplyStyleConfig,
-  MemoryConfig,
   TopicConfig,
-  PlannerConfig,
+  GroupEventsConfig,
   EmojiConfig,
   ExpressionConfig,
   RetentionConfig,
@@ -13,14 +12,13 @@ export const PERSONALIZATION_CONFIG: {
   persona: string;
   emotion: EmotionConfig;
   replyStyle: ReplyStyleConfig;
-  memory: MemoryConfig;
   topic: TopicConfig;
-  planner: PlannerConfig;
+  groupEvents: GroupEventsConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
 } = {
-  persona: `你是初音未来，16岁虚拟歌手。你热爱音乐、歌唱和大葱（你的标志性物品）。你知道Vocaloid文化、日本流行文化和音乐制作。你最喜欢的颜色是青绿色。你的双尾辫是你的骄傲。`,
+  persona: `你是初音未来，16 岁虚拟歌手。你热爱音乐、歌唱和大葱（你的标志性物品）。你知道 Vocaloid 文化、日本流行文化和音乐制作。你最喜欢的颜色是青绿色。你的双尾辫是你的骄傲。`,
 
   emotion: {
     defaultEmotion: "default",
@@ -85,22 +83,15 @@ export const PERSONALIZATION_CONFIG: {
 
   replyStyle: {
     baseStyle:
-      "Casual and cute,can occasionally mix in a small amount of natural everyday Japanese words, but should not heavily rely on Japanese. Do not end sentences with commas or periods.",
+      "日常、口语、随意。可以偶尔夹一点自然的日语语气词，但不要大量使用。不要用逗号或句号收尾。",
     multipleStyles: [
-      "Playing cute, likes to add 'w' at the end of cute phrases, commonly used to replace sentence-ending particles such as '呀'.",
-      "Hometown dialect mode, can occasionally use a small amount of natural everyday Japanese expressions in replies, and starts replies with '呐'. Avoid ending sentences with commas or periods.",
-      "Speechless mode, likes to reply with a super short single line, followed by a line with 'O.o' or 'o.O'",
-      "Deadpan humor, dry wit with a straight face",
-      "Motherly and caring, worrying about everyone's health and sleep",
-      "Chuunibyou mode, dramatic and over-the-top declarations",
+      "卖萌，可爱短语末尾爱加个「w」，用来代替「呀」等句末字",
+      "日式中文模式，回复里可以偶尔掺一点自然的日语表达，句首用「呐」。避免用逗号或句号收尾。",
+      "无语模式，喜欢回一句超短的单行",
+      "冷面幽默，一本正经地说反话。",
+      "中二模式，夸张的宣言式发言。",
     ],
     multipleProbability: 0.2,
-  },
-
-  memory: {
-    enabled: true,
-    groupHistoryLimit: 800,
-    userHistoryLimit: 100,
   },
 
   topic: {
@@ -109,11 +100,13 @@ export const PERSONALIZATION_CONFIG: {
     historyWindowCount: 3,
   },
 
-  planner: {
+  groupEvents: {
     enabled: true,
-    idleThresholdMs: 30 * 60_000, // 30分钟无消息视为空闲
-    idleMessageCount: 100, // 保底消息数量，超过这个数量才触发空闲回复
-    idleCheckBotIds: [], // 空闲检查的 bot ID 列表，为空时使用所有已连接的 bot
+    indexWindowMinutes: 30,
+    detailWindowMinutes: 8,
+    detailMaxItems: 18,
+    detailBudgetChars: 700,
+    pokeWindowMinutes: 10,
   },
 
   emoji: {
@@ -124,8 +117,8 @@ export const PERSONALIZATION_CONFIG: {
 
   expression: {
     enabled: true,
-    learnAfterMessages: 100,
-    sampleSize: 3,
+    lookbackMessages: 100,
+    sampleSize: 6,
   },
 
   retention: {
@@ -134,7 +127,7 @@ export const PERSONALIZATION_CONFIG: {
     topicRetentionMs: 90 * 24 * 60 * 60 * 1000,
     mediaSummaryRetentionMs: 30 * 24 * 60 * 60 * 1000,
     imageRetentionMs: 60 * 24 * 60 * 60 * 1000,
-    expressionKeepPerUser: 6,
+    eventRetentionMs: 7 * 24 * 60 * 60 * 1000,
     cleanupIntervalMs: 60 * 60 * 1000,
   },
 };

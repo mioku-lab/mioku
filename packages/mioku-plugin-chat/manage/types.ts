@@ -133,12 +133,13 @@ export type PromptCtxForRunChat = {
   triggerSkillRole?: SkillPermissionRole;
   aiService: AIService;
   isGroup: boolean;
-  memoryContext?: string;
   topicContext?: string;
-  expressionContext?: string;
+  styleSamples?: string;
+  eventIndexContext?: string;
+  eventDetailContext?: string;
+  pokeContext?: string;
   activeSkillsInfo?: string;
   currentEmotion?: string;
-  plannerThoughts?: string;
   replyContext?: {
     type: "reply" | "comment" | "idle" | "review" | "poked";
     targetUser?: string;

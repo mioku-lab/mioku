@@ -736,9 +736,8 @@ export async function getGroupInfoData(
 }
 
 export interface HumanizeContextsResult {
-  memoryContext: string | undefined;
   topicContext: string | undefined;
-  expressionContext: string | undefined;
+  styleSamples: string | undefined;
 }
 
 export async function getHumanizeContexts(
@@ -754,20 +753,16 @@ export async function getHumanizeContexts(
     groupSessionId,
     historyStartAt,
   );
-  const expressionContext = triggerUserId
-    ? humanize.expressionLearner.getExpressionContextForUser(
-        triggerUserId,
-        userName,
-      )
+  const styleSamples = triggerUserId
+    ? humanize.expressionSampler.buildStyleSamples(triggerUserId, userName)
     : "";
 
   const result = {
-    memoryContext: undefined,
     topicContext: topicContext || undefined,
-    expressionContext: expressionContext || undefined,
+    styleSamples: styleSamples || undefined,
   };
   logger.info(
-    `[getHumanizeContexts] session=${groupSessionId} user=${userName} triggerUserId=${triggerUserId} memoryContext=undefined topicContext="${topicContext?.slice(0, 100) ?? ""}" expressionContext="${expressionContext?.slice(0, 100) ?? ""}"`,
+    `[getHumanizeContexts] session=${groupSessionId} user=${userName} triggerUserId=${triggerUserId} topicContext="${topicContext?.slice(0, 100) ?? ""}" styleSamples=${styleSamples.length} 字`,
   );
   return result;
 }

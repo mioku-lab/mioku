@@ -151,13 +151,12 @@ export class SkillSessionManager {
   }
 
   getActiveFeatureTools(sessionId: string): FeatureName[] {
-    // Only return features that have tools (web_search, web_read_page, recall_memory)
+    // 只返回带工具的 feature（web_search、web_read_page）
     const all = this.getActiveFeatureNames(sessionId);
     return all.filter((name) => {
       switch (name) {
         case "web_search":
         case "web_read_page":
-        case "recall_memory":
           return true;
         default:
           return false;

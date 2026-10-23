@@ -1,7 +1,12 @@
 import type { MiokuContext } from "mioku";
 import type { AITool, Bot, ChatRuntimePromptInjection } from "mioku";
 import type { ChatPluginContext, ChatRuntimeState } from "../context";
-import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
+import type {
+  ChatConfig,
+  ChatMessage,
+  TargetMessage,
+  QuoteInfo,
+} from "../types";
 import {
   getGroupHistory,
   getBotRole,
@@ -59,10 +64,7 @@ async function describeQuotedImage(
   userId: string,
   groupId: string | undefined,
 ): Promise<string | undefined> {
-  if (
-    !imageUrl ||
-    mainModelSupportsVision(pluginCtx.aiService, cfg.model)
-  ) {
+  if (!imageUrl || mainModelSupportsVision(pluginCtx.aiService, cfg.model)) {
     return undefined;
   }
   const visionAI =
@@ -169,9 +171,7 @@ function resolveRuntimeContext(
     groupId: optionGroupId,
     userId,
     selfId,
-    sessionId: optionGroupId
-      ? `group:${optionGroupId}`
-      : `personal:${userId}`,
+    sessionId: optionGroupId ? `group:${optionGroupId}` : `personal:${userId}`,
     personalSessionId:
       optionGroupId && userId ? `personal:${userId}` : undefined,
     senderName: optionGroupId ? "system" : String(userId),
@@ -245,13 +245,6 @@ export async function finalizeChatTurn(
       actingBot,
       sentMessageIds,
     );
-    if (args.isLive) {
-      pluginCtx.idleCheckManager.recordBotMessages(
-        groupSessionId,
-        result.messages.length,
-        selfId,
-      );
-    }
     pluginCtx.cooldownManager.startCooldownTimer(
       groupSessionId,
       groupId,
@@ -402,17 +395,28 @@ export async function processChat(
 
     const quotedImageNote = await quotedImageNotePromise;
     let messageContent = ctx.text(e) || "";
+    const quoteInfo: QuoteInfo | undefined = quotedInfo
+      ? {
+          messageId: String(quotedInfo.messageId ?? ""),
+          senderName: quotedInfo.senderName || undefined,
+          senderId: quotedInfo.senderId || undefined,
+          content: quotedInfo.content || undefined,
+          fromBot: Boolean(quotedInfo.fromBot),
+        }
+      : undefined;
     if (quotedInfo) {
       const quotedText =
-        quotedInfo.content || (quotedInfo.imageUrl ? "[image]" : "");
+        quotedInfo.content || (quotedInfo.imageUrl ? "[图片]" : "");
       const parts = [
-        `[Quoted message #${quotedInfo.messageId} from ${quotedInfo.senderName}: ${quotedText}]`,
+        `[引用了 ${quotedInfo.senderName || quotedInfo.senderId || "某人"} 的消息${
+          quotedInfo.messageId ? ` #${quotedInfo.messageId}` : ""
+        }：${quotedText}]`,
       ];
       if (quotedInfo.imageUrl) {
         parts.push(
           quotedImageNote
-            ? `[Quoted message image: ${quotedImageNote}]`
-            : "[Quoted message contains an image]",
+            ? `[引用消息里的图片：${quotedImageNote}]`
+            : "[引用消息里有一张图片]",
         );
       }
       messageContent = `${parts.join(" ")} ${messageContent}`;
@@ -426,7 +430,18 @@ export async function processChat(
       content: messageContent,
       messageId: e.message_id,
       timestamp: Date.now(),
+      quote: quoteInfo,
     };
+
+    const eventContexts = pluginCtx.groupEvents.buildContexts({
+      groupId: groupId ?? "",
+      messageText: ctx.text(e) || "",
+      directedAtBot: true,
+      fromOwner:
+        String(e.sender?.role ?? "") === "owner" ||
+        String(e.sender?.role ?? "") === "admin",
+      selfId: String(selfId ?? ""),
+    });
 
     if (groupId) {
       pluginCtx.queueManager.setActiveTarget(groupSessionId, targetMessage);
@@ -464,9 +479,11 @@ export async function processChat(
             botRole,
             aiService: pluginCtx.aiService,
             isGroup,
-            memoryContext: contexts.memoryContext,
+            styleSamples: contexts.styleSamples,
+            eventIndexContext: eventContexts.indexContext,
+            eventDetailContext: eventContexts.detailContext,
+            pokeContext: eventContexts.pokeContext,
             topicContext: contexts.topicContext,
-            expressionContext: contexts.expressionContext,
             replyContext: {
               type: "reply",
               targetUser: targetMessage.userName,
@@ -665,9 +682,16 @@ async function executeChatRuntimeRequestNow(
       botRole,
       aiService: pluginCtx.aiService,
       isGroup,
-      memoryContext: contexts.memoryContext,
+      styleSamples: contexts.styleSamples,
+      eventIndexContext: groupId
+        ? pluginCtx.groupEvents.buildContexts({
+            groupId,
+            messageText: targetContent,
+            directedAtBot: false,
+            selfId: String(selfId ?? ""),
+          }).indexContext
+        : undefined,
       topicContext: contexts.topicContext,
-      expressionContext: contexts.expressionContext,
       replyContext: {
         type: options.replyContextType || "reply",
         targetUser: targetMessage.userName,

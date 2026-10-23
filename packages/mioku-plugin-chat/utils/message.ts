@@ -19,6 +19,18 @@ import { calculateImageHash } from "../core/media/image-analyzer";
 
 const HISTORY_MEDIA_CONCURRENCY = 8;
 
+/** 命中的昵称；是否真在叫它由工作模型判断 */
+function hasNicknameHit(text: string, nicknames: string[]): string | undefined {
+  const raw = String(text || "").toLowerCase();
+  if (!raw) return undefined;
+
+  for (const nickname of nicknames) {
+    const needle = String(nickname || "").trim();
+    if (needle && raw.includes(needle.toLowerCase())) return needle;
+  }
+  return undefined;
+}
+
 export function shouldTrigger(
   e: any,
   text: string,
@@ -29,6 +41,23 @@ export function shouldTrigger(
 
   return ctx.mentionedBots(e).length > 0;
 }
+
+export function detectTriggerSource(
+  e: any,
+  text: string,
+  cfg: ChatConfig,
+  ctx: MiokuContext,
+): {
+  atBot: boolean;
+  nicknameHit?: string;
+} {
+  if (e?.message_type === "private") return { atBot: false };
+  const atBot = ctx.mentionedBots(e).length > 0;
+  const nicknameHit = hasNicknameHit(text, cfg.nicknames || []);
+  return { atBot, nicknameHit };
+}
+
+export { hasNicknameHit };
 
 /**
  * Check if the message quotes a bot message.
@@ -74,6 +103,8 @@ export async function getQuotedContent(
   | {
       messageId: string;
       senderName: string;
+      senderId: string;
+      fromBot: boolean;
       content: string;
       imageUrl?: string;
     }
@@ -85,6 +116,11 @@ export async function getQuotedContent(
       const quotedMsg = await fetchQuotedMessage(e, ctx);
       if (quotedMsg && quotedMsg.message) {
         const senderName = quotedMsg.sender?.nickname || "";
+        const senderId = String(quotedMsg.sender?.user_id ?? "");
+        // 被引用的消息是不是我们自己发的
+        const fromBot =
+          senderId !== "" &&
+          ctx.bots.some((bot) => String(bot.bot_id) === senderId);
         // 提取文本内容
         const textContent = quotedMsg.message
           .filter((s: any) => s.type === "text")
@@ -101,6 +137,8 @@ export async function getQuotedContent(
         return {
           messageId: String(e.quote_id),
           senderName,
+          senderId,
+          fromBot,
           content: textContent,
           imageUrl,
         };
@@ -208,6 +246,7 @@ interface FormattedHistoryMessage {
   userId: string;
   userName: string;
   userRole: string;
+  userTitle?: string;
   content: string;
   messageId: string;
   timestamp: number;
@@ -224,9 +263,10 @@ interface HistoryFormatContext {
     | undefined;
   historyMediaOptions: HistoryMediaProcessingOptions;
   botUin: string;
-  /** 本运行时全部已连接 bot 的 id：这些账号的消息一律不作为用户历史（防 bot 互触循环） */
   botIds: Set<string>;
   memberNameCache: Map<string, string>;
+  memberRoleCache: Map<string, { role: string; title?: string }>;
+  memberRolePending: Map<string, Promise<{ role: string; title?: string }>>;
   hashLookupCache: Map<string, string | null>;
 }
 
@@ -251,6 +291,48 @@ async function resolveMemberName(
     return name;
   } catch {
     return key;
+  }
+}
+
+async function resolveMemberRole(
+  userId: string | number,
+  ctx: HistoryFormatContext,
+): Promise<{ role: string; title?: string }> {
+  const key = String(userId);
+  const cached = ctx.memberRoleCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const pending = ctx.memberRolePending.get(key);
+  if (pending) return pending;
+
+  const lookup = (async () => {
+    const fallback = { role: "member", title: undefined };
+    try {
+      const bot = ctx.historyMediaOptions.bot as Bot | undefined;
+      if (!bot) return fallback;
+      const info = await bot.getMemberInfo(
+        ctx.historyMediaOptions.groupId!,
+        userId,
+      );
+      return {
+        role: String(info?.role ?? "member") || "member",
+        title:
+          typeof info?.title === "string" && info.title.trim()
+            ? info.title.trim()
+            : undefined,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
+
+  ctx.memberRolePending.set(key, lookup);
+  try {
+    const resolved = await lookup;
+    ctx.memberRoleCache.set(key, resolved);
+    return resolved;
+  } finally {
+    ctx.memberRolePending.delete(key);
   }
 }
 
@@ -312,7 +394,8 @@ function extractReplyRef(
 
   let name: string | undefined;
   if (sourceUserId != null) {
-    name = ctx.memberNameCache.get(String(sourceUserId)) || String(sourceUserId);
+    name =
+      ctx.memberNameCache.get(String(sourceUserId)) || String(sourceUserId);
   }
   if (!name) name = sourceNickname || undefined;
 
@@ -327,7 +410,9 @@ function renderReplyRef(ref: ReplyRef): string {
   const head = `↪ reply to #${ref.id || "?"}`;
   if (!ref.name && !ref.text) return head;
   if (!ref.text) return `${head} ${ref.name}`;
-  return ref.name ? `${head} ${ref.name}: "${ref.text}"` : `${head}: "${ref.text}"`;
+  return ref.name
+    ? `${head} ${ref.name}: "${ref.text}"`
+    : `${head}: "${ref.text}"`;
 }
 
 function summarizeQuotedContent(content: string): string {
@@ -372,9 +457,10 @@ async function getImageTagWithHashCache(
 async function formatHistoryMessage(
   msg: HistoryMessage,
   ctx: HistoryFormatContext,
-): Promise<{ formatted: FormattedHistoryMessage; reply: ReplyRef | null } | null> {
-  // 自己或本运行时其它 bot 的消息不作为用户历史，
-  // 否则多 bot 同群时会把彼此的消息当作用户接话，形成循环触发
+): Promise<{
+  formatted: FormattedHistoryMessage;
+  reply: ReplyRef | null;
+} | null> {
   if (String(msg.user_id) === String(ctx.botUin)) return null;
   if (ctx.botIds.has(String(msg.user_id))) return null;
 
@@ -390,11 +476,14 @@ async function formatHistoryMessage(
 
   if (!content.trim() && !reply) return null;
 
+  const resolved = await resolveMemberRole(msg.user_id ?? "", ctx);
+
   return {
     formatted: {
       userId: String(msg.user_id ?? "").trim(),
       userName: msg.nickname || String(msg.user_id ?? "unknown"),
-      userRole: "member",
+      userRole: resolved.role,
+      userTitle: resolved.title,
       content,
       messageId:
         msg.message_id != null && msg.message_id !== ""
@@ -557,6 +646,7 @@ export async function getGroupHistory(
     userId: string;
     userName: string;
     userRole: string;
+    userTitle?: string;
     content: string;
     messageId: string;
     timestamp: number;
@@ -568,6 +658,7 @@ export async function getGroupHistory(
     userId: string;
     userName: string;
     userRole: string;
+    userTitle?: string;
     content: string;
     messageId: string;
     timestamp: number;
@@ -581,24 +672,11 @@ export async function getGroupHistory(
         userId: String(msg.userId ?? ""),
         userName: msg.userName || "Miku",
         userRole: msg.userRole || "member",
+        userTitle: msg.userTitle,
         content: msg.content,
         messageId: msg.messageId ?? "",
         timestamp: msg.timestamp,
         role: "assistant",
-      });
-    }
-
-    const storedNoticeMessages =
-      db.getStoredGroupNoticeMessages?.(groupId, Math.min(count, 20)) || [];
-    for (const msg of storedNoticeMessages) {
-      botMessages.push({
-        userId: String(msg.userId ?? ""),
-        userName: msg.userName || String(msg.userId ?? "unknown"),
-        userRole: msg.userRole || "member",
-        content: msg.content,
-        messageId: msg.messageId ?? "",
-        timestamp: msg.timestamp,
-        role: "user",
       });
     }
   }
@@ -633,6 +711,11 @@ export async function getGroupHistory(
     const botIds = new Set<string>(ctx.bots.map((b) => String(b.bot_id)));
     botIds.add(String(botUin));
     const memberNameCache = new Map<string, string>();
+    const memberRoleCache = new Map<string, { role: string; title?: string }>();
+    const memberRolePending = new Map<
+      string,
+      Promise<{ role: string; title?: string }>
+    >();
     const hashLookupCache = new Map<string, string | null>();
 
     for (const m of messages) {
@@ -649,6 +732,8 @@ export async function getGroupHistory(
       botUin,
       botIds,
       memberNameCache,
+      memberRoleCache,
+      memberRolePending,
       hashLookupCache,
     };
 
@@ -687,7 +772,9 @@ export async function getGroupHistory(
         name: reply.name ?? quoted?.userName,
         text:
           reply.text ??
-          (quoted ? summarizeQuotedContent(quoted.content) || undefined : undefined),
+          (quoted
+            ? summarizeQuotedContent(quoted.content) || undefined
+            : undefined),
       });
       return {
         ...message,

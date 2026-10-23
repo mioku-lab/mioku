@@ -1,45 +1,42 @@
 export { EmojiAgent } from "./emoji-agent";
 export { EmotionAgent } from "./emotion-agent";
-export { MemoryRetrieval } from "./memory";
 export { TopicTracker } from "./topic";
-export { ActionPlanner } from "./planner";
-export { ExpressionLearner } from "./expression";
+export { ExpressionSampler } from "./style-samples";
 export { pickReplyStyle } from "./utils";
 
-import type { AIInstance } from "mioku";
 import type { ChatDatabase } from "../db";
-import type { ChatConfig } from "../types";
-import { EmotionAgent } from "./emotion-agent";
 import { EmojiAgent } from "./emoji-agent";
-import { MemoryRetrieval } from "./memory";
+import { EmotionAgent } from "./emotion-agent";
 import { TopicTracker } from "./topic";
-import { ActionPlanner } from "./planner";
-import { ExpressionLearner } from "./expression";
+import { ExpressionSampler } from "./style-samples";
 
-export type ChatConfigProvider = (groupId?: string) => ChatConfig;
+export type ChatConfigProvider = (
+  groupId?: string,
+) => import("../types").ChatConfig;
 
+/**
+ * 拟人引擎
+ * TODO(错别字模拟)
+ * TODO(自我纠正)
+ */
 export class HumanizeEngine {
-  readonly memoryRetrieval: MemoryRetrieval;
   readonly topicTracker: TopicTracker;
-  readonly actionPlanner: ActionPlanner;
   readonly emotionAgent: EmotionAgent;
   readonly emojiAgent: EmojiAgent;
-  readonly expressionLearner: ExpressionLearner;
+  readonly expressionSampler: ExpressionSampler;
 
   constructor(
-    workAI: AIInstance,
+    workAI: import("mioku").AIInstance,
     db: ChatDatabase,
     configProvider: ChatConfigProvider,
   ) {
-    this.memoryRetrieval = new MemoryRetrieval(workAI, configProvider, db);
     this.topicTracker = new TopicTracker(workAI, configProvider, db);
-    this.actionPlanner = new ActionPlanner(workAI, configProvider);
     this.emotionAgent = new EmotionAgent(workAI, configProvider);
     this.emojiAgent = new EmojiAgent(workAI, configProvider);
-    this.expressionLearner = new ExpressionLearner(workAI, configProvider, db);
+    this.expressionSampler = new ExpressionSampler(db, configProvider);
   }
 
   async init(): Promise<void> {
-    // emojiAgent 不需要初始化，它直接从文件系统读取
+    // emojiAgent 直接从文件系统读取，不需要初始化
   }
 }

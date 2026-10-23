@@ -24,15 +24,18 @@ export interface ReplyStyleConfig {
   multipleProbability: number;
 }
 
-/**
- * 记忆检索配置
- */
-export interface MemoryConfig {
+export interface GroupEventsConfig {
   enabled: boolean;
-  // 回忆时拉取的群聊历史条数（通过 message_id 分页）
-  groupHistoryLimit: number;
-  // 回忆时每个用户历史的默认条数
-  userHistoryLimit: number;
+  // 常驻薄索引的统计窗口（分钟）
+  indexWindowMinutes: number;
+  // 展开明细的触发窗口（分钟）
+  detailWindowMinutes: number;
+  // 明细最多保留多少条
+  detailMaxItems: number;
+  // 明细正文的字符预算
+  detailBudgetChars: number;
+  // 拍一拍事实的告知窗口（分钟）
+  pokeWindowMinutes: number;
 }
 
 /**
@@ -47,19 +50,6 @@ export interface TopicConfig {
 }
 
 /**
- * 动作规划器配置
- */
-export interface PlannerConfig {
-  enabled: boolean;
-  // 群聊空闲时间阈值（毫秒）
-  idleThresholdMs: number;
-  // 群聊记录保底消息数量
-  idleMessageCount: number;
-  // 空闲检查的 bot ID 列表
-  idleCheckBotIds: string[];
-}
-
-/**
  * 表情包系统配置
  */
 export interface EmojiConfig {
@@ -69,13 +59,17 @@ export interface EmojiConfig {
 }
 
 /**
- * 表达学习配置
+ * 表达习惯配置
+ *
+ * 不再用工作模型总结、也不落库：主对话被触发时直接拉目标用户最近的发言，
+ * 从中抽若干条当风格样本注入。sampleSize 同时是拉取条数的上限依据。
+ * 详见 humanize/style-samples.ts。
  */
 export interface ExpressionConfig {
   enabled: boolean;
-  // 单个用户累积多少条消息后触发表达学习
-  learnAfterMessages: number;
-  // 单个用户最多保留/注入的表达习惯条数
+  // 从该用户最近多少条发言里挑样本
+  lookbackMessages: number;
+  // 最多挑几条当样本注入
   sampleSize: number;
 }
 
@@ -92,8 +86,8 @@ export interface RetentionConfig {
   mediaSummaryRetentionMs: number;
   // 图片描述记录保留时长
   imageRetentionMs: number;
-  // 单个用户表达学习结果保留的最大条数
-  expressionKeepPerUser: number;
+  // 群事件保留时长
+  eventRetentionMs: number;
   // 清理任务执行间隔
   cleanupIntervalMs: number;
 }
@@ -206,9 +200,8 @@ export interface ChatConfig {
   dynamicDelay: DynamicDelayConfig;
   emotion: EmotionConfig;
   replyStyle: ReplyStyleConfig;
-  memory: MemoryConfig;
   topic: TopicConfig;
-  planner: PlannerConfig;
+  groupEvents: GroupEventsConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
@@ -222,9 +215,8 @@ export interface ChatGroupOverrides {
   emoji?: { enabled?: boolean };
   expression?: { enabled?: boolean };
   retention?: { enabled?: boolean };
-  memory?: { enabled?: boolean };
   topic?: { enabled?: boolean };
-  planner?: { enabled?: boolean };
+  groupEvents?: { enabled?: boolean };
   audio?: { enabled?: boolean };
   searxng?: { enabled?: boolean };
   webReader?: { enabled?: boolean };
@@ -284,6 +276,15 @@ export interface TargetMessage {
   content: string;
   messageId?: string;
   timestamp: number;
+  quote?: QuoteInfo;
+}
+
+export interface QuoteInfo {
+  messageId: string;
+  senderName?: string;
+  senderId?: string;
+  content?: string;
+  fromBot: boolean;
 }
 
 /**
@@ -359,17 +360,36 @@ export interface TopicRecord {
 }
 
 /**
- * 表达习惯记录
+ * 群事件记录（撤回 / 进退群 / 拍一拍）
  */
-export interface ExpressionRecord {
+export type GroupEventKind =
+  | "recall"
+  | "member_increase"
+  | "member_decrease"
+  | "poke";
+
+export interface GroupEventRecord {
   id?: number;
-  sessionId: string;
-  userId: string;
-  userName: string;
-  situation: string; // 使用场景
-  style: string; // 表达风格
-  example: string; // 原始示例
-  createdAt: number;
+  groupId: string;
+  kind: GroupEventKind;
+  /** 事件主体 */
+  userId?: string;
+  userName?: string;
+  /** 事件客体 */
+  targetId?: string;
+  targetName?: string;
+  /** 事件正文 */
+  content?: string;
+  /** 平台事件 id，用于防抖去重 */
+  eventKey?: string;
+  timestamp: number;
+}
+
+/** 注入用的事件感知结果，由 manage/group-events.ts 渲染 */
+export interface GroupEventContexts {
+  indexContext?: string;
+  detailContext?: string;
+  pokeContext?: string;
 }
 
 /**
@@ -393,15 +413,4 @@ export interface MediaSummaryRecord {
   source: string;
   summary: string;
   createdAt: number;
-}
-
-/**
- * 动作规划结果
- */
-export type PlannerAction = "reply" | "wait" | "complete";
-
-export interface PlannerResult {
-  action: PlannerAction;
-  reason: string;
-  waitMs?: number; // action=wait 时的等待时间
 }

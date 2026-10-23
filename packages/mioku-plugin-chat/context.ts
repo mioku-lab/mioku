@@ -9,7 +9,7 @@ import type { RateLimiter } from "./manage/rate-limiter";
 import type { MessageQueueManager } from "./utils/queue";
 import type { GroupStructuredHistoryManager } from "./manage/group-structured-history";
 import type { CooldownManager } from "./manage/cooldown";
-import type { IdleCheckManager } from "./manage/idle-check";
+import type { GroupEventPerception } from "./manage/group-events";
 import type { QueueProcessor } from "./manage/queue-processor";
 import type { SessionTurnScheduler } from "./manage/session-turn-scheduler";
 import type {
@@ -53,7 +53,7 @@ export interface ChatPluginContext {
   queueManager: MessageQueueManager;
   groupStructuredHistory: GroupStructuredHistoryManager;
   cooldownManager: CooldownManager;
-  idleCheckManager: IdleCheckManager;
+  groupEvents: GroupEventPerception;
   queueProcessor: QueueProcessor;
   sessionTurnScheduler: SessionTurnScheduler;
 
@@ -66,6 +66,10 @@ export interface ChatPluginContext {
   getGroupHistoryMessages: GetGroupHistoryMessages;
   getGroupInfoData: GetGroupInfoData;
   getHumanizeContexts: GetHumanizeContexts;
+  isQuotingBot: (
+    event: any,
+    ctx: MiokuContext,
+  ) => Promise<{ quoted: true; messageId: string; content: string } | null>;
   sendAIResponse: SendAIResponse;
   sendMessage: SendMessage;
   saveBotMessages: SaveBotMessages;
@@ -100,9 +104,7 @@ export interface ChatHandlerState {
 }
 
 export interface ChatRuntime {
-  generateNotice(
-    options: ChatRuntimeNoticeOptions,
-  ): Promise<ChatRuntimeResult>;
+  generateNotice(options: ChatRuntimeNoticeOptions): Promise<ChatRuntimeResult>;
   requestInformation(
     options: ChatRuntimeInformationRequestOptions,
   ): Promise<ChatRuntimeResult>;

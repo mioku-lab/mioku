@@ -4,8 +4,7 @@ export type FeatureName =
   | "markdown"
   | "audio"
   | "web_search"
-  | "web_read_page"
-  | "recall_memory";
+  | "web_read_page";
 
 export interface FeatureMeta {
   name: FeatureName;
@@ -22,7 +21,6 @@ export const FEATURE_METAS: FeatureMeta[] = [
   { name: "audio", configKey: "audio.enabled", hasTools: false },
   { name: "web_search", configKey: "searxng.enabled", hasTools: true },
   { name: "web_read_page", configKey: "webReader.enabled", hasTools: true },
-  { name: "recall_memory", configKey: "memory.enabled", hasTools: true },
 ];
 
 export function isFeatureEnabled(

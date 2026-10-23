@@ -61,7 +61,7 @@ export function createPokeHandler(
             userName: senderName,
             userId,
             userRole: "member",
-            content: `[${senderName} poked you]`,
+            content: `[${senderName} 戳了你一下]`,
             timestamp: Date.now(),
           };
 
@@ -96,6 +96,13 @@ export function createPokeHandler(
             audioService: pluginCtx.audioService,
           });
 
+          const pokeContexts = pluginCtx.groupEvents.buildContexts({
+            groupId,
+            messageText: "",
+            directedAtBot: true,
+            selfId,
+          });
+
           const result = await pluginCtx.runWithRateLimitGuard(
             () =>
               pluginCtx.runChat(
@@ -111,6 +118,9 @@ export function createPokeHandler(
                   botRole,
                   aiService: pluginCtx.aiService,
                   isGroup: true,
+                  eventIndexContext: pokeContexts.indexContext,
+                  pokeContext: pokeContexts.pokeContext,
+                  eventDetailContext: pokeContexts.detailContext,
                   replyContext: {
                     type: "poked",
                     targetUser: targetMessage.userName,

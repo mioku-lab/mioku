@@ -6,7 +6,8 @@ import type {
   SessionMeta,
   ChatMessage,
   TopicRecord,
-  ExpressionRecord,
+  GroupEventKind,
+  GroupEventRecord,
   ImageRecord,
   MediaSummaryRecord,
 } from "./types";
@@ -43,16 +44,18 @@ function toTopicRecord(row: any): TopicRecord {
   };
 }
 
-function toExpressionRecord(row: any): ExpressionRecord {
+function toGroupEventRecord(row: any): GroupEventRecord {
   return {
     id: row.id,
-    sessionId: row.session_id,
-    userId: row.user_id,
-    userName: row.user_name,
-    situation: row.situation,
-    style: row.style,
-    example: row.example,
-    createdAt: row.created_at,
+    groupId: String(row.group_id ?? ""),
+    kind: row.kind,
+    userId: row.user_id == null ? undefined : String(row.user_id),
+    userName: row.user_name ?? undefined,
+    targetId: row.target_id == null ? undefined : String(row.target_id),
+    targetName: row.target_name ?? undefined,
+    content: row.content ?? undefined,
+    eventKey: row.event_key ?? undefined,
+    timestamp: row.timestamp,
   };
 }
 
@@ -70,7 +73,8 @@ export interface ChatDatabase {
   ): ChatMessage[];
   // 获取 bot 发送的消息
   getBotMessages(groupId: string, limit?: number): ChatMessage[];
-  getStoredGroupNoticeMessages(groupId: string, limit?: number): ChatMessage[];
+  /** 按平台 message_id 回查一条消息（撤回原文还原用） */
+  getMessageByMessageId(messageId: string): ChatMessage | null;
   getMessagesByUser(
     userId: string,
     sessionId?: string,
@@ -81,11 +85,6 @@ export interface ChatDatabase {
     sessionId: string,
     startTimestamp: number,
     endTimestamp: number,
-  ): ChatMessage[];
-  searchMessages(
-    sessionId: string,
-    keyword: string,
-    limit?: number,
   ): ChatMessage[];
   updateCompressedContext(sessionId: string, context: string): void;
   deleteSessionMessages(sessionId: string): void;
@@ -105,20 +104,17 @@ export interface ChatDatabase {
       Pick<TopicRecord, "summary" | "keywords" | "messageCount" | "updatedAt">
     >,
   ): void;
-  // 表达学习
-  saveExpression(expr: ExpressionRecord): void;
-  getExpressions(sessionId: string, limit?: number): ExpressionRecord[];
-  getExpressionsByUser(userId: string, limit?: number): ExpressionRecord[];
-  replaceExpressionsByUser(
-    userId: string,
-    userName: string,
-    expressions: Array<
-      Pick<ExpressionRecord, "situation" | "style" | "example">
-    >,
-  ): void;
-  getExpressionCount(sessionId: string): number;
-  deleteOldestExpressions(sessionId: string, keepCount: number): void;
-  pruneExpressionsBySession(sessionId: string, keepCount: number): number;
+  // 群事件（撤回 / 进退群 / 拍一拍）
+  saveGroupEvent(event: GroupEventRecord): void;
+  hasGroupEvent(eventKey: string): boolean;
+  getGroupEvents(groupId: string, since: number, limit?: number): GroupEventRecord[];
+  getGroupEventsByKind(
+    groupId: string,
+    kind: GroupEventKind,
+    since: number,
+    limit?: number,
+  ): GroupEventRecord[];
+  pruneGroupEventsOlderThan(timestamp: number): number;
   pruneMessagesOlderThan(timestamp: number): number;
   pruneTopicsOlderThan(timestamp: number): number;
   pruneMediaSummariesOlderThan(timestamp: number): number;
@@ -195,18 +191,21 @@ export async function initDatabase(): Promise<ChatDatabase> {
     );
     CREATE INDEX IF NOT EXISTS idx_topics_session ON topics(session_id, updated_at);
 
-    CREATE TABLE IF NOT EXISTS expressions (
+    CREATE TABLE IF NOT EXISTS group_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      user_id INTEGER NOT NULL,
-      user_name TEXT NOT NULL,
-      situation TEXT NOT NULL,
-      style TEXT NOT NULL,
-      example TEXT NOT NULL,
-      created_at INTEGER NOT NULL
+      group_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      user_id TEXT,
+      user_name TEXT,
+      target_id TEXT,
+      target_name TEXT,
+      content TEXT,
+      event_key TEXT,
+      timestamp INTEGER NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_expressions_session ON expressions(session_id, created_at);
-    CREATE INDEX IF NOT EXISTS idx_expressions_user ON expressions(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_group_events_group ON group_events(group_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_group_events_kind ON group_events(group_id, kind, timestamp);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_group_events_key ON group_events(event_key);
 
     CREATE TABLE IF NOT EXISTS images (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,6 +259,11 @@ export async function initDatabase(): Promise<ChatDatabase> {
     "CREATE INDEX IF NOT EXISTS idx_topics_session_window ON topics(session_id, window_end_at)",
   );
 
+  // 清理已移除功能的遗留表。
+  // 「表达学习」改成了即时采样（见 humanize/style-samples.ts），结果不再落库，
+  // 这张表留着只会让人以为还有一份历史数据在生效。
+  db.exec("DROP TABLE IF EXISTS expressions");
+
   // 预编译语句
   const stmts = {
     upsertSession: db.prepare(`
@@ -283,10 +287,8 @@ export async function initDatabase(): Promise<ChatDatabase> {
     getBotMessages: db.prepare(`
       SELECT * FROM messages WHERE group_id = $groupId AND role = 'assistant' ORDER BY timestamp DESC LIMIT $limit
     `),
-    getStoredGroupNoticeMessages: db.prepare(`
-      SELECT * FROM messages
-      WHERE group_id = $groupId AND role = 'user' AND content LIKE '发布了一条群公告：%'
-      ORDER BY timestamp DESC LIMIT $limit
+    getMessageByMessageId: db.prepare(`
+      SELECT * FROM messages WHERE message_id = $messageId ORDER BY timestamp DESC LIMIT 1
     `),
     getMessagesByUser: db.prepare(`
       SELECT * FROM messages WHERE user_id = $userId ORDER BY timestamp DESC LIMIT $limit
@@ -317,10 +319,6 @@ export async function initDatabase(): Promise<ChatDatabase> {
     resetSessionContext: db.prepare(`
       UPDATE sessions SET compressed_context = NULL, updated_at = $updatedAt WHERE id = $sessionId
     `),
-    // 消息搜索
-    searchMessages: db.prepare(`
-      SELECT * FROM messages WHERE session_id = $sessionId AND content LIKE $keyword ORDER BY timestamp DESC LIMIT $limit
-    `),
     // 话题
     insertTopic: db.prepare(`
       INSERT INTO topics (session_id, title, keywords, summary, message_count, window_start_at, window_end_at, created_at, updated_at)
@@ -338,27 +336,28 @@ export async function initDatabase(): Promise<ChatDatabase> {
     updateTopic: db.prepare(`
       UPDATE topics SET summary = $summary, keywords = $keywords, message_count = $messageCount, updated_at = $updatedAt WHERE id = $id
     `),
-    // 表达学习
-    insertExpression: db.prepare(`
-      INSERT INTO expressions (session_id, user_id, user_name, situation, style, example, created_at)
-      VALUES ($sessionId, $userId, $userName, $situation, $style, $example, $createdAt)
+    // 群事件（撤回 / 进退群 / 拍一拍）
+    insertGroupEvent: db.prepare(`
+      INSERT OR IGNORE INTO group_events
+        (group_id, kind, user_id, user_name, target_id, target_name, content, event_key, timestamp)
+      VALUES
+        ($groupId, $kind, $userId, $userName, $targetId, $targetName, $content, $eventKey, $timestamp)
     `),
-    getExpressions: db.prepare(`
-      SELECT * FROM expressions WHERE session_id = $sessionId ORDER BY created_at DESC LIMIT $limit
+    hasGroupEvent: db.prepare(`
+      SELECT 1 FROM group_events WHERE event_key = $eventKey LIMIT 1
     `),
-    getExpressionsByUser: db.prepare(`
-      SELECT * FROM expressions WHERE user_id = $userId ORDER BY created_at DESC LIMIT $limit
+    getGroupEvents: db.prepare(`
+      SELECT * FROM group_events
+      WHERE group_id = $groupId AND timestamp >= $since
+      ORDER BY timestamp DESC LIMIT $limit
     `),
-    getExpressionCount: db.prepare(`
-      SELECT COUNT(*) as count FROM expressions WHERE session_id = $sessionId
+    getGroupEventsByKind: db.prepare(`
+      SELECT * FROM group_events
+      WHERE group_id = $groupId AND kind = $kind AND timestamp >= $since
+      ORDER BY timestamp DESC LIMIT $limit
     `),
-    deleteExpressionsByUser: db.prepare(`
-      DELETE FROM expressions WHERE user_id = $userId
-    `),
-    deleteOldestExpressions: db.prepare(`
-      DELETE FROM expressions WHERE session_id = $sessionId AND id NOT IN (
-        SELECT id FROM expressions WHERE session_id = $sessionId ORDER BY created_at DESC LIMIT $keepCount
-      )
+    pruneGroupEvents: db.prepare(`
+      DELETE FROM group_events WHERE timestamp < $before
     `),
     pruneMessages: db.prepare(`
       DELETE FROM messages WHERE timestamp < $before
@@ -480,24 +479,17 @@ export async function initDatabase(): Promise<ChatDatabase> {
         .reverse(); // 按时间正序
     },
 
-    getStoredGroupNoticeMessages(
-      groupId: string,
-      limit: number = 20,
-    ): ChatMessage[] {
-      const rows = stmts.getStoredGroupNoticeMessages.all(
-        { $groupId: groupId, $limit: limit },
-      ) as any[];
-      return rows
-        .map(toChatMessage)
-        .reverse();
+    getMessageByMessageId(messageId: string): ChatMessage | null {
+      if (!messageId) return null;
+      const row = stmts.getMessageByMessageId.get({ $messageId: messageId }) as any;
+      return row ? toChatMessage(row) : null;
     },
 
     getMessagesByUser(
       userId: string,
       sessionId?: string,
       limit: number = 20,
-    ): ChatMessage[] {
-      const rows = sessionId
+    ): ChatMessage[] {      const rows = sessionId
         ? (stmts.getMessagesByUserInSession.all({
             $userId: userId,
             $sessionId: sessionId,
@@ -544,21 +536,6 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     deleteBotMessages(sessionId: string): void {
       stmts.deleteBotMessages.run({ $sessionId: sessionId });
-    },
-
-    searchMessages(
-      sessionId: string,
-      keyword: string,
-      limit: number = 20,
-    ): ChatMessage[] {
-      const rows = stmts.searchMessages.all({
-        $sessionId: sessionId,
-        $keyword: `%${keyword}%`,
-        $limit: limit,
-      }) as any[];
-      return rows
-        .map(toChatMessage)
-        .reverse();
     },
 
     saveTopic(topic: TopicRecord): number {
@@ -615,79 +592,55 @@ export async function initDatabase(): Promise<ChatDatabase> {
       });
     },
 
-    saveExpression(expr: ExpressionRecord): void {
-      stmts.insertExpression.run({
-        $sessionId: expr.sessionId,
-        $userId: expr.userId,
-        $userName: expr.userName,
-        $situation: expr.situation,
-        $style: expr.style,
-        $example: expr.example,
-        $createdAt: expr.createdAt,
+    saveGroupEvent(event: GroupEventRecord): void {
+      stmts.insertGroupEvent.run({
+        $groupId: event.groupId,
+        $kind: event.kind,
+        $userId: event.userId ?? null,
+        $userName: event.userName ?? null,
+        $targetId: event.targetId ?? null,
+        $targetName: event.targetName ?? null,
+        $content: event.content ?? null,
+        $eventKey: event.eventKey ?? null,
+        $timestamp: event.timestamp,
       });
     },
 
-    getExpressions(sessionId: string, limit: number = 50): ExpressionRecord[] {
-      const rows = stmts.getExpressions.all({ $sessionId: sessionId, $limit: limit }) as any[];
-      return rows.map(toExpressionRecord);
+    hasGroupEvent(eventKey: string): boolean {
+      if (!eventKey) return false;
+      return Boolean(stmts.hasGroupEvent.get({ $eventKey: eventKey }));
     },
 
-    getExpressionsByUser(
-      userId: string,
+    getGroupEvents(
+      groupId: string,
+      since: number,
+      limit: number = 200,
+    ): GroupEventRecord[] {
+      const rows = stmts.getGroupEvents.all({
+        $groupId: groupId,
+        $since: since,
+        $limit: limit,
+      }) as any[];
+      return rows.map(toGroupEventRecord).reverse();
+    },
+
+    getGroupEventsByKind(
+      groupId: string,
+      kind: GroupEventKind,
+      since: number,
       limit: number = 50,
-    ): ExpressionRecord[] {
-      const rows = stmts.getExpressionsByUser.all({ $userId: userId, $limit: limit }) as any[];
-      return rows.map(toExpressionRecord);
+    ): GroupEventRecord[] {
+      const rows = stmts.getGroupEventsByKind.all({
+        $groupId: groupId,
+        $kind: kind,
+        $since: since,
+        $limit: limit,
+      }) as any[];
+      return rows.map(toGroupEventRecord).reverse();
     },
 
-    replaceExpressionsByUser(
-      userId: string,
-      userName: string,
-      expressions: Array<
-        Pick<ExpressionRecord, "situation" | "style" | "example">
-      >,
-    ): void {
-      const now = Date.now();
-      const tx = db.transaction(
-        (
-          targetUserId: string,
-          targetUserName: string,
-          rows: Array<
-            Pick<ExpressionRecord, "situation" | "style" | "example">
-          >,
-        ) => {
-          stmts.deleteExpressionsByUser.run({ $userId: targetUserId });
-          for (const row of rows) {
-            stmts.insertExpression.run({
-              $sessionId: `user:${targetUserId}`,
-              $userId: targetUserId,
-              $userName: targetUserName,
-              $situation: row.situation,
-              $style: row.style,
-              $example: row.example,
-              $createdAt: now,
-            });
-          }
-        },
-      );
-
-      tx(userId, userName, expressions);
-    },
-
-    getExpressionCount(sessionId: string): number {
-      const row = stmts.getExpressionCount.get({ $sessionId: sessionId }) as any;
-      return row?.count ?? 0;
-    },
-
-    deleteOldestExpressions(sessionId: string, keepCount: number): void {
-      stmts.deleteOldestExpressions.run({ $sessionId: sessionId, $keepCount: keepCount });
-    },
-
-    pruneExpressionsBySession(sessionId: string, keepCount: number): number {
-      const result = stmts.deleteOldestExpressions.run({
-        $sessionId: sessionId,
-        $keepCount: keepCount,
-      });
+    pruneGroupEventsOlderThan(timestamp: number): number {
+      const result = stmts.pruneGroupEvents.run({ $before: timestamp });
       return Number(result.changes || 0);
     },
 

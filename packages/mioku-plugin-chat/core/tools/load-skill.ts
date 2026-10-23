@@ -16,9 +16,8 @@ import {
 import {
   buildWebSearchFeatureSection,
   buildWebReadFeatureSection,
-  buildRecallMemoryFeatureSection,
 } from "../prompt";
-import { createWebSearchTool, createWebReadPageTool, createRecallMemoryTool } from "./web";
+import { createWebSearchTool, createWebReadPageTool } from "./web";
 
 type ConstraintStrength = "low" | "medium" | "high";
 
@@ -36,8 +35,6 @@ function createFeatureTools(
       return [createWebSearchTool(toolCtx)];
     case "web_read_page":
       return [createWebReadPageTool(toolCtx)];
-    case "recall_memory":
-      return [createRecallMemoryTool(toolCtx)];
     default:
       return [];
   }
@@ -84,9 +81,6 @@ export function createLoadSkillTool(
           if (s) sections.push(s);
         } else if (skillName === "web_read_page") {
           const s = buildWebReadFeatureSection(toolCtx.config, toolStrength);
-          if (s) sections.push(s);
-        } else if (skillName === "recall_memory") {
-          const s = buildRecallMemoryFeatureSection(toolCtx.config);
           if (s) sections.push(s);
         }
         const usageHint = sections.length > 0 ? sections.join("\n") : "";

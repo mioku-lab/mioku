@@ -4,9 +4,8 @@ const OVERRIDABLE_SUB_OBJECTS = [
   "emoji",
   "expression",
   "retention",
-  "memory",
   "topic",
-  "planner",
+  "groupEvents",
   "audio",
   "searxng",
   "webReader",
@@ -20,12 +19,6 @@ const OVERRIDABLE_BOOLEAN_FIELDS = [
 
 const OVERRIDABLE_ARRAY_FIELDS = ["allowedExternalSkills"] as const;
 
-/**
- * 把每个群的覆盖配置浅合并到全局配置上
- * - 子对象（如 emoji）只覆盖其中存在的字段，未填字段继承全局
- * - 顶层布尔字段（enableMarkdownScreenshot 等）若覆盖中存在则整体替换
- * - 缺失字段、格式异常的覆盖会被静默忽略
- */
 export function mergeGroupOverrides(
   base: ChatConfig,
   overrides: ChatGroupOverrides | undefined | null,
@@ -70,7 +63,9 @@ export function mergeGroupOverrides(
 /**
  * 从 sessionId（如 "group:123"）提取群号，个人会话返回 undefined
  */
-export function extractGroupIdFromSession(sessionId: string): string | undefined {
+export function extractGroupIdFromSession(
+  sessionId: string,
+): string | undefined {
   if (!sessionId || typeof sessionId !== "string") return undefined;
   if (!sessionId.startsWith("group:")) return undefined;
   const raw = sessionId.slice("group:".length).trim();

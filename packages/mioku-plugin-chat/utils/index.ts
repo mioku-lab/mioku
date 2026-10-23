@@ -1,5 +1,6 @@
 export {
-  shouldTrigger,
+  detectTriggerSource,
+  hasNicknameHit,
   isQuotingBot,
   isGroupAllowed,
   extractContent,

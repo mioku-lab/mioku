@@ -106,25 +106,14 @@ export class CooldownManager {
       this.groupCooldownMessages.delete(groupSessionId);
       if (collected.length === 0) return;
 
-      const hasDirectAt = collected.some((message) => message.isDirectAt);
       void this.sessionTurnScheduler
-        .run(
-          groupSessionId,
-          hasDirectAt ? "cooldown" : "cooldown-planner",
-          () =>
-            hasDirectAt
-              ? this.processReviewMessages(
-                  groupSessionId,
-                  groupId,
-                  collected,
-                  selfId,
-                )
-              : this.processCooldownWithPlanner(
-                  groupSessionId,
-                  groupId,
-                  collected,
-                  selfId,
-                ),
+        .run(groupSessionId, "cooldown", () =>
+          this.processReviewMessages(
+            groupSessionId,
+            groupId,
+            collected,
+            selfId,
+          ),
         )
         .catch((err) =>
           this.ctx.logger.error(
@@ -253,9 +242,8 @@ export class CooldownManager {
             botRole,
             aiService: this.aiService,
             isGroup: true,
-            memoryContext: contexts.memoryContext,
+            styleSamples: contexts.styleSamples,
             topicContext: contexts.topicContext,
-            expressionContext: contexts.expressionContext,
             replyContext: {
               type: "review",
               targetUser: targetMessage.userName,
@@ -277,151 +265,14 @@ export class CooldownManager {
             ),
           },
         ),
-      { userId: targetMessage.userId, groupId, label: "cooldown", skipRetryOnRateLimit: true },
+      {
+        userId: targetMessage.userId,
+        groupId,
+        label: "cooldown",
+        skipRetryOnRateLimit: true,
+      },
     );
     if (!result) return;
-
-    await finalizeChatTurn(this.pluginCtx, {
-      event: firstMsg.event,
-      cfg,
-      result,
-      groupId,
-      groupSessionId,
-      userId: targetMessage.userId,
-      selfId,
-      toolCtx,
-      send: true,
-      isLive: true,
-    });
-  }
-
-  private async processCooldownWithPlanner(
-    groupSessionId: string,
-    groupId: string,
-    collected: CooldownMessage[],
-    selfId: string,
-  ): Promise<void> {
-    const mergedContent = collected.map((m) => m.content).join("\n");
-    const firstMsg = collected[0];
-
-    const cfg = this.configProvider(groupId);
-
-    const { history } = await this.getGroupHistoryMessages(
-      groupId,
-      groupSessionId,
-      this.ctx,
-      cfg.historyCount,
-      this.db,
-      selfId,
-      this.buildHistoryMediaOptions(this.aiInstance, cfg),
-    );
-    const botNickname =
-      cfg.nicknames[0] || this.ctx.pickBot(selfId)?.nickname || "Bot";
-
-    const planResult = await this.humanize.actionPlanner.plan(
-      groupSessionId,
-      botNickname,
-      history,
-      mergedContent,
-    );
-    if (planResult.action !== "reply") {
-      this.ctx.logger.info(
-        `[CooldownPlanner] Group ${groupId} planner decided not to reply: ${planResult.reason}`,
-      );
-      return;
-    }
-
-    const targetMessage: TargetMessage = {
-      userName: firstMsg.userName,
-      userId: firstMsg.userId,
-      userRole: firstMsg.event.sender?.role || "member",
-      content: mergedContent,
-      messageId: firstMsg.messageId,
-      timestamp: Date.now(),
-    };
-
-    const botRole = await getBotRole(groupId, this.ctx, selfId);
-    const toolCtx = this.buildToolContext({
-      ctx: this.ctx,
-      event: firstMsg.event,
-      groupSessionId,
-      groupId,
-      userId: targetMessage.userId,
-      config: cfg,
-      aiService: this.aiService,
-      db: this.db,
-      botRole,
-      humanize: this.humanize,
-      targetMessage,
-      selfId,
-      audioService: this.pluginCtx.audioService,
-    });
-    const { groupName, memberCount } = await this.getGroupInfoData(
-      this.ctx,
-      groupId,
-      selfId,
-    );
-    const contexts = await this.getHumanizeContexts(
-      this.humanize,
-      groupSessionId,
-      targetMessage.userName,
-      history,
-      targetMessage.userId,
-    );
-    const plannerThoughts = `After you spoke, the following messages were sent in the group. Use this context to respond naturally.\nPlanned reason: ${planResult.reason}`;
-
-    const result = await this.runWithRateLimitGuard(
-      () =>
-        this.runChat(
-          this.aiInstance,
-          toolCtx,
-          history,
-          targetMessage,
-          {
-            config: cfg,
-            groupName,
-            memberCount,
-            botNickname,
-            botRole: toolCtx.botRole,
-            aiService: this.aiService,
-            isGroup: true,
-            memoryContext: contexts.memoryContext,
-            topicContext: contexts.topicContext,
-            expressionContext: contexts.expressionContext,
-            plannerThoughts,
-            replyContext: {
-              type: "comment",
-              targetUser: targetMessage.userName,
-              targetMessage: targetMessage.content,
-            },
-            reviewMessages: {
-              contents: collected.map((m) => m.content),
-              userNames: collected.map((m) => m.userName),
-              messageIds: collected.map((m) => m.messageId),
-            },
-          },
-          this.humanize,
-          this.skillManager,
-          {
-            manager: this.groupStructuredHistory,
-            ttlMs: cfg.groupStructuredHistoryTtlMs,
-            currentUserInputs: collected.map((msg) =>
-              this.buildStructuredUserInputFromEvent(
-                msg.event,
-                msg.content,
-                msg.timestamp,
-              ),
-            ),
-          },
-        ),
-      { userId: targetMessage.userId, groupId, label: "cooldown-planner", skipRetryOnRateLimit: true },
-    );
-    if (!result) {
-      this.ctx.logger.warn(
-        `[CooldownPlanner] Group ${groupId} AI request skipped`,
-      );
-      return;
-    }
 
     await finalizeChatTurn(this.pluginCtx, {
       event: firstMsg.event,
