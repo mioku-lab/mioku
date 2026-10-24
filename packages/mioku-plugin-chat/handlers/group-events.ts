@@ -48,7 +48,7 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
           eventKey: `recall:${groupId}:${messageId}`,
         });
         if (recorded) {
-          ctx.logger.info(
+          ctx.logger.debug(
             `[group-events] 记录撤回 group=${groupId} 原文=${cached ? "已还原" : "未留存"}`,
           );
         }
@@ -76,7 +76,7 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
           eventKey: `${kind}:${groupId}:${userId}:${String(raw.time ?? e?.time ?? Date.now())}`,
         });
         if (recorded) {
-          ctx.logger.info(`[group-events] 记录${kind} group=${groupId}`);
+          ctx.logger.debug(`[group-events] 记录${kind} group=${groupId}`);
         }
         return;
       }
@@ -108,7 +108,7 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
           )}`,
         });
         if (recorded) {
-          ctx.logger.info(
+          ctx.logger.debug(
             `[group-events] 记录拍一拍 group=${groupId} ${who} -> ${target}${
               target && target === selfId ? "（戳的是机器人）" : ""
             }`,

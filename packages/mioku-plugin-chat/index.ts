@@ -519,7 +519,7 @@ export default definePlugin({
       },
     } as ChatPluginContext;
 
-    const groupEvents = new GroupEventPerception(db, configProvider);
+    const groupEvents = new GroupEventPerception(db);
     pluginCtx.groupEvents = groupEvents;
     const cooldownManager = new CooldownManager(pluginCtx);
     pluginCtx.cooldownManager = cooldownManager;

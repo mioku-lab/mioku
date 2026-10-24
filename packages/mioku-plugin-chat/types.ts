@@ -24,20 +24,6 @@ export interface ReplyStyleConfig {
   multipleProbability: number;
 }
 
-export interface GroupEventsConfig {
-  enabled: boolean;
-  // 常驻薄索引的统计窗口（分钟）
-  indexWindowMinutes: number;
-  // 展开明细的触发窗口（分钟）
-  detailWindowMinutes: number;
-  // 明细最多保留多少条
-  detailMaxItems: number;
-  // 明细正文的字符预算
-  detailBudgetChars: number;
-  // 拍一拍事实的告知窗口（分钟）
-  pokeWindowMinutes: number;
-}
-
 /**
  * 话题跟踪配置
  */
@@ -201,7 +187,6 @@ export interface ChatConfig {
   emotion: EmotionConfig;
   replyStyle: ReplyStyleConfig;
   topic: TopicConfig;
-  groupEvents: GroupEventsConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
@@ -216,7 +201,6 @@ export interface ChatGroupOverrides {
   expression?: { enabled?: boolean };
   retention?: { enabled?: boolean };
   topic?: { enabled?: boolean };
-  groupEvents?: { enabled?: boolean };
   audio?: { enabled?: boolean };
   searxng?: { enabled?: boolean };
   webReader?: { enabled?: boolean };
@@ -378,18 +362,21 @@ export interface GroupEventRecord {
   /** 事件客体 */
   targetId?: string;
   targetName?: string;
+  /** 撤回事件里被撤回的消息 id：用来把标记贴回聊天记录 */
+  messageId?: string;
   /** 事件正文 */
   content?: string;
-  /** 平台事件 id，用于防抖去重 */
+  /** 平台事件 id，用于去重 */
   eventKey?: string;
   timestamp: number;
 }
 
 /** 注入用的事件感知结果，由 manage/group-events.ts 渲染 */
 export interface GroupEventContexts {
-  indexContext?: string;
-  detailContext?: string;
-  pokeContext?: string;
+  /** 进退群、拍一拍等动作，直接写进 prompt */
+  eventContext?: string;
+  /** messageId -> 撤回标记，渲染聊天记录时贴在对应消息后面 */
+  recallMarks?: Map<string, string>;
 }
 
 /**

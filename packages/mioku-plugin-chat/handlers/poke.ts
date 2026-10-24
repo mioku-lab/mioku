@@ -96,11 +96,15 @@ export function createPokeHandler(
             audioService: pluginCtx.audioService,
           });
 
-          const pokeContexts = pluginCtx.groupEvents.buildContexts({
+          const eventContexts = pluginCtx.groupEvents.buildContexts({
             groupId,
-            messageText: "",
-            directedAtBot: true,
             selfId,
+            historySince: history[0]?.timestamp,
+            historyIds: new Set(
+              history
+                .map((msg) => String(msg.messageId ?? "").trim())
+                .filter(Boolean),
+            ),
           });
 
           const result = await pluginCtx.runWithRateLimitGuard(
@@ -118,9 +122,8 @@ export function createPokeHandler(
                   botRole,
                   aiService: pluginCtx.aiService,
                   isGroup: true,
-                  eventIndexContext: pokeContexts.indexContext,
-                  pokeContext: pokeContexts.pokeContext,
-                  eventDetailContext: pokeContexts.detailContext,
+                  eventContext: eventContexts.eventContext,
+                  recallMarks: eventContexts.recallMarks,
                   replyContext: {
                     type: "poked",
                     targetUser: targetMessage.userName,

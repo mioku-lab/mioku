@@ -44,9 +44,8 @@ export interface DynamicPromptContext {
   };
   currentEmotion?: string;
   styleSamples?: string;
-  eventIndexContext?: string;
-  eventDetailContext?: string;
-  pokeContext?: string;
+  eventContext?: string;
+  recallMarks?: Map<string, string>;
   topicContext?: string;
   replyContext?: {
     type: "reply" | "comment" | "idle" | "review" | "poked";
@@ -356,9 +355,7 @@ export function buildDynamicUserContext(ctx: DynamicPromptContext): string {
 
   if (ctx.activeSkillsInfo) sections.push(ctx.activeSkillsInfo);
 
-  if (ctx.eventIndexContext) sections.push(ctx.eventIndexContext);
-  if (ctx.pokeContext) sections.push(ctx.pokeContext);
-  if (ctx.eventDetailContext) sections.push(ctx.eventDetailContext);
+  if (ctx.eventContext) sections.push(ctx.eventContext);
 
   if (ctx.styleSamples) {
     logger.info(
@@ -536,9 +533,10 @@ function buildChatHistorySection(ctx: DynamicPromptContext): string {
     const time = new Date(msg.timestamp);
     const timeStr = `${String(time.getMonth() + 1).padStart(2, "0")}-${String(time.getDate()).padStart(2, "0")} ${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
     const msgIdStr = msg.messageId ? `#${msg.messageId}` : "";
+    const recallMark = recallMarkOf(ctx, msg);
 
     if (msg.role === "assistant") {
-      const contentStr = msgIdStr ? `${msg.content} ${msgIdStr}` : msg.content;
+      const contentStr = `${msg.content}${msgIdStr ? ` ${msgIdStr}` : ""}${recallMark}`;
       if (currentAssistantBlock && currentAssistantBlock.timeStr === timeStr) {
         currentAssistantBlock.contents.push(contentStr);
       } else {
@@ -554,7 +552,7 @@ function buildChatHistorySection(ctx: DynamicPromptContext): string {
     const titleStr = msg.userTitle ? `，${msg.userTitle}` : "";
     const idStr = msg.userId ? `${msg.userId}` : "";
     mergedLines.push(
-      `[${timeStr}] ${name}（${idStr}，${roleLabel}${titleStr}）${msgIdStr ? ` ${msgIdStr}` : ""}：${msg.content}`,
+      `[${timeStr}] ${name}（${idStr}，${roleLabel}${titleStr}）${msgIdStr ? ` ${msgIdStr}` : ""}：${msg.content}${recallMark}`,
     );
   }
   flushAssistant();
@@ -563,7 +561,16 @@ function buildChatHistorySection(ctx: DynamicPromptContext): string {
 ${mergedLines.join("\n")}
 -- 不要重复自己，也不要翻旧话题，只看现在在说什么。 --
 -- 某条消息后面跟着的 #id 就是它的 message_id，用 [reply:id] 引用它。 --
--- 以「你自己」开头的是你之前说过的话。 --`;
+-- 以「你自己」开头的是你之前说过的话。 --
+-- 消息末尾的 [已被某人撤回] 表示这条消息已经被撤回了。 --`;
+}
+
+/** 这条消息被撤回时，在它后面补一个标记 */
+function recallMarkOf(ctx: DynamicPromptContext, msg: ChatMessage): string {
+  const id = String(msg.messageId ?? "").trim();
+  if (!id || !ctx.recallMarks) return "";
+  const mark = ctx.recallMarks.get(id);
+  return mark ? ` ${mark}` : "";
 }
 
 function buildTargetMessageSection(

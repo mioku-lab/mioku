@@ -135,9 +135,8 @@ export type PromptCtxForRunChat = {
   isGroup: boolean;
   topicContext?: string;
   styleSamples?: string;
-  eventIndexContext?: string;
-  eventDetailContext?: string;
-  pokeContext?: string;
+  eventContext?: string;
+  recallMarks?: Map<string, string>;
   activeSkillsInfo?: string;
   currentEmotion?: string;
   replyContext?: {

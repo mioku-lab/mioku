@@ -5,7 +5,6 @@ const OVERRIDABLE_SUB_OBJECTS = [
   "expression",
   "retention",
   "topic",
-  "groupEvents",
   "audio",
   "searxng",
   "webReader",
@@ -66,7 +65,7 @@ export function mergeGroupOverrides(
 export function extractGroupIdFromSession(
   sessionId: string,
 ): string | undefined {
-  if (!sessionId || typeof sessionId !== "string") return undefined;
+  if (!sessionId) return undefined;
   if (!sessionId.startsWith("group:")) return undefined;
   const raw = sessionId.slice("group:".length).trim();
   return raw.length > 0 ? raw : undefined;

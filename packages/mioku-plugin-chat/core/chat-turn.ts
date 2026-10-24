@@ -53,6 +53,16 @@ interface ResolvedRuntimeContext {
 const NO_NEW_MESSAGE =
   "[No new user message in this turn. Reply naturally based on the runtime instruction and recent context.]";
 
+/** 本轮聊天记录里出现过的 message_id，用来判断撤回标记贴不贴得上 */
+function collectMessageIds(history: ChatMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const msg of history) {
+    const id = String(msg.messageId ?? "").trim();
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
 /**
  * 主模型不支持视觉时，引用消息里的图片交给视觉工作模型描述（结果按内容哈希入库复用）。
  * 主模型支持视觉时返回 undefined：图片会直接附到请求里，不必重复描述。
@@ -435,12 +445,9 @@ export async function processChat(
 
     const eventContexts = pluginCtx.groupEvents.buildContexts({
       groupId: groupId ?? "",
-      messageText: ctx.text(e) || "",
-      directedAtBot: true,
-      fromOwner:
-        String(e.sender?.role ?? "") === "owner" ||
-        String(e.sender?.role ?? "") === "admin",
       selfId: String(selfId ?? ""),
+      historySince: history[0]?.timestamp,
+      historyIds: collectMessageIds(history),
     });
 
     if (groupId) {
@@ -480,9 +487,8 @@ export async function processChat(
             aiService: pluginCtx.aiService,
             isGroup,
             styleSamples: contexts.styleSamples,
-            eventIndexContext: eventContexts.indexContext,
-            eventDetailContext: eventContexts.detailContext,
-            pokeContext: eventContexts.pokeContext,
+            eventContext: eventContexts.eventContext,
+            recallMarks: eventContexts.recallMarks,
             topicContext: contexts.topicContext,
             replyContext: {
               type: "reply",
@@ -669,6 +675,15 @@ async function executeChatRuntimeRequestNow(
     toolCtx.sentMessageIndices = undefined;
   }
 
+  const runtimeEventContexts = groupId
+    ? pluginCtx.groupEvents.buildContexts({
+        groupId,
+        selfId: String(selfId ?? ""),
+        historySince: history[0]?.timestamp,
+        historyIds: collectMessageIds(history),
+      })
+    : {};
+
   const result = await pluginCtx.runChat(
     pluginCtx.aiInstance,
     toolCtx,
@@ -683,14 +698,8 @@ async function executeChatRuntimeRequestNow(
       aiService: pluginCtx.aiService,
       isGroup,
       styleSamples: contexts.styleSamples,
-      eventIndexContext: groupId
-        ? pluginCtx.groupEvents.buildContexts({
-            groupId,
-            messageText: targetContent,
-            directedAtBot: false,
-            selfId: String(selfId ?? ""),
-          }).indexContext
-        : undefined,
+      eventContext: runtimeEventContexts.eventContext,
+      recallMarks: runtimeEventContexts.recallMarks,
       topicContext: contexts.topicContext,
       replyContext: {
         type: options.replyContextType || "reply",

@@ -2,7 +2,6 @@ import type {
   EmotionConfig,
   ReplyStyleConfig,
   TopicConfig,
-  GroupEventsConfig,
   EmojiConfig,
   ExpressionConfig,
   RetentionConfig,
@@ -13,7 +12,6 @@ export const PERSONALIZATION_CONFIG: {
   emotion: EmotionConfig;
   replyStyle: ReplyStyleConfig;
   topic: TopicConfig;
-  groupEvents: GroupEventsConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
@@ -100,15 +98,6 @@ export const PERSONALIZATION_CONFIG: {
     historyWindowCount: 3,
   },
 
-  groupEvents: {
-    enabled: true,
-    indexWindowMinutes: 30,
-    detailWindowMinutes: 8,
-    detailMaxItems: 18,
-    detailBudgetChars: 700,
-    pokeWindowMinutes: 10,
-  },
-
   emoji: {
     enabled: true,
     characters: [],
@@ -117,8 +106,8 @@ export const PERSONALIZATION_CONFIG: {
 
   expression: {
     enabled: true,
-    lookbackMessages: 100,
-    sampleSize: 6,
+    lookbackMessages: 200,
+    sampleSize: 30,
   },
 
   retention: {

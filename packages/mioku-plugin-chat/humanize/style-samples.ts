@@ -12,7 +12,7 @@ const HAS_TEXT_RE = /[\p{L}\p{N}]/u;
 const MIN_LEN = 1;
 const MAX_LEN = 30;
 /** 所有样本加起来不超过这个字数*/
-const DEFAULT_BUDGET = 500;
+const DEFAULT_BUDGET = 1000;
 
 export class ExpressionSampler {
   constructor(
@@ -31,8 +31,8 @@ export class ExpressionSampler {
     const expression = cfg.expression;
     if (!expression?.enabled) return "";
 
-    const lookback = Math.max(1, Number(expression.lookbackMessages) || 100);
-    const sampleSize = Math.max(1, Number(expression.sampleSize) || 6);
+    const lookback = Math.max(1, Number(expression.lookbackMessages) || 200);
+    const sampleSize = Math.max(1, Number(expression.sampleSize) || 30);
 
     let rows: Array<{ content: string }> = [];
     try {

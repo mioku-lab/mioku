@@ -53,6 +53,7 @@ function toGroupEventRecord(row: any): GroupEventRecord {
     userName: row.user_name ?? undefined,
     targetId: row.target_id == null ? undefined : String(row.target_id),
     targetName: row.target_name ?? undefined,
+    messageId: row.message_id == null ? undefined : String(row.message_id),
     content: row.content ?? undefined,
     eventKey: row.event_key ?? undefined,
     timestamp: row.timestamp,
@@ -199,6 +200,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
       user_name TEXT,
       target_id TEXT,
       target_name TEXT,
+      message_id TEXT,
       content TEXT,
       event_key TEXT,
       timestamp INTEGER NOT NULL
@@ -258,6 +260,13 @@ export async function initDatabase(): Promise<ChatDatabase> {
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_topics_session_window ON topics(session_id, window_end_at)",
   );
+
+  const groupEventColumns = db
+    .prepare("PRAGMA table_info(group_events)")
+    .all() as Array<{ name: string }>;
+  if (!groupEventColumns.some((column) => column.name === "message_id")) {
+    db.exec("ALTER TABLE group_events ADD COLUMN message_id TEXT");
+  }
 
   // 清理已移除功能的遗留表。
   // 「表达学习」改成了即时采样（见 humanize/style-samples.ts），结果不再落库，
@@ -339,9 +348,9 @@ export async function initDatabase(): Promise<ChatDatabase> {
     // 群事件（撤回 / 进退群 / 拍一拍）
     insertGroupEvent: db.prepare(`
       INSERT OR IGNORE INTO group_events
-        (group_id, kind, user_id, user_name, target_id, target_name, content, event_key, timestamp)
+        (group_id, kind, user_id, user_name, target_id, target_name, message_id, content, event_key, timestamp)
       VALUES
-        ($groupId, $kind, $userId, $userName, $targetId, $targetName, $content, $eventKey, $timestamp)
+        ($groupId, $kind, $userId, $userName, $targetId, $targetName, $messageId, $content, $eventKey, $timestamp)
     `),
     hasGroupEvent: db.prepare(`
       SELECT 1 FROM group_events WHERE event_key = $eventKey LIMIT 1
@@ -600,6 +609,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
         $userName: event.userName ?? null,
         $targetId: event.targetId ?? null,
         $targetName: event.targetName ?? null,
+        $messageId: event.messageId ?? null,
         $content: event.content ?? null,
         $eventKey: event.eventKey ?? null,
         $timestamp: event.timestamp,
