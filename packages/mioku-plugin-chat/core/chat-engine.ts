@@ -289,12 +289,6 @@ export async function runChat(
 
   const allToolCalls = response.allToolCalls || [];
 
-  const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
-  if (maxSearchCount > 0 && webSearchState.count >= maxSearchCount) {
-    const limitMsg = `[system] Web search/read-page limit (${maxSearchCount}) reached for this conversation. `;
-    response.content = limitMsg + (response.content || "");
-  }
-
   if (toolCtx.config.debug && response.reasoning) {
     toolCtx.ctx.logger.info(
       `[chat-engine] AI reasoning: ${response.reasoning}`,
@@ -615,11 +609,11 @@ function buildSessionTools(
       tool: {
         ...tool,
         handler: (args: any) => {
-          if (isRateLimitedTool && webSearchState) {
-            webSearchState.count++;
-          }
           if (isRateLimitedTool && isRateLimited(tool.name)) {
             return rateLimitError();
+          }
+          if (isRateLimitedTool && webSearchState) {
+            webSearchState.count++;
           }
           return tool.handler(args, runtimeContext);
         },
@@ -654,11 +648,11 @@ function buildSessionTools(
       tool: {
         ...tool,
         handler: (args: any) => {
-          if (isRateLimitedName && webSearchState) {
-            webSearchState.count++;
-          }
           if (isRateLimitedName && isRateLimited(name)) {
             return rateLimitError();
+          }
+          if (isRateLimitedName && webSearchState) {
+            webSearchState.count++;
           }
           return tool.handler(args, runtimeContext);
         },
