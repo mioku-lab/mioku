@@ -570,17 +570,15 @@ export default definePlugin({
             ? String(event.group_id ?? "").trim() || undefined
             : undefined;
         if (groupId) {
-          pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
-          pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
-          await event.reply("已清除本群会话中 AI 发送的消息~");
-        } else {
-          const userId = String(
-            event.user_id ?? event.sender?.user_id ?? "",
-          ).trim();
-          pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
-          pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
-          await event.reply("已清除你的个人会话中 AI 发送的消息~");
+          await event.reply("群会话需要管理员使用 .重置群会话 哦~", true);
+          return;
         }
+        const userId = String(
+          event.user_id ?? event.sender?.user_id ?? "",
+        ).trim();
+        pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
+        pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
+        await event.reply("已清除你的个人会话中 AI 发送的消息~");
       },
     });
     ctx.command({
