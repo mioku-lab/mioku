@@ -793,23 +793,9 @@ function resolveTriggerSkillRole(
     return "member";
   }
 
-  try {
-    if (ctx.isOwner?.(event)) {
-      return "owner";
-    }
-  } catch {}
-
-  const senderRole = String(event?.sender?.role || "").toLowerCase();
-  if (senderRole === "owner" || senderRole === "admin") {
-    return "admin";
-  }
-
-  try {
-    if (ctx.isAdmin?.(event)) {
-      return "admin";
-    }
-  } catch {}
-
+  if (ctx.isMaster(event)) return "master";
+  if (ctx.isOwner(event)) return "owner";
+  if (ctx.isAdmin(event)) return "admin";
   return "member";
 }
 
