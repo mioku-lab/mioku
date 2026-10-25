@@ -133,7 +133,7 @@ export class RateLimiter {
     const now = Date.now();
     const { userRpm, groupRpm, windowMs } = this.getAiRequestLimits(groupId);
 
-    if (typeof userId === "number") {
+    if (userId) {
       const userRequests = (this.userAiRequests.get(userId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -142,7 +142,7 @@ export class RateLimiter {
       }
     }
 
-    if (typeof groupId === "number") {
+    if (groupId) {
       const groupRequests = (this.groupAiRequests.get(groupId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -158,7 +158,7 @@ export class RateLimiter {
     const now = Date.now();
     const { windowMs } = this.getAiRequestLimits(groupId);
 
-    if (typeof userId === "number") {
+    if (userId) {
       const userRequests = (this.userAiRequests.get(userId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -166,7 +166,7 @@ export class RateLimiter {
       this.userAiRequests.set(userId, userRequests);
     }
 
-    if (typeof groupId === "number") {
+    if (groupId) {
       const groupRequests = (this.groupAiRequests.get(groupId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -272,6 +272,26 @@ export class RateLimiter {
       }
       if (!hasActiveUser) {
         this.groupInteractions.delete(groupId);
+      }
+    }
+
+    const userWindowMs = this.getAiRequestLimits().windowMs;
+    for (const [userId, timestamps] of this.userAiRequests) {
+      const valid = timestamps.filter((t) => now - t < userWindowMs);
+      if (valid.length === 0) {
+        this.userAiRequests.delete(userId);
+      } else {
+        this.userAiRequests.set(userId, valid);
+      }
+    }
+
+    for (const [groupId, timestamps] of this.groupAiRequests) {
+      const { windowMs } = this.getAiRequestLimits(groupId);
+      const valid = timestamps.filter((t) => now - t < windowMs);
+      if (valid.length === 0) {
+        this.groupAiRequests.delete(groupId);
+      } else {
+        this.groupAiRequests.set(groupId, valid);
       }
     }
   }
