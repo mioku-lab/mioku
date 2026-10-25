@@ -18,6 +18,15 @@ interface GroupStructuredHistoryState {
 }
 
 const DEFAULT_GROUP_STRUCTURED_HISTORY_TTL_MS = 10 * 60_000;
+const MAX_GROUP_STRUCTURED_HISTORY_MESSAGES = 80;
+
+function trimStructuredHistory(messages: ChatCompletionMessageParam[]): void {
+  if (messages.length <= MAX_GROUP_STRUCTURED_HISTORY_MESSAGES) return;
+  let start = messages.length - MAX_GROUP_STRUCTURED_HISTORY_MESSAGES;
+  // 避免拆开工具调用
+  while (start < messages.length && messages[start].role !== "user") start++;
+  messages.splice(0, start);
+}
 
 export class GroupStructuredHistoryManager {
   private readonly states = new Map<string, GroupStructuredHistoryState>();
@@ -53,16 +62,11 @@ export class GroupStructuredHistoryManager {
     now: number = Date.now(),
   ): void {
     this.clearExpired(sessionId, ttlMs, now);
-    const state = this.states.get(sessionId) ?? {
-      lastBotDirectedAt: now,
-      messages: [],
-    };
+    const state = this.states.get(sessionId);
+    if (!state || messages.length === 0) return;
 
-    state.lastBotDirectedAt = now;
-    if (messages.length > 0) {
-      state.messages.push(...messages);
-    }
-    this.states.set(sessionId, state);
+    state.messages.push(...messages);
+    trimStructuredHistory(state.messages);
   }
 
   clear(sessionId: string): void {
