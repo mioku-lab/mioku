@@ -2,6 +2,11 @@ import { logger } from "mioku";
 import puppeteer from "puppeteer";
 import type { AIInstance } from "mioku";
 import type { WebReaderConfig } from "../../types";
+import {
+  assertPublicUrl,
+  createPublicUrlChecker,
+  fetchPublic,
+} from "./url-guard";
 
 type ReadMode = "fetch" | "browser";
 
@@ -329,25 +334,6 @@ function extractHtmlContent(
   };
 }
 
-function normalizeUrl(input: string): string {
-  const url = new URL(input);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Only http and https URLs are supported");
-  }
-
-  const hostname = url.hostname.toLowerCase();
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname.endsWith(".local")
-  ) {
-    throw new Error("Local network URLs are not allowed");
-  }
-
-  return url.toString();
-}
-
 function parseCharset(contentType: string | null): string | null {
   if (!contentType) return null;
   const match = contentType.match(/charset=([^;]+)/i);
@@ -427,13 +413,12 @@ async function fetchPage(
   const timeout = setTimeout(() => controller.abort(), cfg.timeoutMs);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchPublic(url, {
       method: "GET",
       headers: {
         Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
         "User-Agent": DEFAULT_USER_AGENT,
       },
-      redirect: "follow",
       signal: controller.signal,
     });
 
@@ -500,6 +485,13 @@ async function renderPage(
   try {
     page = await browser.newPage();
     await page.setUserAgent(DEFAULT_USER_AGENT);
+    const isAllowed = createPublicUrlChecker();
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      isAllowed(req.url())
+        .then((ok) => (ok ? req.continue() : req.abort("blockedbyclient")))
+        .catch(() => undefined);
+    });
     await page.goto(url, {
       waitUntil: "domcontentloaded",
       timeout: cfg.browserTimeoutMs,
@@ -735,7 +727,7 @@ export async function readWebPage(
   }
 
   try {
-    const normalizedUrl = normalizeUrl(rawUrl);
+    const normalizedUrl = (await assertPublicUrl(rawUrl)).toString();
     const mode: ReadMode = args.render_js ? "browser" : "fetch";
 
     logger.info(`[web-reader] Reading ${normalizedUrl} via ${mode}`);
