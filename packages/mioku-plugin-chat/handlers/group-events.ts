@@ -16,10 +16,13 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
   return async (e: any): Promise<void> => {
     try {
       const raw = e?.raw ?? e ?? {};
-      const postType = String(raw.post_type ?? e?.post_type ?? "");
-      const noticeType = String(
-        raw.notice_type ?? raw.sub_type ?? e?.sub_type ?? "",
-      );
+      const noticeType = String(e?.notice_type ?? raw.notice_type ?? "");
+      const subType = String(e?.sub_type ?? raw.sub_type ?? "");
+      // 适配器已归一化
+      const kind =
+        noticeType === "group" || noticeType === "notify"
+          ? subType
+          : noticeType.replace(/^group_/, "");
       const groupId = String(
         e?.group_id ?? raw.group_id ?? raw.group?.group_id ?? "",
       ).trim();
@@ -28,7 +31,7 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
       const selfId = String(e?.self_id ?? raw.self_id ?? "").trim();
 
       // ---------- 撤回 ----------
-      if (noticeType === "group_recall" || noticeType === "recall") {
+      if (kind === "recall") {
         const messageId = String(
           raw.message_id ?? raw.msg_id ?? e?.message_id ?? "",
         ).trim();
@@ -56,34 +59,27 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
       }
 
       // ---------- 进退群 ----------
-      if (
-        noticeType === "group_increase" ||
-        noticeType === "group_decrease" ||
-        noticeType === "group_admin"
-      ) {
-        if (noticeType === "group_admin") return;
+      if (kind === "increase" || kind === "decrease") {
         const userId = String(raw.user_id ?? e?.user_id ?? "").trim();
         if (!userId) return;
-        const kind =
-          noticeType === "group_increase"
-            ? "member_increase"
-            : "member_decrease";
+        const eventKind =
+          kind === "increase" ? "member_increase" : "member_decrease";
         const recorded = pluginCtx.groupEvents.record({
           groupId,
-          kind,
+          kind: eventKind,
           userId,
           userName: resolveName(userId, raw.nickname),
-          eventKey: `${kind}:${groupId}:${userId}:${String(raw.time ?? e?.time ?? Date.now())}`,
+          eventKey: `${eventKind}:${groupId}:${userId}:${String(raw.time ?? e?.time ?? Date.now())}`,
         });
         if (recorded) {
-          ctx.logger.debug(`[group-events] 记录${kind} group=${groupId}`);
+          ctx.logger.debug(`[group-events] 记录${eventKind} group=${groupId}`);
         }
         return;
       }
       const pokeSegment = Array.isArray(e?.message)
         ? e.message.find((seg: any) => seg?.type === "poke")
         : undefined;
-      if (noticeType === "poke" || pokeSegment) {
+      if (kind === "poke" || pokeSegment) {
         const who = String(
           raw.user_id ?? e?.user_id ?? e?.sender?.user_id ?? "",
         ).trim();
