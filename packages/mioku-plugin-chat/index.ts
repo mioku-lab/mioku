@@ -279,27 +279,34 @@ export default definePlugin({
     await refreshBaseCache();
     await refreshGroupsCache();
 
+    const configOffs: Array<() => void> = [];
+    const disposeConfigListeners = () => {
+      for (const off of configOffs) off();
+      configOffs.length = 0;
+    };
     if (configService) {
-      configService.onConfigChange("chat", "base", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/base 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "settings", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/settings 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "personalization", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/personalization 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "groups", () => {
-        refreshGroupsCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/groups 缓存失败: ${err}`),
-        );
-      });
+      configOffs.push(
+        configService.onConfigChange("chat", "base", () => {
+          refreshBaseCache().catch((err) =>
+            ctx.logger.error(`刷新 chat/base 缓存失败: ${err}`),
+          );
+        }),
+        configService.onConfigChange("chat", "settings", () => {
+          refreshBaseCache().catch((err) =>
+            ctx.logger.error(`刷新 chat/settings 缓存失败: ${err}`),
+          );
+        }),
+        configService.onConfigChange("chat", "personalization", () => {
+          refreshBaseCache().catch((err) =>
+            ctx.logger.error(`刷新 chat/personalization 缓存失败: ${err}`),
+          );
+        }),
+        configService.onConfigChange("chat", "groups", () => {
+          refreshGroupsCache().catch((err) =>
+            ctx.logger.error(`刷新 chat/groups 缓存失败: ${err}`),
+          );
+        }),
+      );
     }
 
     const configProvider: ChatConfigProvider = (groupId?: string) => {
@@ -317,7 +324,7 @@ export default definePlugin({
 
     if (!aiService) {
       ctx.logger.error("聊天插件需要 AI 服务，但 AI 服务不可用");
-      return;
+      return disposeConfigListeners;
     }
 
     let resolved = resolveRoleInstances(aiService);
@@ -379,7 +386,7 @@ export default definePlugin({
       ctx.logger.error(
         "未配置 AI 提供商/主模型，请在 WebUI AI 设置中配置提供商并绑定主模型",
       );
-      return;
+      return disposeConfigListeners;
     }
 
     roleModels = resolved.models;
@@ -408,14 +415,16 @@ export default definePlugin({
     };
     registerPersona(String(configProvider().persona ?? ""));
     if (configService) {
-      configService.onConfigChange("chat", "personalization", async () => {
-        try {
-          const p = await configService.getConfig("chat", "personalization");
-          registerPersona(String(p?.persona ?? ""));
-        } catch (err) {
-          ctx.logger.error(`更新 persona 提示词失败: ${err}`);
-        }
-      });
+      configOffs.push(
+        configService.onConfigChange("chat", "personalization", async () => {
+          try {
+            const p = await configService.getConfig("chat", "personalization");
+            registerPersona(String(p?.persona ?? ""));
+          } catch (err) {
+            ctx.logger.error(`更新 persona 提示词失败: ${err}`);
+          }
+        }),
+      );
     }
 
     const db = await initDatabase();
@@ -628,6 +637,8 @@ export default definePlugin({
     );
 
     return () => {
+      disposeConfigListeners();
+      aiService.removeChatRuntime();
       groupEvents.dispose();
       cooldownManager.dispose();
       queueProcessor.dispose();

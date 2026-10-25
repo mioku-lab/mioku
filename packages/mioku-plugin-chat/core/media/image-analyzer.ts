@@ -4,6 +4,7 @@ import { logger } from "mioku";
 import type { ChatDatabase } from "../../db";
 import type { ImageRecord } from "../../types";
 import {
+  IMAGE_FETCH_TIMEOUT_MS,
   prepareImageUrlsForModel,
   QQ_IMAGE_FETCH_HEADERS,
 } from "./image-compress";
@@ -20,7 +21,10 @@ export interface ImageAnalysisOptions {
 
 export async function calculateImageHash(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url, { headers: QQ_IMAGE_FETCH_HEADERS });
+    const response = await fetch(url, {
+      headers: QQ_IMAGE_FETCH_HEADERS,
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    });
     if (!response.ok) {
       logger.warn(
         `[image-analyzer] Failed to download image for hashing: ${response.status} ${response.statusText}`,

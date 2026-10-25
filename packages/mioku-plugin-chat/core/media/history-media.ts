@@ -10,6 +10,7 @@ import type { MediaSummaryKind, MediaSummaryRecord } from "../../types";
 
 const execFileAsync = promisify(execFile);
 const VIDEO_FRAME_COUNT = 5;
+const VIDEO_FETCH_TIMEOUT_MS = 60_000;
 const VIDEO_FRAME_EXTRACTION_FALLBACK =
   "用户发送了一个视频，但未能提取画面内容";
 // 体积阈值：超过此大小（10MB）的视频不再整体上传给多模态工作模型，改用抽帧。
@@ -799,6 +800,7 @@ async function readVideoSource(source: string): Promise<Buffer> {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         Referer: "https://qq.com/",
       },
+      signal: AbortSignal.timeout(VIDEO_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw new Error(

@@ -51,29 +51,18 @@ function createTypingDelayController(config: ChatConfig) {
     Number.isFinite(rawMaxTotalMs) && rawMaxTotalMs >= 0
       ? rawMaxTotalMs
       : DEFAULT_TYPING_DELAY_MAX_TOTAL_MS;
+  let spentMs = 0;
 
   return {
-    spentMs: 0,
-    maxTotalMs,
+    take(text: string): number {
+      const delayMs = Math.max(
+        0,
+        Math.min(calculateTypingDelayMs(text), maxTotalMs - spentMs),
+      );
+      spentMs += delayMs;
+      return delayMs;
+    },
   };
-}
-
-async function waitTypingDelay(
-  text: string,
-  controller: ReturnType<typeof createTypingDelayController>,
-): Promise<void> {
-  const remainingMs = controller.maxTotalMs - controller.spentMs;
-  if (remainingMs <= 0) {
-    return;
-  }
-
-  const delayMs = Math.min(calculateTypingDelayMs(text), remainingMs);
-  if (delayMs <= 0) {
-    return;
-  }
-
-  controller.spentMs += delayMs;
-  await new Promise((r) => setTimeout(r, delayMs));
 }
 
 export async function sendAIResponse(
@@ -90,6 +79,7 @@ export async function sendAIResponse(
     audioService,
   } = options;
   const typingDelayEnabled = config.enableTypingDelay ?? false;
+  const typingDelay = createTypingDelayController(config);
   const enableMarkdownScreenshot = config.enableMarkdownScreenshot ?? true;
   const bot = ctx.pickBot(selfId);
   if (!bot) {
@@ -201,7 +191,7 @@ export async function sendAIResponse(
           ).then((sentId) => recordSentId(i, sentId));
           lastDelayBasisText = summarizeMarkdown(markdownContent);
           if (typingDelayEnabled && j < expandedLines.length - 1) {
-            const delayMs = calculateTypingDelayMs(lastDelayBasisText || line);
+            const delayMs = typingDelay.take(lastDelayBasisText || line);
             await new Promise((r) => setTimeout(r, delayMs));
           }
           continue;
@@ -234,13 +224,13 @@ export async function sendAIResponse(
       }
 
       if (typingDelayEnabled && j < expandedLines.length - 1) {
-        const delayMs = calculateTypingDelayMs(lastDelayBasisText || line);
+        const delayMs = typingDelay.take(lastDelayBasisText || line);
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
 
     if (typingDelayEnabled && i < messages.length - 1) {
-      const delayMs = calculateTypingDelayMs(lastDelayBasisText || messages[i]);
+      const delayMs = typingDelay.take(lastDelayBasisText || messages[i]);
       await new Promise((r) => setTimeout(r, delayMs));
     }
 
@@ -260,6 +250,7 @@ export async function sendMessage(
   audioService?: AudioServiceApi,
 ): Promise<void> {
   const typingDelayEnabled = config.enableTypingDelay ?? false;
+  const typingDelay = createTypingDelayController(config);
   const enableMarkdownScreenshot = config.enableMarkdownScreenshot ?? true;
   try {
     const bot = ctx.pickBot(selfId);
@@ -351,7 +342,7 @@ export async function sendMessage(
           );
           lastDelayBasisText = summarizeMarkdown(markdownContent);
           if (typingDelayEnabled && j < expandedLines.length - 1) {
-            const delayMs = calculateTypingDelayMs(lastDelayBasisText || line);
+            const delayMs = typingDelay.take(lastDelayBasisText || line);
             await new Promise((r) => setTimeout(r, delayMs));
           }
           continue;
@@ -396,7 +387,7 @@ export async function sendMessage(
               sendableText || fallbackText || audioText || line;
           }
           if (typingDelayEnabled && j < expandedLines.length - 1) {
-            const delayMs = calculateTypingDelayMs(lastDelayBasisText || line);
+            const delayMs = typingDelay.take(lastDelayBasisText || line);
             await new Promise((r) => setTimeout(r, delayMs));
           }
           continue;
@@ -491,7 +482,7 @@ export async function sendMessage(
       }
 
       if (typingDelayEnabled && j < expandedLines.length - 1) {
-        const delayMs = calculateTypingDelayMs(lastDelayBasisText || line);
+        const delayMs = typingDelay.take(lastDelayBasisText || line);
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
@@ -754,7 +745,11 @@ export async function getHumanizeContexts(
     historyStartAt,
   );
   const styleSamples = triggerUserId
-    ? humanize.expressionSampler.buildStyleSamples(triggerUserId, userName)
+    ? humanize.expressionSampler.buildStyleSamples(
+        triggerUserId,
+        userName,
+        groupSessionId,
+      )
     : "";
 
   const result = {

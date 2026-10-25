@@ -1,5 +1,6 @@
 import type { ChatDatabase } from "../db";
 import type { ChatConfig } from "../types";
+import { extractGroupIdFromSession } from "../utils/group-config";
 import type { ChatConfigProvider } from "./index";
 
 /** 明显不适合当风格样本的行：指令、链接、纯占位符 */
@@ -23,11 +24,15 @@ export class ExpressionSampler {
   /**
    * 构造风格样本块。没有可用样本时返回空串。
    */
-  buildStyleSamples(userId: string, userName?: string): string {
+  buildStyleSamples(
+    userId: string,
+    userName: string | undefined,
+    sessionId: string,
+  ): string {
     const id = String(userId || "").trim();
     if (!id) return "";
 
-    const cfg = this.getConfig();
+    const cfg = this.getConfig(extractGroupIdFromSession(sessionId));
     const expression = cfg.expression;
     if (!expression?.enabled) return "";
 
@@ -36,7 +41,7 @@ export class ExpressionSampler {
 
     let rows: Array<{ content: string }> = [];
     try {
-      rows = this.db.getMessagesByUser(id, undefined, lookback);
+      rows = this.db.getMessagesByUser(id, sessionId, lookback);
     } catch {
       return "";
     }

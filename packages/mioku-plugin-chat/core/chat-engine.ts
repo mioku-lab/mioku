@@ -8,7 +8,10 @@ import type {
 } from "../types";
 import type { HumanizeEngine } from "../humanize";
 import type { StaticPromptContext, DynamicPromptContext } from "./prompt";
-import type { SkillSessionManager } from "../manage/skill-session";
+import type {
+  SkillSessionManager,
+  SkillToolEntry,
+} from "../manage/skill-session";
 import { createTools } from "./tools";
 import { buildStaticSystemPrompt, buildDynamicUserContext } from "./prompt";
 import type { PromptCtxForRunChat } from "../manage/types";
@@ -56,7 +59,6 @@ export async function runChat(
   runtimeOptions?: ChatRuntimeRunOptions,
 ): Promise<ChatResult> {
   const { tools: chatTools } = createTools(toolCtx, skillManager);
-  const skillTools = skillManager.getTools(toolCtx.sessionId);
   const activeSkillsInfo = skillManager.getActiveSkillsInfo(
     toolCtx.sessionId,
     (skillName: string) => {
@@ -161,7 +163,7 @@ export async function runChat(
     );
   }
 
-  const streamEnabled = Boolean(toolCtx.config.stream);
+  const streamEnabled = Boolean(toolCtx.config.stream && toolCtx.onTextContent);
   const streamedMessages: string[] = [];
   const streamThinkFilter = createThinkTagStreamFilter();
   let streamBuffer = "";
@@ -182,7 +184,7 @@ export async function runChat(
     if (toolCtx.onTextContent) {
       await toolCtx.onTextContent(text, unitIndex, unitIndex + 1);
       toolCtx.sentMessageIndices ??= new Set<number>();
-      toolCtx.sentMessageIndices.add(unitIndex);
+      toolCtx.sentMessageIndices.add(streamedMessages.length);
     }
     streamedMessages.push(text);
   };
@@ -341,7 +343,7 @@ export async function runChat(
     isToolErrorResult(toolCall.result),
   );
   let cleanedText = cleanMarkers(response.content || "");
-  if (failedToolCalls.length > 0) {
+  if (failedToolCalls.length > 0 && !cleanedText.trim()) {
     cleanedText = await generateToolFailureReply(
       ai,
       toolCtx,
@@ -380,12 +382,13 @@ export async function runChat(
   const finalMessages = mergeQuoteMarkerUnits(
     splitOutgoingUnits(finalText),
   ).filter((unit) => unit.trim() && unit.trim() !== "---");
-  const sentAssistantMessages = streamEnabled
-    ? streamedMessages.length
-    : finalMessages.length;
+  const outgoingMessages =
+    streamEnabled && streamedMessages.length > 0
+      ? streamedMessages
+      : finalMessages;
   toolCtx.aiService.finalizeUsage?.(usageId, {
     sentUserMessages: 1,
-    sentAssistantMessages,
+    sentAssistantMessages: outgoingMessages.length,
   });
 
   toolCtx.ctx.logger.info(
@@ -401,7 +404,7 @@ export async function runChat(
   );
 
   return {
-    messages: streamEnabled ? [] : finalMessages,
+    messages: outgoingMessages,
     pendingAt: [],
     pendingPoke: [],
     pendingQuote: undefined,
@@ -584,7 +587,7 @@ const RATE_LIMITED_BUILTIN_NAMES = new Set([
 
 function buildSessionTools(
   chatTools: AITool[],
-  skillTools: Map<string, AITool>,
+  skillTools: Map<string, SkillToolEntry>,
   toolCtx: ToolContext,
   extraTools: AITool[] = [],
   webSearchState?: { count: number },
@@ -631,8 +634,7 @@ function buildSessionTools(
     });
   }
 
-  for (const [name, tool] of skillTools) {
-    const skillName = name.split("-")[0] || "";
+  for (const [name, { skillName, tool }] of skillTools) {
     const skill = toolCtx.aiService.getSkill(skillName);
     if (
       !toolCtx.config.enableExternalSkills ||
@@ -785,6 +787,12 @@ function sanitizeBrackets(text: string): string {
     }
 
     if (ch === "[") {
+      // 贴纸意图标记
+      if (working[i + 1] === "]" && isStandaloneToken(working, i, i + 2)) {
+        result += "[]";
+        i += 2;
+        continue;
+      }
       let j = i + 1;
       while (j < working.length && working[j] !== "]") {
         j++;
@@ -812,6 +820,15 @@ function sanitizeBrackets(text: string): string {
   }
 
   return result;
+}
+
+function isStandaloneToken(text: string, start: number, end: number): boolean {
+  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+  const nextBreak = text.indexOf("\n", end);
+  const lineEnd = nextBreak === -1 ? text.length : nextBreak;
+  return (
+    !text.slice(lineStart, start).trim() && !text.slice(end, lineEnd).trim()
+  );
 }
 
 function removeStickerIntentLines(text: string): string {
