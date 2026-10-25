@@ -1,6 +1,7 @@
 import type { AIInstance } from "mioku";
 import { logger } from "mioku";
 import { extractJsonObject } from "../utils/json";
+import { readField } from "../utils/record";
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
 import { extractGroupIdFromSession } from "../utils/group-config";
 import type { ChatConfigProvider } from "./index";
@@ -140,8 +141,9 @@ ${input.targetMessage.userName}: ${input.targetMessage.content}`;
 
     const content = response.content || "";
     const parsed = extractJsonObject(content);
-    if (parsed === undefined) return this.getDefaultEmotion(extractGroupIdFromSession(input.sessionId));
-    return this.resolveEmotion(parsed?.emotion, extractGroupIdFromSession(input.sessionId));
+    const groupId = extractGroupIdFromSession(input.sessionId);
+    if (parsed === undefined) return this.getDefaultEmotion(groupId);
+    return this.resolveEmotion(readField(parsed, "emotion"), groupId);
   }
 
   private resolveEmotion(emotion: unknown, groupId?: string): string {

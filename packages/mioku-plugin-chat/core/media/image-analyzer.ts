@@ -1,8 +1,11 @@
 import * as crypto from "crypto";
 import type { AIInstance } from "mioku";
+import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 import { logger } from "mioku";
 import type { ChatDatabase } from "../../db";
 import type { ImageRecord } from "../../types";
+import { readField } from "../../utils/record";
+import { imagePart, textPart } from "../model-content";
 import {
   IMAGE_FETCH_TIMEOUT_MS,
   prepareImageUrlsForModel,
@@ -83,18 +86,13 @@ ${imageUrls.length > 1 ? "- You are viewing frames from an animated image. Descr
 
 Response format (JSON):
 {"description":"brief Chinese description"}`;
-    const content: any[] = [
-      {
-        type: "text",
-        text:
-          imageUrls.length > 1
-            ? `Describe these ${imageUrls.length} frames from one animated image.`
-            : "Describe this image.",
-      },
-      ...imageUrls.map((url) => ({
-        type: "image_url",
-        image_url: { url, detail: "auto" },
-      })),
+    const content: ChatCompletionContentPart[] = [
+      textPart(
+        imageUrls.length > 1
+          ? `Describe these ${imageUrls.length} frames from one animated image.`
+          : "Describe this image.",
+      ),
+      ...imageUrls.map((url) => imagePart(url, "auto")),
     ];
     const request = () =>
       ai.complete({
@@ -119,8 +117,9 @@ Response format (JSON):
     }
 
     const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-    const result = JSON.parse(jsonMatch?.[0] || response.content);
-    const description = String(result.description || "未知").trim() || "未知";
+    const result: unknown = JSON.parse(jsonMatch?.[0] || response.content);
+    const description =
+      String(readField(result, "description") || "未知").trim() || "未知";
     logger.info(`[image-analyzer] image: ${description}`);
     return { success: true, description };
   } catch (err) {
@@ -174,45 +173,10 @@ export async function processImage(
   }
 }
 
-export async function getImageTag(
-  imageUrl: string,
-  db: ChatDatabase,
-): Promise<string> {
-  const exact = db.getImageByUrl(imageUrl);
-  if (exact) return `[image:${exact.description}]`;
-
-  const hash = await calculateImageHash(imageUrl);
-  if (hash) {
-    const byHash = db.getImageByHash(hash);
-    if (byHash) {
-      db.saveImage(asImageRecord(byHash, imageUrl));
-      return `[image:${byHash.description}]`;
-    }
-  }
-
-  return "[image]";
-}
-
 function asImageRecord(record: ImageRecord, url: string): ImageRecord {
   return {
     ...record,
     url,
     type: "image",
   };
-}
-
-export function normalizeImageUrl(url: string): string {
-  if (!url || typeof url !== "string") return "";
-  const trimmed = url.trim();
-  if (!trimmed) return "";
-  try {
-    const parsed = new URL(trimmed);
-    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
-  } catch {
-    const queryIndex = trimmed.indexOf("?");
-    const hashIndex = trimmed.indexOf("#");
-    const indexes = [queryIndex, hashIndex].filter((index) => index >= 0);
-    const cutAt = indexes.length > 0 ? Math.min(...indexes) : -1;
-    return cutAt >= 0 ? trimmed.slice(0, cutAt) : trimmed;
-  }
 }

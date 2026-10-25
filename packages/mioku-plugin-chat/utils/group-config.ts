@@ -18,6 +18,22 @@ const OVERRIDABLE_BOOLEAN_FIELDS = [
 
 const OVERRIDABLE_ARRAY_FIELDS = ["allowedExternalSkills"] as const;
 
+type SubObjectKey = (typeof OVERRIDABLE_SUB_OBJECTS)[number];
+
+function mergeSubObject<K extends SubObjectKey>(
+  result: ChatConfig,
+  base: ChatConfig,
+  key: K,
+  override: ChatGroupOverrides[K],
+): void {
+  // 群配置来自文件，类型不可信
+  if (!override || typeof override !== "object") return;
+  const baseSub = base[key];
+  if (baseSub && typeof baseSub === "object") {
+    result[key] = { ...baseSub, ...override };
+  }
+}
+
 export function mergeGroupOverrides(
   base: ChatConfig,
   overrides: ChatGroupOverrides | undefined | null,
@@ -26,33 +42,20 @@ export function mergeGroupOverrides(
   if (typeof base !== "object" || base === null) return base;
 
   const result: ChatConfig = { ...base };
-  const resultMap = result as unknown as Record<string, unknown>;
-  const overridesMap = overrides as Record<string, unknown>;
 
   for (const key of OVERRIDABLE_SUB_OBJECTS) {
-    const overrideSub = overridesMap[key];
-    if (overrideSub && typeof overrideSub === "object") {
-      const baseSub = (base as unknown as Record<string, unknown>)[key];
-      if (baseSub && typeof baseSub === "object") {
-        resultMap[key] = {
-          ...(baseSub as Record<string, unknown>),
-          ...(overrideSub as Record<string, unknown>),
-        };
-      }
-    }
+    mergeSubObject(result, base, key, overrides[key]);
   }
 
   for (const key of OVERRIDABLE_BOOLEAN_FIELDS) {
-    const value = overridesMap[key];
-    if (typeof value === "boolean") {
-      resultMap[key] = value;
-    }
+    const value = overrides[key];
+    if (typeof value === "boolean") result[key] = value;
   }
 
   for (const key of OVERRIDABLE_ARRAY_FIELDS) {
-    const value = overridesMap[key];
+    const value: unknown = overrides[key];
     if (Array.isArray(value)) {
-      resultMap[key] = value.filter((v) => typeof v === "string");
+      result[key] = value.filter((v): v is string => typeof v === "string");
     }
   }
 

@@ -1,16 +1,8 @@
 import { logger } from "mioku";
 import type { SearxngConfig } from "../../types";
+import { readField } from "../../utils/record";
 
-type TimeRange = "day" | "month" | "year";
-
-interface WebSearchArgs {
-  query?: string;
-  queries?: string[];
-  limit?: number;
-  time_range?: TimeRange;
-  categories?: string[];
-  engines?: string[];
-}
+const TIME_RANGES = new Set(["day", "month", "year"]);
 
 interface SearxngResultItem {
   title?: string;
@@ -54,14 +46,16 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "");
 }
 
+/** args 为模型给的工具参数，字段类型不可信 */
 export async function searchWebWithSearxng(
   cfg: SearxngConfig,
-  args: WebSearchArgs,
+  args: unknown,
 ): Promise<WebSearchResult> {
-  const fallbackQuery = Array.isArray(args.queries)
-    ? args.queries.map((item) => String(item || "").trim()).find(Boolean) || ""
+  const queries = readField(args, "queries");
+  const fallbackQuery = Array.isArray(queries)
+    ? queries.map((item) => String(item || "").trim()).find(Boolean) || ""
     : "";
-  const query = String(args.query || fallbackQuery).trim();
+  const query = String(readField(args, "query") || fallbackQuery).trim();
   if (!query) {
     return {
       success: false,
@@ -81,7 +75,7 @@ export async function searchWebWithSearxng(
     };
   }
 
-  const limit = clampLimit(args.limit, cfg);
+  const limit = clampLimit(readField(args, "limit"), cfg);
   const timeoutMs =
     Number.isFinite(cfg.timeoutMs) && cfg.timeoutMs > 0
       ? Math.floor(cfg.timeoutMs)
@@ -92,16 +86,17 @@ export async function searchWebWithSearxng(
     format: "json",
   });
 
-  if (args.time_range && ["day", "month", "year"].includes(args.time_range)) {
-    params.set("time_range", args.time_range);
+  const timeRange = readField(args, "time_range");
+  if (typeof timeRange === "string" && TIME_RANGES.has(timeRange)) {
+    params.set("time_range", timeRange);
   }
 
-  const categories = normalizeArray(args.categories);
+  const categories = normalizeArray(readField(args, "categories"));
   if (categories.length > 0) {
     params.set("categories", categories.join(","));
   }
 
-  const engines = normalizeArray(args.engines);
+  const engines = normalizeArray(readField(args, "engines"));
   if (engines.length > 0) {
     params.set("engines", engines.join(","));
   }
@@ -133,36 +128,33 @@ export async function searchWebWithSearxng(
       };
     }
 
-    const data: any = await response.json();
-    const rawResults = Array.isArray(data?.results) ? data.results : [];
+    const data: unknown = await response.json();
+    const resultsField = readField(data, "results");
+    const rawResults: unknown[] = Array.isArray(resultsField) ? resultsField : [];
 
     const results: SearxngResultItem[] = rawResults
       .slice(0, limit)
-      .map((item: any) => {
-        const title = String(item?.title || "").trim();
-        const url = String(item?.url || "").trim();
-        const content = String(item?.content || "").trim();
+      .map((item) => {
+        const text = (key: string) => String(readField(item, key) || "").trim();
+        const engines = readField(item, "engines");
         const engine = String(
-          item?.engine ||
-            (Array.isArray(item?.engines) ? item.engines[0] : "") ||
+          readField(item, "engine") ||
+            (Array.isArray(engines) ? engines[0] : "") ||
             "",
         ).trim();
 
         return {
-          title: title || undefined,
-          url: url || undefined,
-          content: content || undefined,
+          title: text("title") || undefined,
+          url: text("url") || undefined,
+          content: text("content") || undefined,
           engine: engine || undefined,
         };
       })
-      .filter(
-        (item: SearxngResultItem) => item.title || item.url || item.content,
-      );
+      .filter((item) => item.title || item.url || item.content);
 
+    const numberOfResults = readField(data, "number_of_results");
     const total =
-      typeof data?.number_of_results === "number"
-        ? data.number_of_results
-        : rawResults.length;
+      typeof numberOfResults === "number" ? numberOfResults : rawResults.length;
 
     return {
       success: true,

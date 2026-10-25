@@ -1,7 +1,7 @@
 import type { AITool } from "mioku";
 import type { ToolContext } from "../../types";
 import { searchWebWithSearxng } from "../web/searxng";
-import { readWebPage } from "../web/web-reader";
+import { parseWebReadArgs, readWebPage } from "../web/web-reader";
 
 export function createWebSearchTool(toolCtx: ToolContext): AITool {
   return {
@@ -46,8 +46,8 @@ export function createWebSearchTool(toolCtx: ToolContext): AITool {
       },
       required: [],
     },
-    handler: async (args) =>
-      searchWebWithSearxng(toolCtx.config.searxng, args || {}),
+    handler: async (args: unknown) =>
+      searchWebWithSearxng(toolCtx.config.searxng, args),
   };
 }
 
@@ -79,7 +79,7 @@ export function createWebReadPageTool(toolCtx: ToolContext): AITool {
       },
       required: ["url"],
     },
-    handler: async (args) => {
+    handler: async (args: unknown) => {
       try {
         const ai = toolCtx.config.webReader.useWorkingModel
           ? (toolCtx.aiService.getInstanceByRole?.("working") ??
@@ -92,7 +92,7 @@ export function createWebReadPageTool(toolCtx: ToolContext): AITool {
           ai,
           toolCtx.config.workingModel || toolCtx.config.model,
           toolCtx.config.webReader,
-          args || {},
+          parseWebReadArgs(args),
         );
       } catch (err) {
         return { success: false, error: `Failed to read webpage: ${err}` };

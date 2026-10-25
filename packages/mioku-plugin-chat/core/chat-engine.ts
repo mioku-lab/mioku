@@ -1,241 +1,176 @@
-import type { AIInstance, SessionToolDefinition } from "mioku";
-import type { AITool } from "mioku";
+import type { AIInstance, AITool, Logger, ToolCallRecord } from "mioku";
 import type {
-  ToolContext,
   ChatMessage,
-  TargetMessage,
   ChatResult,
+  TargetMessage,
+  ToolContext,
 } from "../types";
 import type { HumanizeEngine } from "../humanize";
-import type { StaticPromptContext, DynamicPromptContext } from "./prompt";
-import type {
-  SkillSessionManager,
-  SkillToolEntry,
-} from "../manage/skill-session";
+import type { SkillSessionManager } from "../manage/skill-session";
+import { buildStructuredUserMessages } from "../manage/group-structured-history";
+import { mainModelSupportsVision } from "../utils/model";
+import { isRecord } from "../utils/record";
 import { createTools } from "./tools";
-import { buildStaticSystemPrompt, buildDynamicUserContext } from "./prompt";
-import type { PromptCtxForRunChat } from "../manage/types";
+import {
+  buildDynamicUserContext,
+  buildStaticSystemPrompt,
+  type TurnPrompt,
+} from "./prompt";
 import {
   isExternalSkillAllowed,
   isSkillAllowedForRole,
 } from "./external-skills";
 import {
-  consumeCompleteStreamUnits,
-  isQuoteMarkerOnlyUnit,
   mergeQuoteMarkerUnits,
   splitOutgoingUnits,
 } from "./media/markdown-message";
-import {
-  attachImagesToCurrentUserMessages,
-  buildStructuredUserMessages,
-  GroupStructuredHistoryManager,
-  type StructuredUserInput,
-} from "../manage/group-structured-history";
 import { prepareImageUrlsForModel } from "./media/image-compress";
-import { mainModelSupportsVision } from "../utils/model";
+import { cleanMarkers } from "./engine/reply-text";
+import { createReplyStream } from "./engine/reply-stream";
+import {
+  buildRequestMessages,
+  persistStructuredHistory,
+  type StructuredHistoryRunContext,
+} from "./engine/request-messages";
+import { buildSessionTools, createWebToolBudget } from "./engine/session-tools";
+import {
+  estimateChatHistoryTokens,
+  estimateMessagesTokens,
+  estimateTextTokens,
+} from "./engine/token-estimate";
+import {
+  buildUsageContext,
+  generateToolFailureReply,
+  isToolErrorResult,
+} from "./engine/tool-failure";
 
-interface StructuredHistoryRunContext {
-  manager: GroupStructuredHistoryManager;
-  ttlMs: number;
-  currentUserInputs: StructuredUserInput[];
+export type { StructuredHistoryRunContext };
+
+/** 引擎依赖的插件级单例 */
+export interface ChatEngineDeps {
+  aiInstance: AIInstance;
+  humanize: HumanizeEngine;
+  skillManager: SkillSessionManager;
 }
 
-interface ChatRuntimeRunOptions {
+/** 一轮对话的输入 */
+export interface ChatEngineTurn {
+  toolCtx: ToolContext;
+  history: ChatMessage[];
+  targetMessage: TargetMessage;
+  prompt: TurnPrompt;
+  structuredHistory?: StructuredHistoryRunContext;
   extraTools?: AITool[];
 }
 
-/**
- * Run a single chat turn using a fresh tool loop inside the current request.
- */
+/** 在当前请求内跑一轮工具循环 */
 export async function runChat(
-  ai: AIInstance,
-  toolCtx: ToolContext,
-  history: ChatMessage[],
-  targetMessage: TargetMessage,
-  promptCtx: PromptCtxForRunChat,
-  humanize: HumanizeEngine,
-  skillManager: SkillSessionManager,
-  structuredHistory?: StructuredHistoryRunContext,
-  runtimeOptions?: ChatRuntimeRunOptions,
+  deps: ChatEngineDeps,
+  turn: ChatEngineTurn,
 ): Promise<ChatResult> {
+  const { aiInstance: ai, humanize, skillManager } = deps;
+  const { toolCtx, history, targetMessage, prompt, extraTools } = turn;
+  const { config, sessionId, aiService } = toolCtx;
+  const log = toolCtx.ctx.logger;
+
   const { tools: chatTools } = createTools(toolCtx, skillManager);
   const activeSkillsInfo = skillManager.getActiveSkillsInfo(
-    toolCtx.sessionId,
-    (skillName: string) => {
-      if (
-        !toolCtx.config.enableExternalSkills ||
-        !isExternalSkillAllowed(toolCtx.config, skillName)
-      ) {
-        return false;
-      }
-      const skill = toolCtx.aiService.getSkill(skillName);
-      return isSkillAllowedForRole(skill, toolCtx.triggerSkillRole);
-    },
+    sessionId,
+    (skillName) =>
+      config.enableExternalSkills &&
+      isExternalSkillAllowed(config, skillName) &&
+      isSkillAllowedForRole(
+        aiService.getSkill(skillName),
+        toolCtx.triggerSkillRole,
+      ),
   );
-  const emotionState = humanize.emotionAgent.getCurrent(toolCtx.sessionId);
 
-  const staticCtx: StaticPromptContext = {
-    config: promptCtx.config,
-    aiService: promptCtx.aiService,
-    enableExternalSkills: promptCtx.config.enableExternalSkills,
+  const staticPrompt = buildStaticSystemPrompt({
+    config,
+    aiService,
     triggerSkillRole: toolCtx.triggerSkillRole,
     emojiAgent: humanize.emojiAgent,
-    skillManager,
-    sessionId: toolCtx.sessionId,
-  };
-  const dynamicCtx: DynamicPromptContext = {
-    ...promptCtx,
+  });
+  const dynamicUserContext = buildDynamicUserContext({
+    ...prompt,
+    config,
     chatHistory: history,
     targetMessage,
-    currentEmotion: emotionState.current,
+    currentEmotion: humanize.emotionAgent.getCurrent(sessionId).current,
     activeSkillsInfo: activeSkillsInfo || undefined,
-  };
+  });
 
-  const staticPrompt = buildStaticSystemPrompt(staticCtx);
-  const dynamicUserContext = buildDynamicUserContext(dynamicCtx);
-
-  const engineLog = toolCtx.ctx.logger;
-  engineLog.info(
-    `[chat-engine] Session ${toolCtx.sessionId} | target: ${targetMessage.userName}(${targetMessage.userId}): "${targetMessage.content}"`,
+  log.info(
+    `[chat-engine] Session ${sessionId} | target: ${targetMessage.userName}(${targetMessage.userId}): "${targetMessage.content}"`,
   );
-  if (toolCtx.config.debug) {
-    engineLog.info("[chat-engine] === Static System Prompt ===");
-    engineLog.info(staticPrompt);
-    engineLog.info("[chat-engine] === Dynamic User Context ===");
-    engineLog.info(dynamicUserContext);
-    engineLog.info("[chat-engine] === End Prompts ===");
+  if (config.debug) {
+    log.info("[chat-engine] === Static System Prompt ===");
+    log.info(staticPrompt);
+    log.info("[chat-engine] === Dynamic User Context ===");
+    log.info(dynamicUserContext);
+    log.info("[chat-engine] === End Prompts ===");
   }
 
-  const hasStructuredHistory =
-    Boolean(toolCtx.groupId) &&
-    Boolean(structuredHistory) &&
-    structuredHistory!.currentUserInputs.length > 0;
-  const cachedHistory = hasStructuredHistory
-    ? structuredHistory!.manager.getMessages(
-        toolCtx.sessionId,
-        structuredHistory!.ttlMs,
-      )
+  const structured =
+    toolCtx.groupId && turn.structuredHistory?.currentUserInputs.length
+      ? turn.structuredHistory
+      : undefined;
+  const cachedHistory = structured
+    ? structured.manager.getMessages(sessionId, structured.ttlMs)
     : [];
-  const currentUserMessages = hasStructuredHistory
-    ? buildStructuredUserMessages(structuredHistory!.currentUserInputs)
+  const currentUserMessages = structured
+    ? buildStructuredUserMessages(structured.currentUserInputs)
     : [];
-  const directImageUrls = mainModelSupportsVision(
-    toolCtx.aiService,
-    toolCtx.config.model,
-  )
+  const directImageUrls = mainModelSupportsVision(aiService, config.model)
     ? toolCtx.pendingImageUrls
     : undefined;
-  const webSearchState = { count: 0 };
-  const usageId = `chat:${toolCtx.sessionId}:${Date.now()}:${Math.random()
+
+  const usageId = `chat:${sessionId}:${Date.now()}:${Math.random()
     .toString(36)
     .slice(2, 10)}`;
   const systemPromptTokens = estimateTextTokens(staticPrompt);
   const chatHistoryTokens = estimateChatHistoryTokens(history);
-  const currentUserTokens = estimateMessageContentTokens(
-    buildCurrentMessages(
+  const currentUserTokens = estimateMessagesTokens(
+    buildRequestMessages({
       staticPrompt,
       dynamicUserContext,
       targetMessage,
-      [],
       currentUserMessages,
-      directImageUrls,
-    ).filter((message) => message.role !== "system"),
+      imageUrls: directImageUrls,
+    }).filter((message) => message.role !== "system"),
   );
-  // 体积过大的图片先压缩，再附加到主模型请求；估算用原始 URL 即可（图片按固定 token 计）。
+  // 体积过大的图片先压缩再发给主模型；估算按固定 token 计，用原始 URL 即可
   const modelImageUrls = directImageUrls
     ? await prepareImageUrlsForModel(directImageUrls)
     : undefined;
-  const usageContext = {
+  const usageContext = buildUsageContext(toolCtx, targetMessage, {
     usageId,
     source: "chat",
-    botId: getEventId(toolCtx.event, "self_id"),
-    groupId: toolCtx.groupId,
-    groupName: getEventString(toolCtx.event, "group_name"),
-    userId: toolCtx.userId,
-    userName: targetMessage.userName,
-    sessionId: toolCtx.sessionId,
-  };
+  });
 
-  if (hasStructuredHistory) {
-    structuredHistory!.manager.touch(
-      toolCtx.sessionId,
-      structuredHistory!.ttlMs,
-    );
-  }
+  if (structured) structured.manager.touch(sessionId, structured.ttlMs);
 
-  const streamEnabled = Boolean(toolCtx.config.stream && toolCtx.onTextContent);
-  const streamedMessages: string[] = [];
-  const streamThinkFilter = createThinkTagStreamFilter();
-  let streamBuffer = "";
-  let streamUnitIndex = 0;
-
-  const emitStreamSegment = async (
-    segment: string,
-    unitIndex: number,
-  ): Promise<void> => {
-    const text = removeStickerIntentLines(cleanMarkers(segment))
-      .replace(/\[emotion:[^\]]+\]/gi, "")
-      .replace(/\r/g, "")
-      .trim();
-    if (!text || text === "---") {
-      return;
-    }
-
-    if (toolCtx.onTextContent) {
-      await toolCtx.onTextContent(text, unitIndex, unitIndex + 1);
-      toolCtx.sentMessageIndices ??= new Set<number>();
-      toolCtx.sentMessageIndices.add(streamedMessages.length);
-    }
-    streamedMessages.push(text);
-  };
-
-  let pendingQuoteMarkerLines: string[] = [];
-  const flushStreamBuffer = async (force: boolean): Promise<void> => {
-    while (true) {
-      const { units, rest } = consumeCompleteStreamUnits(streamBuffer, force);
-      if (units.length === 0) {
-        streamBuffer = rest;
-        break;
-      }
-
-      streamBuffer = rest;
-      for (const unit of units) {
-        if (!unit.trim()) {
-          continue;
-        }
-        if (isQuoteMarkerOnlyUnit(unit)) {
-          pendingQuoteMarkerLines.push(unit.trim());
-          continue;
-        }
-        const mergedUnit = pendingQuoteMarkerLines.length
-          ? [...pendingQuoteMarkerLines, unit].join("\n")
-          : unit;
-        pendingQuoteMarkerLines = [];
-        const unitIndex = streamUnitIndex;
-        streamUnitIndex += 1;
-        await emitStreamSegment(mergedUnit, unitIndex);
-      }
-
-      if (!force) {
-        break;
-      }
-    }
-    if (force) {
-      pendingQuoteMarkerLines = [];
-    }
-  };
+  const onTextContent = toolCtx.onTextContent;
+  const stream =
+    config.stream && onTextContent
+      ? createReplyStream(async (text, unitIndex, sentIndex) => {
+          await onTextContent(text, unitIndex, unitIndex + 1);
+          (toolCtx.sentMessageIndices ??= new Set<number>()).add(sentIndex);
+        })
+      : undefined;
+  const webBudget = createWebToolBudget(config.searxng.maxSearchCount);
 
   const runComplete = () =>
     ai.complete({
-      model: toolCtx.config.model,
-      messages: buildCurrentMessages(
+      model: config.model,
+      messages: buildRequestMessages({
         staticPrompt,
         dynamicUserContext,
         targetMessage,
         cachedHistory,
         currentUserMessages,
-        modelImageUrls,
-      ),
+        imageUrls: modelImageUrls,
+      }),
       usageContext,
       usageContextTokens: chatHistoryTokens,
       usageBreakdown: {
@@ -245,95 +180,58 @@ export async function runChat(
       },
       executableToolsProvider: () =>
         buildSessionTools(
-          chatTools,
-          skillManager.getTools(toolCtx.sessionId),
           toolCtx,
-          runtimeOptions?.extraTools,
-          webSearchState,
+          {
+            chatTools,
+            skillTools: skillManager.getTools(sessionId),
+            extraTools,
+          },
+          webBudget,
         ),
-      temperature: toolCtx.config.temperature,
-      maxIterations: toolCtx.config.maxIterations,
-      stream: streamEnabled,
-      onTextDelta: streamEnabled
-        ? async (delta) => {
-            streamBuffer += streamThinkFilter.push(delta, false);
-            await flushStreamBuffer(false);
-          }
-        : undefined,
+      temperature: config.temperature,
+      maxIterations: config.maxIterations,
+      stream: Boolean(stream),
+      onTextDelta: stream ? (delta) => stream.push(delta) : undefined,
     });
   const response = ai.withUsageContext
     ? await ai.withUsageContext(usageContext, runComplete)
     : await runComplete();
 
+  const humanizeInput = {
+    sessionId,
+    botNickname: prompt.botNickname,
+    chatHistory: history,
+    targetMessage,
+  };
   humanize.emotionAgent
-    .refreshIfNeeded({
-      sessionId: toolCtx.sessionId,
-      botNickname: promptCtx.botNickname,
-      chatHistory: history,
-      targetMessage,
-    })
+    .refreshIfNeeded(humanizeInput)
     .catch((err) =>
-      toolCtx.ctx.logger.warn(
-        `[chat-engine] background emotion refresh failed: ${err}`,
-      ),
+      log.warn(`[chat-engine] background emotion refresh failed: ${err}`),
     );
 
-  if (streamEnabled) {
-    streamBuffer += streamThinkFilter.push("", true);
-    await flushStreamBuffer(true);
-  }
-
-  if (toolCtx.config.debug) {
-    toolCtx.ctx.logger.info("[chat-engine] === Raw AI Reply ===");
-    toolCtx.ctx.logger.info(response.content || "(empty)");
-    toolCtx.ctx.logger.info("[chat-engine] === End Raw AI Reply ===");
-  }
+  if (stream) await stream.end();
 
   const allToolCalls = response.allToolCalls || [];
-
-  if (toolCtx.config.debug && response.reasoning) {
-    toolCtx.ctx.logger.info(
-      `[chat-engine] AI reasoning: ${response.reasoning}`,
-    );
-  }
-
-  if (toolCtx.config.debug && allToolCalls.length > 0) {
-    for (const toolCall of allToolCalls) {
-      const resultPreview = JSON.stringify(toolCall.result);
-      toolCtx.ctx.logger.info(
-        `[chat-engine] Tool call: ${toolCall.name}(${JSON.stringify(toolCall.arguments).substring(0, 100)})`,
-      );
-      toolCtx.ctx.logger.info(
-        `[chat-engine] Tool result: ${toolCall.name} -> ${resultPreview ? resultPreview.substring(0, 300) : "undefined"}`,
-      );
-    }
+  if (config.debug) {
+    logRawResponse(log, response.content, response.reasoning, allToolCalls);
   }
 
   if (shouldEndSession(allToolCalls)) {
     persistStructuredHistory(
-      structuredHistory,
-      toolCtx.sessionId,
+      structured,
+      sessionId,
       response.turnMessages,
       currentUserMessages,
       [],
     );
-    toolCtx.ctx.logger.info(
-      `[chat-engine] Session ${toolCtx.sessionId} ended by tool`,
-    );
-    toolCtx.aiService.finalizeUsage?.(usageId, {
+    log.info(`[chat-engine] Session ${sessionId} ended by tool`);
+    aiService.finalizeUsage?.(usageId, {
       sentUserMessages: 0,
       sentAssistantMessages: 0,
     });
     return {
       messages: [],
-      pendingAt: [],
-      pendingPoke: [],
-      pendingQuote: undefined,
-      toolCalls: allToolCalls.map((toolCall) => ({
-        name: toolCall.name,
-        args: toolCall.arguments,
-        result: toolCall.result,
-      })),
+      toolCalls: allToolCalls,
       emojiPath: null,
       protocolMessages: response.turnMessages,
     };
@@ -356,7 +254,7 @@ export async function runChat(
   if (cleanedText.trim()) {
     const emotionIntent = humanize.emotionAgent.parseEmotionIntent(cleanedText);
     if (emotionIntent) {
-      humanize.emotionAgent.setEmotion(toolCtx.sessionId, emotionIntent);
+      humanize.emotionAgent.setEmotion(sessionId, emotionIntent);
     }
     cleanedText = humanize.emotionAgent.cleanEmotionMarkers(cleanedText).trim();
   }
@@ -364,40 +262,31 @@ export async function runChat(
   let emojiPath: string | null = null;
   let finalText = cleanedText;
   if (cleanedText.trim()) {
-    const stickerResult = await humanize.emojiAgent.processStickerResponse(
+    const sticker = await humanize.emojiAgent.processStickerResponse(
       cleanedText,
-      {
-        sessionId: toolCtx.sessionId,
-        botNickname: promptCtx.botNickname,
-        chatHistory: history,
-        targetMessage,
-      },
+      humanizeInput,
     );
-    finalText = stickerResult.cleanedText;
-    if (stickerResult.success && stickerResult.emojiPath) {
-      emojiPath = stickerResult.emojiPath;
-    }
+    finalText = sticker.cleanedText;
+    if (sticker.success && sticker.emojiPath) emojiPath = sticker.emojiPath;
   }
 
   const finalMessages = mergeQuoteMarkerUnits(
     splitOutgoingUnits(finalText),
   ).filter((unit) => unit.trim() && unit.trim() !== "---");
   const outgoingMessages =
-    streamEnabled && streamedMessages.length > 0
-      ? streamedMessages
-      : finalMessages;
-  toolCtx.aiService.finalizeUsage?.(usageId, {
+    stream && stream.sent.length > 0 ? [...stream.sent] : finalMessages;
+  aiService.finalizeUsage?.(usageId, {
     sentUserMessages: 1,
     sentAssistantMessages: outgoingMessages.length,
   });
 
-  toolCtx.ctx.logger.info(
-    `[chat-engine] Session ${toolCtx.sessionId} done | ${finalMessages.length} msg(s), ${allToolCalls.length} tool call(s)`,
+  log.info(
+    `[chat-engine] Session ${sessionId} done | ${finalMessages.length} msg(s), ${allToolCalls.length} tool call(s)`,
   );
 
   persistStructuredHistory(
-    structuredHistory,
-    toolCtx.sessionId,
+    structured,
+    sessionId,
     response.turnMessages,
     currentUserMessages,
     finalMessages,
@@ -405,610 +294,38 @@ export async function runChat(
 
   return {
     messages: outgoingMessages,
-    pendingAt: [],
-    pendingPoke: [],
-    pendingQuote: undefined,
-    toolCalls: allToolCalls.map((toolCall) => ({
-      name: toolCall.name,
-      args: toolCall.arguments,
-      result: toolCall.result,
-    })),
+    toolCalls: allToolCalls,
     emojiPath,
     protocolMessages: response.turnMessages,
   };
 }
 
-function estimateChatHistoryTokens(history: ChatMessage[]): number {
-  if (history.length === 0) return 0;
-  return estimateTextTokens(
-    history
-      .map((message) =>
-        [
-          message.userName,
-          message.userId,
-          message.userRole,
-          message.userTitle,
-          message.messageId,
-          message.content,
-        ]
-          .filter((value) => value !== undefined && value !== null)
-          .join(" "),
-      )
-      .join("\n"),
+function shouldEndSession(toolCalls: ToolCallRecord[]): boolean {
+  return toolCalls.some(
+    (toolCall) =>
+      toolCall.name === "end_session" &&
+      isRecord(toolCall.result) &&
+      Boolean(toolCall.result.ended),
   );
 }
 
-function estimateMessageContentTokens(
-  messages: Array<{ content?: unknown }>,
-): number {
-  return messages.reduce(
-    (sum, message) => sum + estimateContentTokens(message.content),
-    0,
-  );
-}
-
-function estimateContentTokens(content: unknown): number {
-  if (typeof content === "string") {
-    return estimateTextTokens(content);
-  }
-  if (!Array.isArray(content)) {
-    return 0;
-  }
-  return content.reduce((sum, item) => {
-    if (!item || typeof item !== "object") return sum;
-    const record = item as Record<string, unknown>;
-    if (typeof record.text === "string") {
-      return sum + estimateTextTokens(record.text);
-    }
-    if (record.type === "image_url") {
-      return sum + 85;
-    }
-    return sum + estimateTextTokens(JSON.stringify(record));
-  }, 0);
-}
-
-function estimateTextTokens(text: string): number {
-  const normalized = text.trim();
-  if (!normalized) return 0;
-  const cjkChars =
-    normalized.match(/[\u3400-\u9fff\u3040-\u30ff]/g)?.length || 0;
-  const latinWords = normalized.match(/[A-Za-z0-9_]+/g)?.length || 0;
-  const symbols = Math.max(0, normalized.length - cjkChars);
-  return Math.max(
-    1,
-    Math.ceil(cjkChars * 0.6 + latinWords * 1.3 + symbols / 6),
-  );
-}
-
-function buildCurrentMessages(
-  staticPrompt: string,
-  dynamicUserContext: string,
-  targetMessage: TargetMessage,
-  cachedHistory: any[] = [],
-  currentUserMessages: any[] = [],
-  pendingImageUrls?: string[],
-): any[] {
-  const messages: any[] = [{ role: "system", content: staticPrompt }];
-  messages.push(...cachedHistory);
-
-  if (currentUserMessages.length > 0) {
-    messages.push(
-      ...prependDynamicContextToFirstUserMessage(
-        attachImagesToCurrentUserMessages(
-          currentUserMessages,
-          pendingImageUrls,
-        ),
-        dynamicUserContext,
-        pendingImageUrls,
-      ),
-    );
-    return messages;
-  }
-
-  const hasImages = Boolean(pendingImageUrls && pendingImageUrls.length > 0);
-  const userText = `${dynamicUserContext}\n\n---\n\n[User message]\n${targetMessage.content || ""}`;
-
-  if (!hasImages) {
-    messages.push({
-      role: "user",
-      content: userText,
-    });
-    return messages;
-  }
-
-  const userContent: any[] = [{ type: "text", text: userText }];
-  for (const url of pendingImageUrls || []) {
-    userContent.push({ type: "image_url", image_url: { url } });
-  }
-
-  messages.push({
-    role: "user",
-    content: userContent,
-  });
-  return messages;
-}
-
-function prependDynamicContextToFirstUserMessage(
-  messages: any[],
-  dynamicUserContext: string,
-  pendingImageUrls?: string[],
-): any[] {
-  if (messages.length === 0) return messages;
-  const result = [...messages];
-  const firstIndex = 0;
-  const first = result[firstIndex];
-  if (!first || first.role !== "user") return result;
-
-  const hasImages = Boolean(pendingImageUrls && pendingImageUrls.length > 0);
-
-  if (typeof first.content === "string") {
-    result[firstIndex] = {
-      role: "user",
-      content: `${dynamicUserContext}\n\n---\n\n[User message]\n${first.content}`,
-    };
-    return result;
-  }
-
-  if (Array.isArray(first.content) && hasImages) {
-    const content = [...first.content];
-    const originalText =
-      content
-        .filter((part: any) => part?.type === "text")
-        .map((part: any) => part.text)
-        .join("\n") || "";
-    content[0] = {
-      type: "text",
-      text: `${dynamicUserContext}\n\n---\n\n[User message]\n${originalText}`,
-    };
-    result[firstIndex] = { role: "user", content };
-    return result;
-  }
-
-  if (Array.isArray(first.content)) {
-    const text = first.content
-      .filter((part: any) => part?.type === "text")
-      .map((part: any) => part.text)
-      .join("\n");
-    result[firstIndex] = {
-      role: "user",
-      content: `${dynamicUserContext}\n\n---\n\n[User message]\n${text}`,
-    };
-    return result;
-  }
-
-  return result;
-}
-
-const RATE_LIMITED_TOOL_NAMES = new Set(["web_search", "web_read_page"]);
-const RATE_LIMITED_BUILTIN_NAMES = new Set([
-  "web_search-web_search",
-  "web_search-web_read_page",
-]);
-
-function buildSessionTools(
-  chatTools: AITool[],
-  skillTools: Map<string, SkillToolEntry>,
-  toolCtx: ToolContext,
-  extraTools: AITool[] = [],
-  webSearchState?: { count: number },
-): SessionToolDefinition[] {
-  const maxSearchCount = toolCtx.config.searxng.maxSearchCount;
-  const tools: SessionToolDefinition[] = [];
-  const runtimeContext = createExternalSkillRuntimeContext(toolCtx);
-  const rateLimitError = () => ({
-    success: false,
-    error: `Web search/read-page limit (${maxSearchCount}) reached for this conversation. Answer based on existing information instead of calling web tools again.`,
-  });
-  const isRateLimited = (name: string) =>
-    maxSearchCount > 0 &&
-    Boolean(webSearchState) &&
-    webSearchState!.count >= maxSearchCount &&
-    (RATE_LIMITED_TOOL_NAMES.has(name) || RATE_LIMITED_BUILTIN_NAMES.has(name));
-
-  for (const tool of chatTools) {
-    const isRateLimitedTool = RATE_LIMITED_TOOL_NAMES.has(tool.name);
-    tools.push({
-      name: tool.name,
-      tool: {
-        ...tool,
-        handler: (args: any) => {
-          if (isRateLimitedTool && isRateLimited(tool.name)) {
-            return rateLimitError();
-          }
-          if (isRateLimitedTool && webSearchState) {
-            webSearchState.count++;
-          }
-          return tool.handler(args, runtimeContext);
-        },
-      },
-    });
-  }
-
-  for (const tool of extraTools) {
-    tools.push({
-      name: tool.name,
-      tool: {
-        ...tool,
-        handler: (args: any) => tool.handler(args, runtimeContext),
-      },
-    });
-  }
-
-  for (const [name, { skillName, tool }] of skillTools) {
-    const skill = toolCtx.aiService.getSkill(skillName);
-    if (
-      !toolCtx.config.enableExternalSkills ||
-      !isExternalSkillAllowed(toolCtx.config, skillName) ||
-      !isSkillAllowedForRole(skill, toolCtx.triggerSkillRole)
-    ) {
-      continue;
-    }
-
-    const isRateLimitedName = RATE_LIMITED_BUILTIN_NAMES.has(name);
-    tools.push({
-      name,
-      tool: {
-        ...tool,
-        handler: (args: any) => {
-          if (isRateLimitedName && isRateLimited(name)) {
-            return rateLimitError();
-          }
-          if (isRateLimitedName && webSearchState) {
-            webSearchState.count++;
-          }
-          return tool.handler(args, runtimeContext);
-        },
-      },
-    });
-  }
-
-  return tools;
-}
-
-function createExternalSkillRuntimeContext(toolCtx: ToolContext): any {
-  const rawEvent = toolCtx.event || {};
-  return {
-    ctx: toolCtx.ctx,
-    event: rawEvent,
-    rawEvent,
-    session_id: toolCtx.sessionId,
-    trigger_role: toolCtx.triggerSkillRole,
-    isMultimodal: Boolean(toolCtx.config?.isMultimodal),
-  };
-}
-
-function shouldEndSession(
-  toolCalls: Array<{ name: string; result: any }>,
-): boolean {
-  return toolCalls.some((toolCall) => {
-    if (toolCall.name !== "end_session") {
-      return false;
-    }
-
-    const result = toolCall.result;
-    return Boolean(result && typeof result === "object" && result.ended);
-  });
-}
-
-function persistStructuredHistory(
-  structuredHistory: StructuredHistoryRunContext | undefined,
-  sessionId: string,
-  protocolMessages: any[] | undefined,
-  currentUserMessages: any[],
-  finalMessages: string[],
+function logRawResponse(
+  log: Logger,
+  content: string | null,
+  reasoning: string | null,
+  toolCalls: ToolCallRecord[],
 ): void {
-  if (!structuredHistory || currentUserMessages.length === 0) {
-    return;
-  }
-
-  const messages = [...currentUserMessages];
-  const protocol = [...(protocolMessages || [])];
-
-  if (protocol.length > 0) {
-    const last = protocol[protocol.length - 1];
-    if (isPlainAssistantMessage(last)) {
-      protocol.pop();
-    }
-  }
-
-  messages.push(...protocol);
-  for (const msg of finalMessages) {
-    messages.push({
-      role: "assistant",
-      content: msg,
-    });
-  }
-
-  structuredHistory.manager.append(
-    sessionId,
-    messages,
-    structuredHistory.ttlMs,
-  );
-}
-
-function isPlainAssistantMessage(message: any): boolean {
-  if (!message || message.role !== "assistant") {
-    return false;
-  }
-  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-  return toolCalls.length === 0;
-}
-
-/**
- * Remove action markers from text for storage/display.
- * Note: ALL markers are preserved here - they'll be parsed by parseLineMarkers in index.ts
- */
-function cleanMarkers(text: string): string {
-  let cleaned = stripThinkBlocks(text).trim();
-
-  cleaned = cleaned
-    .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/gi, "")
-    .replace(/<｜｜DSML｜｜invoke[^>]*>[\s\S]*?<\/｜｜DSML｜｜invoke>/gi, "")
-    .replace(
-      /<｜｜DSML｜｜parameter[^>]*>[\s\S]*?<\/｜｜DSML｜｜parameter>/gi,
-      "",
+  log.info("[chat-engine] === Raw AI Reply ===");
+  log.info(content || "(empty)");
+  log.info("[chat-engine] === End Raw AI Reply ===");
+  if (reasoning) log.info(`[chat-engine] AI reasoning: ${reasoning}`);
+  for (const toolCall of toolCalls) {
+    const resultPreview = JSON.stringify(toolCall.result);
+    log.info(
+      `[chat-engine] Tool call: ${toolCall.name}(${JSON.stringify(toolCall.arguments).substring(0, 100)})`,
     );
-
-  return sanitizeBrackets(cleaned);
-}
-
-const FUNCTIONAL_BRACKET_PREFIX =
-  /\[(at|reply|poke|audio|emotion):[^\]\n]*\]?/gi;
-
-function sanitizeBrackets(text: string): string {
-  if (!text) return text;
-
-  const placeholders: string[] = [];
-  let working = text.replace(FUNCTIONAL_BRACKET_PREFIX, (match) => {
-    const idx = placeholders.length;
-    placeholders.push(match);
-    return `\u0000${idx}\u0000`;
-  });
-
-  let result = "";
-  let orphanLeftCount = 0;
-  let i = 0;
-
-  while (i < working.length) {
-    const ch = working[i];
-
-    if (ch === "\u0000") {
-      const endIdx = working.indexOf("\u0000", i + 1);
-      if (endIdx > i) {
-        const idx = parseInt(working.slice(i + 1, endIdx), 10);
-        if (!Number.isNaN(idx) && placeholders[idx] !== undefined) {
-          result += placeholders[idx];
-          i = endIdx + 1;
-          continue;
-        }
-      }
-      i++;
-      continue;
-    }
-
-    if (ch === "[") {
-      // 贴纸意图标记
-      if (working[i + 1] === "]" && isStandaloneToken(working, i, i + 2)) {
-        result += "[]";
-        i += 2;
-        continue;
-      }
-      let j = i + 1;
-      while (j < working.length && working[j] !== "]") {
-        j++;
-      }
-      if (j < working.length) {
-        i = j + 1;
-      } else {
-        orphanLeftCount++;
-        i++;
-      }
-      continue;
-    }
-
-    if (ch === "]") {
-      i++;
-      continue;
-    }
-
-    result += ch;
-    i++;
-  }
-
-  if (orphanLeftCount > 0) {
-    result += "]".repeat(orphanLeftCount);
-  }
-
-  return result;
-}
-
-function isStandaloneToken(text: string, start: number, end: number): boolean {
-  const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-  const nextBreak = text.indexOf("\n", end);
-  const lineEnd = nextBreak === -1 ? text.length : nextBreak;
-  return (
-    !text.slice(lineStart, start).trim() && !text.slice(end, lineEnd).trim()
-  );
-}
-
-function removeStickerIntentLines(text: string): string {
-  return String(text || "")
-    .split(/\r?\n/)
-    .filter((line) => !/^\s*\[\]\s*$/.test(line))
-    .join("\n");
-}
-
-function stripThinkBlocks(text: string): string {
-  let source = String(text || "");
-  let output = "";
-
-  while (source) {
-    const open = findThinkOpenTag(source);
-    if (!open) {
-      output += source;
-      break;
-    }
-
-    output += source.slice(0, open.index);
-    const afterOpen = source.slice(open.end);
-    const close = findThinkCloseTag(afterOpen);
-    if (!close) {
-      break;
-    }
-
-    source = afterOpen.slice(close.end);
-  }
-
-  return output.replace(/<\/?(?:think|thinking)\s*>/gi, "");
-}
-
-function createThinkTagStreamFilter() {
-  let buffer = "";
-  let insideThink = false;
-
-  return {
-    push(delta: string, force: boolean): string {
-      buffer += delta;
-      let output = "";
-
-      while (buffer) {
-        if (insideThink) {
-          const close = findThinkCloseTag(buffer);
-          if (!close) {
-            buffer = force ? "" : keepTagPrefixSuffix(buffer, "</thinking>");
-            break;
-          }
-
-          buffer = buffer.slice(close.end);
-          insideThink = false;
-          continue;
-        }
-
-        const open = findThinkOpenTag(buffer);
-        if (!open) {
-          const keep = force ? "" : keepTagPrefixSuffix(buffer, "<thinking>");
-          output += buffer.slice(0, buffer.length - keep.length);
-          buffer = keep;
-          break;
-        }
-
-        output += buffer.slice(0, open.index);
-        buffer = buffer.slice(open.end);
-        insideThink = true;
-      }
-
-      return output.replace(/<\/?(?:think|thinking)\s*>/gi, "");
-    },
-  };
-}
-
-function findThinkOpenTag(text: string): { index: number; end: number } | null {
-  const match = /<(think|thinking)\b[^>]*>/i.exec(text);
-  return match
-    ? { index: match.index, end: match.index + match[0].length }
-    : null;
-}
-
-function findThinkCloseTag(
-  text: string,
-): { index: number; end: number } | null {
-  const match = /<\/(think|thinking)\s*>/i.exec(text);
-  return match
-    ? { index: match.index, end: match.index + match[0].length }
-    : null;
-}
-
-function keepTagPrefixSuffix(text: string, tagPrefix: string): string {
-  const maxLength = Math.min(text.length, tagPrefix.length - 1);
-  const lowerText = text.toLowerCase();
-  const lowerPrefix = tagPrefix.toLowerCase();
-
-  for (let length = maxLength; length > 0; length--) {
-    const suffix = lowerText.slice(-length);
-    if (lowerPrefix.startsWith(suffix)) {
-      return text.slice(-length);
-    }
-  }
-
-  return "";
-}
-
-function isToolErrorResult(result: any): boolean {
-  if (!result || typeof result !== "object") return false;
-  if (result.error) return true;
-  return result.success === false;
-}
-
-async function generateToolFailureReply(
-  ai: AIInstance,
-  toolCtx: ToolContext,
-  chatSystemPrompt: string,
-  targetMessage: TargetMessage,
-  failedToolCalls: Array<{ name: string; result: any }>,
-): Promise<string> {
-  const failedSummary = failedToolCalls
-    .map((item) => {
-      const raw =
-        typeof item.result === "string"
-          ? item.result
-          : JSON.stringify(item.result);
-      return `- ${item.name}: ${raw}`;
-    })
-    .join("\n");
-  const userPrompt = `用户原始消息：${targetMessage.content}
-
-补充上下文：你刚才尝试调用工具，但以下工具失败了：
-${failedSummary}
-
-请基于当前会话的人设与语气，给用户一条自然、简短的回复。
-要求：
-- 可以简要提到“刚刚没查到/调用失败”，但不要泄露内部系统细节。
-- 给出可执行的下一步建议（如补充关键词、提供更具体链接、稍后再试）。
-- 直接输出最终回复文本，不要解释你在做什么。`;
-
-  try {
-    const retry = await ai.complete({
-      model: toolCtx.config.model,
-      messages: [
-        { role: "system", content: chatSystemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      usageContext: {
-        source: "chat.tool-failure",
-        botId: getEventId(toolCtx.event, "self_id"),
-        groupId: toolCtx.groupId,
-        groupName: getEventString(toolCtx.event, "group_name"),
-        userId: toolCtx.userId,
-        userName: targetMessage.userName,
-        sessionId: toolCtx.sessionId,
-      },
-      temperature: Math.max(0.2, Math.min(0.8, toolCtx.config.temperature)),
-      max_tokens: 120,
-    });
-
-    const text = cleanMarkers(retry.content || "");
-    if (text) {
-      return text;
-    }
-  } catch (err) {
-    toolCtx.ctx.logger.warn(
-      `[chat-engine] Failed to generate tool-failure fallback reply: ${err}`,
+    log.info(
+      `[chat-engine] Tool result: ${toolCall.name} -> ${resultPreview ? resultPreview.substring(0, 300) : "undefined"}`,
     );
   }
-
-  return "我刚刚查这条信息时出了点问题，你可以换个关键词再试试，或者给我更具体一点的线索。";
-}
-
-function getEventId(event: unknown, key: string): string | undefined {
-  if (!event || typeof event !== "object") return undefined;
-  const value = (event as Record<string, unknown>)[key];
-  if (value == null) return undefined;
-  const text = String(value).trim();
-  return text.length > 0 ? text : undefined;
-}
-
-function getEventString(event: unknown, key: string): string | undefined {
-  if (!event || typeof event !== "object") return undefined;
-  const value = (event as Record<string, unknown>)[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

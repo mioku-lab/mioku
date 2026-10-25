@@ -1,4 +1,12 @@
-import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
+import type {
+  BotRole,
+  ChatConfig,
+  ChatMessage,
+  ConstraintStrength,
+  ReplyContextType,
+  ReviewMessages,
+  TargetMessage,
+} from "../types";
 import { logger } from "mioku";
 import type {
   SkillPermissionRole,
@@ -8,7 +16,6 @@ import type {
 import { pickReplyStyle } from "../humanize";
 import type { EmojiAgent } from "../humanize";
 import { filterAllowedExternalSkills } from "./external-skills";
-import type { SkillSessionManager } from "../manage/skill-session";
 
 /**
  * ==================== （TODO） ====================
@@ -21,45 +28,37 @@ import type { SkillSessionManager } from "../manage/skill-session";
 export interface StaticPromptContext {
   config: ChatConfig;
   aiService: AIService;
-  enableExternalSkills: boolean;
   triggerSkillRole?: SkillPermissionRole;
-  skillManager?: SkillSessionManager;
-  sessionId?: string;
   emojiAgent?: EmojiAgent;
 }
 
-export interface DynamicPromptContext {
-  config: ChatConfig;
+/** 调用方为一轮对话准备的提示词素材 */
+export interface TurnPrompt {
   botNickname: string;
-  botRole: "owner" | "admin" | "member";
+  botRole: BotRole;
   isGroup: boolean;
   groupName?: string;
   memberCount?: number;
-  chatHistory: ChatMessage[];
-  targetMessage: TargetMessage;
-  reviewMessages?: {
-    contents: string[];
-    userNames: string[];
-    messageIds: string[];
-  };
-  currentEmotion?: string;
+  topicContext?: string;
   styleSamples?: string;
   eventContext?: string;
   recallMarks?: Map<string, string>;
-  topicContext?: string;
-  replyContext?: {
-    type: "reply" | "comment" | "idle" | "review" | "poked";
-    targetUser?: string;
-    targetMessage?: string;
-  };
+  replyType: ReplyContextType;
+  reviewMessages?: ReviewMessages;
   promptInjections?: ChatRuntimePromptInjection[];
+}
+
+export interface DynamicPromptContext extends TurnPrompt {
+  config: ChatConfig;
+  chatHistory: ChatMessage[];
+  targetMessage: TargetMessage;
+  currentEmotion?: string;
   activeSkillsInfo?: string;
 }
 
-type Strength = "low" | "medium" | "high";
-type ReplyType = "reply" | "comment" | "idle" | "review" | "poked";
+type Strength = ConstraintStrength;
 
-function normalizeConstraintStrength(value: unknown): Strength {
+export function normalizeConstraintStrength(value: unknown): Strength {
   if (value === "low" || value === "high" || value === "medium") return value;
   return "medium";
 }
@@ -304,7 +303,7 @@ function appendExternalSkillsSection(
   lines: string[],
   ctx: StaticPromptContext,
 ): void {
-  if (!ctx.enableExternalSkills) return;
+  if (!ctx.config.enableExternalSkills) return;
 
   const skillsMap = ctx.aiService.getAllSkills?.();
   const skillEntries = skillsMap
@@ -373,16 +372,14 @@ export function buildDynamicUserContext(ctx: DynamicPromptContext): string {
   );
   sections.push(...buildInjectedSections(ctx.promptInjections));
 
-  if (ctx.replyContext) {
-    sections.push(
-      buildReplyContextSection(
-        ctx.replyContext,
-        ctx.reviewMessages,
-        lengthStrength,
-        toolStrength,
-      ),
-    );
-  }
+  sections.push(
+    buildReplyContextSection(
+      ctx.replyType,
+      ctx.reviewMessages,
+      lengthStrength,
+      toolStrength,
+    ),
+  );
 
   sections.push(
     buildReplyStyleSection(ctx.config, ctx.botNickname, lengthStrength),
@@ -403,21 +400,20 @@ function buildInjectedSections(
 }
 
 function buildReplyContextSection(
-  replyCtx: DynamicPromptContext["replyContext"],
-  reviewMsgs: DynamicPromptContext["reviewMessages"],
+  replyType: ReplyContextType,
+  reviewMsgs: ReviewMessages | undefined,
   lengthStrength: Strength,
   toolStrength: Strength,
 ): string {
-  if (!replyCtx) return "";
   const isMulti = isMultiUserInteraction(reviewMsgs);
-  const builders: Record<ReplyType, () => string[]> = {
+  const builders: Record<ReplyContextType, () => string[]> = {
     reply: () => buildReplyGuidance(isMulti, lengthStrength, toolStrength),
     comment: () => buildCommentGuidance(lengthStrength),
     idle: () => buildIdleGuidance(lengthStrength),
     review: () => buildReviewGuidance(isMulti, lengthStrength),
     poked: () => buildPokedGuidance(lengthStrength),
   };
-  return ["## 这次的回复", ...builders[replyCtx.type]()].join("\n");
+  return ["## 这次的回复", ...builders[replyType]()].join("\n");
 }
 
 function buildReplyGuidance(

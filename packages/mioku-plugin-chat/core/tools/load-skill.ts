@@ -1,6 +1,7 @@
 import type { AITool } from "mioku";
 import type { ToolContext } from "../../types";
 import type { SkillSessionManager } from "../../manage/skill-session";
+import { isRecord } from "../../utils/record";
 import {
   filterAllowedExternalSkills,
   getSkillRequiredPermissionRole,
@@ -16,14 +17,13 @@ import {
 import {
   buildWebSearchFeatureSection,
   buildWebReadFeatureSection,
+  normalizeConstraintStrength,
 } from "../prompt";
 import { createWebSearchTool, createWebReadPageTool } from "./web";
 
-type ConstraintStrength = "low" | "medium" | "high";
-
-function normalizeConstraintStrength(value: unknown): ConstraintStrength {
-  if (value === "low" || value === "high" || value === "medium") return value;
-  return "medium";
+function readSkillName(args: unknown): string {
+  const raw = isRecord(args) ? args.skill_name : undefined;
+  return String(raw || "").trim();
 }
 
 function createFeatureTools(
@@ -55,8 +55,8 @@ export function createLoadSkillTool(
       },
       required: ["skill_name"],
     },
-    handler: async (args) => {
-      const skillName = String(args?.skill_name || "").trim();
+    handler: async (args: unknown) => {
+      const skillName = readSkillName(args);
 
       if (isBuiltinFeature(skillName)) {
         const feature = getFeatureMeta(skillName);

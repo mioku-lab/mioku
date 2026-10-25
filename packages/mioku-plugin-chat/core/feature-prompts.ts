@@ -8,32 +8,38 @@ export type FeatureName =
 
 export interface FeatureMeta {
   name: FeatureName;
-  configKey: string;
+  isEnabled: (config: ChatConfig) => boolean;
   hasTools: boolean;
 }
 
 export const FEATURE_METAS: FeatureMeta[] = [
   {
     name: "markdown",
-    configKey: "enableMarkdownScreenshot",
+    isEnabled: (cfg) => Boolean(cfg.enableMarkdownScreenshot),
     hasTools: false,
   },
-  { name: "audio", configKey: "audio.enabled", hasTools: false },
-  { name: "web_search", configKey: "searxng.enabled", hasTools: true },
-  { name: "web_read_page", configKey: "webReader.enabled", hasTools: true },
+  {
+    name: "audio",
+    isEnabled: (cfg) => Boolean(cfg.audio?.enabled),
+    hasTools: false,
+  },
+  {
+    name: "web_search",
+    isEnabled: (cfg) => Boolean(cfg.searxng?.enabled),
+    hasTools: true,
+  },
+  {
+    name: "web_read_page",
+    isEnabled: (cfg) => Boolean(cfg.webReader?.enabled),
+    hasTools: true,
+  },
 ];
 
 export function isFeatureEnabled(
   config: ChatConfig,
   feature: FeatureMeta,
 ): boolean {
-  const key = feature.configKey;
-  const parts = key.split(".");
-  let value: any = config;
-  for (const part of parts) {
-    value = value?.[part];
-  }
-  return Boolean(value);
+  return feature.isEnabled(config);
 }
 
 export function isBuiltinFeature(name: string): name is FeatureName {

@@ -2,6 +2,7 @@ import { logger } from "mioku";
 import puppeteer from "puppeteer";
 import type { AIInstance } from "mioku";
 import type { WebReaderConfig } from "../../types";
+import { readField } from "../../utils/record";
 import {
   assertPublicUrl,
   createPublicUrlChecker,
@@ -14,6 +15,17 @@ export interface WebReadArgs {
   url?: string;
   render_js?: boolean;
   question?: string;
+}
+
+/** 模型给的工具参数转成 WebReadArgs */
+export function parseWebReadArgs(args: unknown): WebReadArgs {
+  const url = readField(args, "url");
+  const question = readField(args, "question");
+  return {
+    url: url ? String(url) : undefined,
+    render_js: Boolean(readField(args, "render_js")),
+    question: question ? String(question) : undefined,
+  };
 }
 
 interface ExtractedPage {
@@ -505,15 +517,18 @@ async function renderPage(
 
     const pageUrl = page.url();
     const contentType = await page.evaluate(() => {
-      const doc = (globalThis as any).document;
-      const contentTypeValue = doc?.contentType;
+      const contentTypeValue = document?.contentType;
       return typeof contentTypeValue === "string" ? contentTypeValue : "";
     });
 
     const extracted = await page.evaluate((maxChars: number) => {
-      const doc = (globalThis as any).document;
-      const textOf = (node: any): string =>
-        String(node?.innerText || node?.textContent || "")
+      const doc = document;
+      const textOf = (node: Element | null | undefined): string =>
+        String(
+          (node as HTMLElement | null | undefined)?.innerText ||
+            node?.textContent ||
+            "",
+        )
           .replace(/\r/g, "")
           .replace(/[ \t\f\v\u00a0]+/g, " ")
           .replace(/\n{3,}/g, "\n\n")
@@ -531,16 +546,17 @@ async function renderPage(
           ?.getAttribute("content") || "";
 
       const headings = Array.from(doc?.querySelectorAll("h1, h2, h3") || [])
-        .map((node: any) => textOf(node))
+        .map((node) => textOf(node))
         .filter(Boolean)
         .slice(0, 10);
 
       const candidates = Array.from(
         doc?.querySelectorAll("article, main, [role='main'], section, div") ||
           [],
-      ).slice(0, 300) as any[];
+      ).slice(0, 300);
 
-      let bestNode = doc?.querySelector("article, main, [role='main']") || null;
+      let bestNode: Element | null =
+        doc?.querySelector("article, main, [role='main']") || null;
       let bestScore = -1;
 
       for (const node of candidates) {
@@ -551,7 +567,7 @@ async function renderPage(
           ? node.querySelectorAll("p").length
           : 0;
         const linkTextLength = Array.from(node.querySelectorAll?.("a") || [])
-          .map((link: any) => textOf(link).length)
+          .map((link) => textOf(link).length)
           .reduce((sum: number, item: number) => sum + item, 0);
 
         const linkDensity = text.length > 0 ? linkTextLength / text.length : 1;
@@ -626,7 +642,7 @@ Rules:
 - Do not use markdown. Output valid JSON only.`;
 }
 
-function parseJsonContent(content: string): any {
+function parseJsonContent(content: string): unknown {
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   const payload = jsonMatch?.[0] || content;
   return JSON.parse(payload);
@@ -670,13 +686,15 @@ async function summarizePage(
     }
 
     const parsed = parseJsonContent(response.content);
-    const title = normalizeText(String(parsed.title || page.title || ""));
+    const field = (key: string) => readField(parsed, key);
+    const title = normalizeText(String(field("title") || page.title || ""));
     const content = normalizeText(
-      String(parsed.content || parsed.summary || ""),
+      String(field("content") || field("summary") || ""),
     );
+    const parsedWarnings = field("warnings");
     const warnings = trimList(
       [
-        ...(Array.isArray(parsed.warnings) ? parsed.warnings.map(String) : []),
+        ...(Array.isArray(parsedWarnings) ? parsedWarnings.map(String) : []),
         ...page.warnings,
       ],
       6,

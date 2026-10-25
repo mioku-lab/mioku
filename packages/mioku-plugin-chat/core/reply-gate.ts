@@ -1,6 +1,7 @@
-import type { AIInstance } from "mioku";
+import type { AIInstance, Logger } from "mioku";
 import type { ChatConfig, ChatMessage } from "../types";
 import { extractJsonObject } from "../utils/json";
+import { readField } from "../utils/record";
 
 /** 判断只需要最近的几轮上下文，比正式回复的历史短得多 */
 export const REPLY_GATE_HISTORY_COUNT = 20;
@@ -8,10 +9,7 @@ export const REPLY_GATE_HISTORY_COUNT = 20;
 const CONTENT_MAX_CHARS = 200;
 const REASON_MAX_CHARS = 40;
 
-type Logger = {
-  debug: (message: string) => void;
-  warn: (message: string) => void;
-};
+type GateLogger = Pick<Logger, "debug" | "warn">;
 
 export interface ReplyGateRequest {
   cfg: ChatConfig;
@@ -33,7 +31,7 @@ export interface ReplyGateDecision {
 /** 弱信号（引用／昵称命中）该接话还是沉默；判断不了时按需要回复处理 */
 export async function decideReplyGate(
   ai: AIInstance | undefined,
-  log: Logger,
+  log: GateLogger,
   req: ReplyGateRequest,
 ): Promise<ReplyGateDecision> {
   if (!ai) {
@@ -55,27 +53,26 @@ export async function decideReplyGate(
     return { reply: true, reason: "request-failed" };
   }
 
-  let parsed: { reply?: unknown; reason?: unknown } | undefined;
+  let parsed: unknown;
   try {
-    parsed = extractJsonObject<{ reply?: unknown; reason?: unknown }>(
-      content || "",
-    );
+    parsed = extractJsonObject(content || "");
   } catch {
     parsed = undefined;
   }
 
-  if (typeof parsed?.reply !== "boolean") {
+  const reply = readField(parsed, "reply");
+  if (typeof reply !== "boolean") {
     log.warn(
       `[ReplyGate] 返回内容无法解析，按需要回复处理: ${String(content || "").slice(0, 80)}`,
     );
     return { reply: true, reason: "parse-failed" };
   }
 
-  const reason = String(parsed.reason ?? "")
+  const reason = String(readField(parsed, "reason") ?? "")
     .trim()
     .slice(0, REASON_MAX_CHARS);
-  log.debug(`[ReplyGate] reply=${parsed.reply} reason=${reason}`);
-  return { reply: parsed.reply, reason };
+  log.debug(`[ReplyGate] reply=${reply} reason=${reason}`);
+  return { reply, reason };
 }
 
 function buildPrompt(req: ReplyGateRequest): string {

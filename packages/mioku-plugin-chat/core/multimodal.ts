@@ -1,7 +1,10 @@
-import type { AIInstance, Bot } from "mioku";
-import type { MiokuContext } from "mioku";
+import type { AIInstance, MiokuContext } from "mioku";
+import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 import { logger } from "mioku";
+import type { ChatTurnEvent } from "../types";
 import { prepareImageUrlsForModel } from "./media/image-compress";
+import { getSegmentSourceCandidates } from "./media/history-media";
+import { imagePart, textPart } from "./model-content";
 
 /**
  * 多模态内容管理器
@@ -69,13 +72,10 @@ ${context ? `\nUser context: ${context}` : ""}`;
         : "Please describe this image in detail.";
 
     // 构建消息内容
-    const contentParts: any[] = [{ type: "text", text: userPrompt }];
-    for (const url of imageUrls) {
-      contentParts.push({
-        type: "image_url",
-        image_url: { url, detail: "auto" },
-      });
-    }
+    const contentParts: ChatCompletionContentPart[] = [
+      textPart(userPrompt),
+      ...imageUrls.map((url) => imagePart(url, "auto")),
+    ];
 
     // 调用多模态模型
     const response = await ai.complete({
@@ -118,34 +118,24 @@ export type MediaByMessageId =
   | { kind: "video"; sources: string[] }
   | null;
 
-/**
- * 获取指定消息 ID 中的首个媒体（图片或视频）
- * @param ctx Mioki 上下文
- * @param messageId 消息 ID
- * @param e
- * @returns 媒体信息或 null
- */
+/** 指定消息里的第一个图片或视频 */
 export async function getMediaByMessageId(
   ctx: MiokuContext,
-  messageId: string | number,
-  e: any,
+  messageId: string,
+  event: ChatTurnEvent | undefined,
 ): Promise<MediaByMessageId> {
   try {
-    const bot: Bot = e?.bot ?? ctx.pickBot(e.self_id ?? "");
+    const bot = event?.bot ?? ctx.pickBot(event?.self_id ?? "");
     if (!bot) return null;
     const msg = await bot.getMessage(messageId);
-    if (!msg || !msg.message) {
-      return null;
-    }
+    if (!msg || !msg.message) return null;
 
-    for (const seg of Array.from(msg.message)) {
+    for (const seg of msg.message) {
       if (seg.type === "image") {
         const url = String(seg.data?.url ?? seg.data?.file ?? "");
         if (url) return { kind: "image", url };
       }
       if (seg.type === "video") {
-        const { getSegmentSourceCandidates } =
-          await import("./media/history-media");
         const sources = getSegmentSourceCandidates(seg);
         if (sources.length > 0) return { kind: "video", sources };
       }
@@ -156,42 +146,6 @@ export async function getMediaByMessageId(
     ctx.logger.error(
       `[multimodal] Failed to get media from message ${messageId}: ${err}`,
     );
-    return null;
-  }
-}
-
-/**
- * 获取引用消息中的图片 URL
- * @param ctx Mioki 上下文
- * @param event 消息事件
- * @returns 图片 URL 或 null
- */
-export async function getQuoteImageUrl(
-  ctx: MiokuContext,
-  event: any,
-): Promise<string | null> {
-  if (!event.quote_id) {
-    return null;
-  }
-
-  try {
-    const bot = event?.bot;
-    if (!bot) return null;
-    const quotedMsg = await bot.getMessage(event.quote_id);
-    if (!quotedMsg || !quotedMsg.message) {
-      return null;
-    }
-
-    // 查找图片段
-    const imageSeg = quotedMsg.message.find((s: any) => s.type === "image");
-    if (!imageSeg) {
-      return null;
-    }
-
-    // 提取图片 URL
-    return (imageSeg as any).url || (imageSeg as any).data?.url || null;
-  } catch (err) {
-    ctx.logger.error(`[multimodal] Failed to get quote image URL: ${err}`);
     return null;
   }
 }

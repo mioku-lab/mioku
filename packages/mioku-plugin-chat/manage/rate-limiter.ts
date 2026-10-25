@@ -1,4 +1,8 @@
-import type { AIRequestLimitConfig, ChatConfig, DynamicDelayConfig } from "../types";
+import type {
+  AIRequestLimitConfig,
+  ChatConfigProvider,
+  DynamicDelayConfig,
+} from "../types";
 
 const DEFAULT_DYNAMIC_DELAY: DynamicDelayConfig = {
   enabled: true,
@@ -12,8 +16,6 @@ const DEFAULT_AI_REQUEST_LIMITS: AIRequestLimitConfig = {
   groupRpm: 6,
   windowMs: 60_000,
 };
-
-export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 export class RateLimiter {
   private userTriggers: Map<string, number[]> = new Map();
@@ -29,7 +31,7 @@ export class RateLimiter {
   private readonly dedupWindowMs: number;
   private readonly groupCooldownMs: number;
   private readonly cleanupTimer: ReturnType<typeof setInterval>;
-  private getConfig: ChatConfigProvider;
+  private getConfig: ChatConfigProvider | null = null;
   private getQueueLengthFn: ((groupId: string) => number) | null = null;
 
   setConfigProvider(provider: ChatConfigProvider): void {
@@ -50,20 +52,18 @@ export class RateLimiter {
     this.windowMs = options?.windowMs ?? 60_000;
     this.dedupWindowMs = options?.dedupWindowMs ?? 30_000;
     this.groupCooldownMs = options?.groupCooldownMs ?? 1_000;
-    this.getConfig = () => ({
-      dynamicDelay: DEFAULT_DYNAMIC_DELAY,
-      aiRequestLimits: DEFAULT_AI_REQUEST_LIMITS,
-    }) as unknown as ChatConfig;
 
     this.cleanupTimer = setInterval(() => this.cleanup(), 300_000);
   }
 
   private getDynamicDelay(groupId?: string): DynamicDelayConfig {
-    return this.getConfig(groupId)?.dynamicDelay ?? DEFAULT_DYNAMIC_DELAY;
+    return this.getConfig?.(groupId)?.dynamicDelay ?? DEFAULT_DYNAMIC_DELAY;
   }
 
   private getAiRequestLimits(groupId?: string): AIRequestLimitConfig {
-    return this.getConfig(groupId)?.aiRequestLimits ?? DEFAULT_AI_REQUEST_LIMITS;
+    return (
+      this.getConfig?.(groupId)?.aiRequestLimits ?? DEFAULT_AI_REQUEST_LIMITS
+    );
   }
 
   canProcess(
