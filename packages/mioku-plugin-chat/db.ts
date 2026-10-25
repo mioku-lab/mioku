@@ -176,6 +176,7 @@ export async function initDatabase(): Promise<ChatDatabase> {
 
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
     CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_messages_group_role ON messages(group_id, role, timestamp);
     CREATE INDEX IF NOT EXISTS idx_messages_content ON messages(session_id, content);
 
     CREATE TABLE IF NOT EXISTS topics (
