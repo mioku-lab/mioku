@@ -115,7 +115,7 @@ export function buildStructuredUserInputFromEvent(
     content,
     messageId: event?.message_id,
     timestamp:
-      typeof event?.time === "number" ? event.time * 1000 : fallbackTimestamp,
+      typeof event?.time === "number" ? event.time : fallbackTimestamp,
   };
 }
 
