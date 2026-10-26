@@ -1,88 +1,60 @@
-import type { MiokuContext } from "mioku";
-import type { AIInstance } from "mioku";
-import type { ChatConfig, TargetMessage } from "../types";
-import type { ChatDatabase } from "../db";
-import type { HumanizeEngine, ChatConfigProvider } from "../humanize";
-import type { SkillSessionManager } from "./skill-session";
-import type { GroupStructuredHistoryManager } from "./group-structured-history";
-import { buildStructuredUserInputFromEvent } from "./group-structured-history";
-import type { RateLimiter } from "./rate-limiter";
-import type {
-  RunRateLimitGuard,
-  HistoryMediaOptions,
-  GetGroupHistoryMessages,
-  GetGroupInfoData,
-  GetHumanizeContexts,
-  RunChat,
-  BuildToolContext,
-  BuildStructuredUserInput,
-} from "./types";
-import type { ChatPluginContext } from "../context";
+import type { Logger, MessageEvent } from "mioku";
+import type { ChatConfigProvider } from "../types";
 import type { SessionTurnScheduler } from "./session-turn-scheduler";
-import { finalizeChatTurn } from "../core/chat-turn";
-import { getBotRole } from "../utils";
+import { eventUserId, senderName } from "../utils/sender";
 
-interface CooldownMessage {
-  event: any;
+const DEFAULT_COOLDOWN_MS = 20_000;
+
+/** 冷却期间收集的群消息 */
+export interface PendingGroupMessage {
+  event: MessageEvent;
   content: string;
   userName: string;
   userId: string;
   messageId: string;
   timestamp: number;
+}
+
+export interface CooldownMessage extends PendingGroupMessage {
   isDirectAt: boolean;
 }
 
+export interface CooldownBatch {
+  groupSessionId: string;
+  groupId: string;
+  selfId: string;
+  messages: CooldownMessage[];
+}
+
+export function toPendingGroupMessage(
+  event: MessageEvent,
+  content: string,
+): PendingGroupMessage {
+  return {
+    event,
+    content,
+    userName: senderName(event, String(event.user_id)),
+    userId: eventUserId(event),
+    messageId: String(event.message_id ?? ""),
+    timestamp: Date.now(),
+  };
+}
+
+export interface CooldownManagerOptions {
+  scheduler: SessionTurnScheduler;
+  configProvider: ChatConfigProvider;
+  logger: Logger;
+  /** 冷却结束且期间有人说话时调用，已在会话串行队列里 */
+  onExpire: (batch: CooldownBatch) => Promise<void>;
+}
+
+/** 机器人回复后的冷却窗口：期间的消息攒起来，结束后一次性回顾 */
 export class CooldownManager {
   private groupCooldownUntil = new Map<string, number>();
   private groupCooldownMessages = new Map<string, CooldownMessage[]>();
   private cooldownTimeoutIds = new Map<string, NodeJS.Timeout>();
-  private pluginCtx: ChatPluginContext;
-  private sessionTurnScheduler: SessionTurnScheduler;
 
-  private ctx: MiokuContext;
-  private configProvider: ChatConfigProvider;
-  private defaultConfig: ChatConfig;
-  private db: ChatDatabase;
-  private humanize: HumanizeEngine;
-  private aiInstance: AIInstance;
-  private aiService: import("mioku").AIService;
-  private skillManager: SkillSessionManager;
-  private groupStructuredHistory: GroupStructuredHistoryManager;
-  private rateLimiter: RateLimiter;
-  private runWithRateLimitGuard: RunRateLimitGuard;
-  private buildHistoryMediaOptions: (
-    ai: AIInstance,
-    cfg: ChatConfig,
-  ) => HistoryMediaOptions;
-  private getGroupHistoryMessages: GetGroupHistoryMessages;
-  private getGroupInfoData: GetGroupInfoData;
-  private getHumanizeContexts: GetHumanizeContexts;
-  private runChat: RunChat;
-  private buildToolContext: BuildToolContext;
-  private buildStructuredUserInputFromEvent: BuildStructuredUserInput;
-
-  constructor(pluginCtx: ChatPluginContext) {
-    this.pluginCtx = pluginCtx;
-    this.sessionTurnScheduler = pluginCtx.sessionTurnScheduler;
-    this.ctx = pluginCtx.ctx;
-    this.configProvider = pluginCtx.configProvider;
-    this.defaultConfig = pluginCtx.defaultConfig;
-    this.db = pluginCtx.db;
-    this.humanize = pluginCtx.humanize;
-    this.aiInstance = pluginCtx.aiInstance;
-    this.aiService = pluginCtx.aiService;
-    this.skillManager = pluginCtx.skillManager;
-    this.groupStructuredHistory = pluginCtx.groupStructuredHistory;
-    this.rateLimiter = pluginCtx.rateLimiter;
-    this.runWithRateLimitGuard = pluginCtx.runWithRateLimitGuard;
-    this.buildHistoryMediaOptions = pluginCtx.buildHistoryMediaOptions;
-    this.getGroupHistoryMessages = pluginCtx.getGroupHistoryMessages;
-    this.getGroupInfoData = pluginCtx.getGroupInfoData;
-    this.getHumanizeContexts = pluginCtx.getHumanizeContexts;
-    this.runChat = pluginCtx.runChat;
-    this.buildToolContext = pluginCtx.buildToolContext;
-    this.buildStructuredUserInputFromEvent = buildStructuredUserInputFromEvent;
-  }
+  constructor(private readonly opts: CooldownManagerOptions) {}
 
   startCooldownTimer(
     groupSessionId: string,
@@ -92,31 +64,23 @@ export class CooldownManager {
     const existingTimer = this.cooldownTimeoutIds.get(groupSessionId);
     if (existingTimer) clearTimeout(existingTimer);
 
-    const cfg = this.configProvider(groupId);
     const cooldownMs =
-      cfg.cooldownAfterReplyMs ??
-      this.defaultConfig.cooldownAfterReplyMs ??
-      20_000;
+      this.opts.configProvider(groupId).cooldownAfterReplyMs ??
+      DEFAULT_COOLDOWN_MS;
 
     const timer = setTimeout(() => {
       if (this.cooldownTimeoutIds.get(groupSessionId) !== timer) return;
       this.cooldownTimeoutIds.delete(groupSessionId);
       this.groupCooldownUntil.delete(groupSessionId);
-      const collected = this.groupCooldownMessages.get(groupSessionId) || [];
+      const messages = this.groupCooldownMessages.get(groupSessionId) || [];
       this.groupCooldownMessages.delete(groupSessionId);
-      if (collected.length === 0) return;
+      if (messages.length === 0) return;
 
-      void this.sessionTurnScheduler
-        .run(groupSessionId, "cooldown", () =>
-          this.processReviewMessages(
-            groupSessionId,
-            groupId,
-            collected,
-            selfId,
-          ),
-        )
+      const batch: CooldownBatch = { groupSessionId, groupId, selfId, messages };
+      void this.opts.scheduler
+        .run(groupSessionId, "cooldown", () => this.opts.onExpire(batch))
         .catch((err) =>
-          this.ctx.logger.error(
+          this.opts.logger.error(
             `[Cooldown] Group ${groupId} processing failed: ${err}`,
           ),
         );
@@ -131,23 +95,12 @@ export class CooldownManager {
 
   collectMessage(
     groupSessionId: string,
-    groupId: string,
-    event: any,
+    event: MessageEvent,
     content: string,
     isDirectAt: boolean,
   ): void {
-    const userName =
-      event.sender?.card || event.sender?.nickname || String(event.user_id);
     const messages = this.groupCooldownMessages.get(groupSessionId) || [];
-    messages.push({
-      event,
-      content,
-      userName,
-      userId: event.user_id,
-      messageId: event.message_id,
-      timestamp: Date.now(),
-      isDirectAt,
-    });
+    messages.push({ ...toPendingGroupMessage(event, content), isDirectAt });
     this.groupCooldownMessages.set(groupSessionId, messages);
   }
 
@@ -160,131 +113,5 @@ export class CooldownManager {
     this.cooldownTimeoutIds.clear();
     this.groupCooldownUntil.clear();
     this.groupCooldownMessages.clear();
-  }
-
-  private async processReviewMessages(
-    groupSessionId: string,
-    groupId: string,
-    collected: CooldownMessage[],
-    selfId: string,
-  ): Promise<void> {
-    const mergedContents = collected.map((m) => m.content);
-    const userNames = collected.map((m) => m.userName);
-    const messageIds = collected.map((m) => m.messageId);
-    const mergedContent = mergedContents.join("\n---\n");
-    const firstMsg = collected[0];
-
-    const targetMessage: TargetMessage = {
-      userName: userNames.join(", "),
-      userId: firstMsg.userId,
-      userRole: firstMsg.event.sender?.role || "member",
-      content: mergedContent,
-      messageId: firstMsg.messageId,
-      timestamp: Date.now(),
-    };
-
-    const cfg = this.configProvider(groupId);
-
-    const { history } = await this.getGroupHistoryMessages(
-      groupId,
-      groupSessionId,
-      this.ctx,
-      cfg.historyCount,
-      this.db,
-      selfId,
-      this.buildHistoryMediaOptions(this.aiInstance, cfg),
-    );
-    const botNickname =
-      cfg.nicknames[0] || this.ctx.pickBot(selfId)?.nickname || "Bot";
-    const botRole = await getBotRole(groupId, this.ctx, selfId);
-    const { groupName, memberCount } = await this.getGroupInfoData(
-      this.ctx,
-      groupId,
-      selfId,
-    );
-
-    const toolCtx = this.buildToolContext({
-      ctx: this.ctx,
-      event: firstMsg.event,
-      groupSessionId,
-      groupId,
-      userId: targetMessage.userId,
-      config: cfg,
-      aiService: this.aiService,
-      db: this.db,
-      botRole,
-      humanize: this.humanize,
-      targetMessage,
-      selfId,
-      audioService: this.pluginCtx.audioService,
-    });
-
-    const contexts = await this.getHumanizeContexts(
-      this.humanize,
-      groupSessionId,
-      targetMessage.userName,
-      history,
-      targetMessage.userId,
-    );
-
-    const result = await this.runWithRateLimitGuard(
-      () =>
-        this.runChat(
-          this.aiInstance,
-          toolCtx,
-          history,
-          targetMessage,
-          {
-            config: cfg,
-            groupName,
-            memberCount,
-            botNickname,
-            botRole,
-            aiService: this.aiService,
-            isGroup: true,
-            styleSamples: contexts.styleSamples,
-            topicContext: contexts.topicContext,
-            replyContext: {
-              type: "review",
-              targetUser: targetMessage.userName,
-              targetMessage: targetMessage.content,
-            },
-            reviewMessages: { contents: mergedContents, userNames, messageIds },
-          },
-          this.humanize,
-          this.skillManager,
-          {
-            manager: this.groupStructuredHistory,
-            ttlMs: cfg.groupStructuredHistoryTtlMs,
-            currentUserInputs: collected.map((msg) =>
-              this.buildStructuredUserInputFromEvent(
-                msg.event,
-                msg.content,
-                msg.timestamp,
-              ),
-            ),
-          },
-        ),
-      {
-        userId: targetMessage.userId,
-        groupId,
-        label: "cooldown",
-        skipRetryOnRateLimit: true,
-      },
-    );
-    if (!result) return;
-
-    await finalizeChatTurn(this.pluginCtx, {
-      event: firstMsg.event,
-      cfg,
-      result,
-      groupId,
-      groupSessionId,
-      userId: targetMessage.userId,
-      selfId,
-      toolCtx,
-      send: true,
-      isLive: true,
-    });
   }
 }

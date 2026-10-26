@@ -4,15 +4,15 @@ export { TopicTracker } from "./topic";
 export { ExpressionSampler } from "./style-samples";
 export { pickReplyStyle } from "./utils";
 
+import type { AIInstance } from "mioku";
+import type { ChatConfigProvider } from "../types";
 import type { ChatDatabase } from "../db";
 import { EmojiAgent } from "./emoji-agent";
 import { EmotionAgent } from "./emotion-agent";
 import { TopicTracker } from "./topic";
 import { ExpressionSampler } from "./style-samples";
 
-export type ChatConfigProvider = (
-  groupId?: string,
-) => import("../types").ChatConfig;
+export type { ChatConfigProvider };
 
 /**
  * 拟人引擎
@@ -26,7 +26,7 @@ export class HumanizeEngine {
   readonly expressionSampler: ExpressionSampler;
 
   constructor(
-    workAI: import("mioku").AIInstance,
+    workAI: AIInstance,
     db: ChatDatabase,
     configProvider: ChatConfigProvider,
   ) {

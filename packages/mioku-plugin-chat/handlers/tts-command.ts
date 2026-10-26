@@ -1,17 +1,10 @@
-import type { SupportedLang } from "mioku-service-audio";
+import type { MessageEvent } from "mioku";
 import type { ChatPluginContext } from "../context";
-import { sendVoice } from "../core/media/audio";
-
-function detectLang(text: string): SupportedLang {
-  if (/[\u3040-\u30ff]/.test(text)) return "ja";
-  if (/[\u4e00-\u9fff]/.test(text)) return "zh";
-  if (/[\uac00-\ud7af]/.test(text)) return "ko";
-  return "en";
-}
+import { detectAudioLanguage as detectLang, sendVoice } from "../core/media/audio";
 
 export async function handleTtsCommand(
   pluginCtx: ChatPluginContext,
-  e: any,
+  e: MessageEvent,
   payload: string,
 ): Promise<void> {
   const { ctx } = pluginCtx;
@@ -48,9 +41,10 @@ export async function handleTtsCommand(
       textLang: detectLang(text),
       mediaType: "wav",
     });
-  } catch (err: any) {
-    ctx.logger.error(`[tts-cmd] 推理失败: ${err?.message ?? err}`);
-    await e.reply(`TTS 推理失败: ${err?.message ?? err}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.logger.error(`[tts-cmd] 推理失败: ${message}`);
+    await e.reply(`TTS 推理失败: ${message}`);
     return;
   }
 

@@ -1,10 +1,10 @@
+import type { NoticeEvent } from "mioku";
 import type { ChatPluginContext, ChatHandlerState } from "../context";
 import type { TargetMessage } from "../types";
-import type { Bot, NoticeEvent } from "mioku";
-
-import { getBotRole, isGroupAllowed } from "../utils";
-import { buildStructuredUserInputFromTarget } from "../manage/group-structured-history";
-import { finalizeChatTurn } from "../core/chat-turn";
+import { isGroupAllowed } from "../utils/trigger";
+import { readField } from "../utils/record";
+import { createChatTarget } from "../core/turn/target";
+import { runChatTurn } from "../core/turn/run-turn";
 import { POKE_COOLDOWN_MS } from "./message";
 
 export function createPokeHandler(
@@ -16,9 +16,11 @@ export function createPokeHandler(
 
   return async (e: NoticeEvent) => {
     const selfId = String(e.self_id ?? "").trim();
-    const raw = e.raw as { target_id?: unknown; user_id?: unknown } | undefined;
     const targetId = String(
-      raw?.target_id ?? raw?.user_id ?? e.user_id ?? "",
+      readField(e.raw, "target_id") ??
+        readField(e.raw, "user_id") ??
+        e.user_id ??
+        "",
     ).trim();
     if (!targetId || targetId !== selfId) return;
     const groupId = String(e.group_id ?? "").trim();
@@ -30,131 +32,29 @@ export function createPokeHandler(
     if (Date.now() - lastPoke < POKE_COOLDOWN_MS) return;
     pokeCooldowns.set(groupId, Date.now());
 
-    const groupSessionId = `group:${groupId}`;
+    const userId = String(e.user_id ?? "").trim();
+    const target = createChatTarget(selfId, userId, groupId);
     if (runtimeState.isRateLimitBlocked()) return;
 
     try {
       await pluginCtx.sessionTurnScheduler.run(
-        groupSessionId,
+        target.sessionId,
         "poke",
         async () => {
-          pluginCtx.sessionManager.getOrCreate(
-            groupSessionId,
-            "group",
-            groupId,
-          );
-          const userId = String(e.user_id ?? "").trim();
-          const botRole = await getBotRole(groupId, ctx, selfId);
-          const botNickname = cfg.nicknames[0] || e.bot?.nickname || "Bot";
-
-          let senderName = String(userId);
-          try {
-            const bot: Bot | undefined = e.bot;
-            const memberInfo = bot
-              ? await bot.getMemberInfo(groupId, userId)
-              : undefined;
-            senderName =
-              memberInfo?.card || memberInfo?.nickname || String(userId);
-          } catch {}
-
+          const userName = await resolvePokerName(e, groupId, userId);
           const targetMessage: TargetMessage = {
-            userName: senderName,
+            userName,
             userId,
             userRole: "member",
-            content: `[${senderName} 戳了你一下]`,
+            content: `[${userName} 戳了你一下]`,
             timestamp: Date.now(),
           };
-
-          const { history } = await pluginCtx.getGroupHistoryMessages(
-            groupId,
-            groupSessionId,
-            ctx,
-            cfg.historyCount,
-            pluginCtx.db,
-            selfId,
-            pluginCtx.buildHistoryMediaOptions(pluginCtx.aiInstance, cfg),
-          );
-          const { groupName, memberCount } = await pluginCtx.getGroupInfoData(
-            ctx,
-            groupId,
-            selfId,
-          );
-
-          const toolCtx = pluginCtx.buildToolContext({
-            ctx,
-            event: e,
-            groupSessionId,
-            groupId,
-            userId,
-            config: cfg,
-            aiService: pluginCtx.aiService,
-            db: pluginCtx.db,
-            botRole,
-            humanize: pluginCtx.humanize,
-            targetMessage,
-            selfId,
-            audioService: pluginCtx.audioService,
-          });
-
-          const eventContexts = pluginCtx.groupEvents.buildContexts({
-            groupId,
-            selfId,
-            historySince: history[0]?.timestamp,
-            historyIds: new Set(
-              history
-                .map((msg) => String(msg.messageId ?? "").trim())
-                .filter(Boolean),
-            ),
-          });
-
-          const result = await pluginCtx.runWithRateLimitGuard(
-            () =>
-              pluginCtx.runChat(
-                pluginCtx.aiInstance,
-                toolCtx,
-                history,
-                targetMessage,
-                {
-                  config: cfg,
-                  groupName,
-                  memberCount,
-                  botNickname,
-                  botRole,
-                  aiService: pluginCtx.aiService,
-                  isGroup: true,
-                  eventContext: eventContexts.eventContext,
-                  recallMarks: eventContexts.recallMarks,
-                  replyContext: {
-                    type: "poked",
-                    targetUser: targetMessage.userName,
-                    targetMessage: targetMessage.content,
-                  },
-                },
-                pluginCtx.humanize,
-                pluginCtx.skillManager,
-                {
-                  manager: pluginCtx.groupStructuredHistory,
-                  ttlMs: cfg.groupStructuredHistoryTtlMs,
-                  currentUserInputs: [
-                    buildStructuredUserInputFromTarget(targetMessage),
-                  ],
-                },
-              ),
-            { userId, groupId, label: "poke", skipRetryOnRateLimit: true },
-          );
-          if (!result) return;
-
-          await finalizeChatTurn(pluginCtx, {
-            event: e,
+          await runChatTurn(pluginCtx, {
+            source: "poke",
+            target,
             cfg,
-            result,
-            groupId,
-            groupSessionId,
-            userId,
-            selfId,
-            toolCtx,
-            send: true,
-            isLive: true,
+            event: e,
+            targetMessage,
           });
         },
       );
@@ -162,4 +62,17 @@ export function createPokeHandler(
       ctx.logger.error(`Poke processing failed: ${err}`);
     }
   };
+}
+
+async function resolvePokerName(
+  e: NoticeEvent,
+  groupId: string,
+  userId: string,
+): Promise<string> {
+  try {
+    const memberInfo = await e.bot.getMemberInfo(groupId, userId);
+    return memberInfo?.card || memberInfo?.nickname || userId;
+  } catch {
+    return userId;
+  }
 }

@@ -1,158 +1,54 @@
 import { definePlugin, type MiokuContext } from "mioku";
-import type { AIInstance, AIModelRole, AIService } from "mioku";
+import type { AIInstance, AIModelRole } from "mioku";
 import type { AudioServiceApi } from "mioku-service-audio";
 import { getPluginRuntimeState, getService, Services } from "mioku";
-import type {
-  ChatConfig,
-  ChatMessage,
-  ChatGroupsFile,
-  TargetMessage,
-} from "./types";
 import { initDatabase } from "./db";
+import { HumanizeEngine } from "./humanize";
 import { SessionManager } from "./manage/session";
 import { RateLimiter } from "./manage/rate-limiter";
-import { runChat } from "./core/chat-engine";
-import { HumanizeEngine } from "./humanize";
+import { RateLimitGuard } from "./manage/rate-limit-guard";
 import { SkillSessionManager } from "./manage/skill-session";
 import { MessageQueueManager } from "./utils/queue";
-import {
-  buildToolContext,
-  getGroupHistoryMessages,
-  getGroupInfoData,
-  getHumanizeContexts,
-  sendAIResponse,
-  sendMessage,
-  saveBotMessages,
-  sendEmoji,
-} from "./core/base";
 import { CooldownManager } from "./manage/cooldown";
 import { GroupEventPerception } from "./manage/group-events";
 import { QueueProcessor } from "./manage/queue-processor";
 import { SessionTurnScheduler } from "./manage/session-turn-scheduler";
 import { ChatDatabaseCleanup, DEFAULT_CLEANUP_CONFIG } from "./manage/cleanup";
+import { GroupStructuredHistoryManager } from "./manage/group-structured-history";
 import {
-  GroupStructuredHistoryManager,
-  buildStructuredUserMessages,
-  buildStructuredUserInputFromTarget,
-} from "./manage/group-structured-history";
-import { BASE_CONFIG } from "./configs/base";
-import { SETTINGS_CONFIG } from "./configs/settings";
-import { PERSONALIZATION_CONFIG } from "./configs/personalization";
-import { DEFAULT_GROUPS_CONFIG } from "./configs/groups";
-import { RateLimitGuard } from "./manage/rate-limit-guard";
+  runCooldownReview,
+  runDynamicDelayBatch,
+  runQueuedMessages,
+} from "./core/turn/batch-turns";
+import { createChatConfigStore } from "./runtime/config-store";
+import {
+  createLegacyRoleInstances,
+  resolveRoleInstances,
+} from "./runtime/ai-roles";
 import { createChatRuntime } from "./runtime/chat-runtime";
 import { createMessageHandler } from "./handlers/message";
 import { createGroupEventHandler } from "./handlers/group-events";
 import { createPokeHandler } from "./handlers/poke";
-import { handleTtsCommand } from "./handlers/tts-command";
-import { buildHistoryMediaOptions } from "./core/media/segment";
-import type { ChatConfigProvider } from "./humanize";
+import { registerChatCommands } from "./commands";
 import type { ChatPluginContext, ChatHandlerState } from "./context";
-import { mergeGroupOverrides } from "./utils/group-config";
-import { mainModelSupportsVision } from "./utils";
-import { isQuotingBot } from "./utils";
-import {
-  mergeChatConfig,
-  normalizeIdList,
-  normalizeMediaAnalysisBlacklist,
-} from "./utils/config";
+import { mainModelSupportsVision } from "./utils/model";
+import { readField } from "./utils/record";
 
-export function resolveRoleInstances(aiService: AIService): {
-  main: AIInstance;
-  work: AIInstance;
-  vision: AIInstance;
-  models: { main: string; working: string; vision: string };
-  isMultimodal: boolean;
-  /** vision 角色绑的模型看不了图，已借用主模型 */
-  visionFromMain: boolean;
-} | null {
-  const getByRole = (role: AIModelRole) =>
-    aiService.getInstanceByRole?.(role) ?? aiService.get?.(role) ?? undefined;
+export { resolveRoleInstances };
 
-  const main =
-    getByRole("main") ?? aiService.getDefault?.() ?? aiService.get?.("main");
-  if (!main) return null;
+type MatchMessageCommands = NonNullable<ChatHandlerState["matchMessageCommands"]>;
 
-  const work = getByRole("working") ?? aiService.get?.("work") ?? main;
+/** core 插件暴露的命令匹配器，用来跳过命令消息 */
+function coreCommandMatcher(): MatchMessageCommands | undefined {
+  const state = getPluginRuntimeState<{ matchMessageCommands?: unknown }>(
+    "core",
+  );
+  const matcher = state?.matchMessageCommands;
+  return isCommandMatcher(matcher) ? matcher : undefined;
+}
 
-  const bindings = aiService.getRoleBindings?.() ?? {
-    main: undefined,
-    working: undefined,
-    vision: undefined,
-  };
-  const instances = aiService.listInstances?.() ?? [];
-  const findModel = (role: AIModelRole, fallbackInstance: AIInstance) => {
-    const full = bindings[role];
-    if (full && full.includes("/")) return full.split("/").slice(1).join("/");
-    const info = instances.find(
-      (item) => item.role === role || item.name === role,
-    );
-    if (info?.modelId) return info.modelId;
-    const anyInfo = instances.find(
-      (item) => item.name === (fallbackInstance as any).name,
-    );
-    return anyInfo?.modelId || "";
-  };
-
-  const mainModel = findModel("main", main);
-  const workingModel = findModel("working", work) || mainModel;
-
-  const models = aiService.listModels?.() ?? [];
-  const findModelDesc = (role: AIModelRole, modelId: string) => {
-    const exact = models.find((item) => item.id === bindings[role]);
-    if (exact) return exact;
-    const providerId = instances.find(
-      (info) => info.role === role || info.name === role,
-    )?.providerId;
-    return (
-      models.find(
-        (item) => item.modelId === modelId && item.providerId === providerId,
-      ) || models.find((item) => item.modelId === modelId)
-    );
-  };
-  // 查不到模型描述时按未知处理，不能据此判定它看不了图
-  const canSeeImages = (
-    role: AIModelRole,
-    modelId: string,
-  ): boolean | undefined => {
-    const desc = findModelDesc(role, modelId);
-    if (!desc) return undefined;
-    return Boolean(desc.capabilities?.includes("vision"));
-  };
-
-  let vision = getByRole("vision") ?? aiService.get?.("vision") ?? work;
-  let visionModel = findModel("vision", vision) || workingModel;
-  let visionRole: AIModelRole = "vision";
-  let visionFromMain = false;
-
-  // vision 绑到纯文本模型时借主模型看图，否则媒体识别会被静默关掉
-  if (canSeeImages("vision", visionModel) === false) {
-    if (canSeeImages("main", mainModel) !== false) {
-      vision = main;
-      visionModel = mainModel;
-      visionRole = "main";
-      visionFromMain = true;
-    }
-  }
-
-  const visionDesc = findModelDesc(visionRole, visionModel);
-  const isMultimodal =
-    visionDesc === undefined
-      ? Boolean(visionModel)
-      : Boolean(visionDesc.capabilities?.includes("vision"));
-
-  return {
-    main,
-    work,
-    vision,
-    models: {
-      main: mainModel,
-      working: workingModel,
-      vision: visionModel,
-    },
-    isMultimodal,
-    visionFromMain,
-  };
+function isCommandMatcher(value: unknown): value is MatchMessageCommands {
+  return typeof value === "function";
 }
 
 export default definePlugin({
@@ -161,262 +57,57 @@ export default definePlugin({
     ctx.logger.info("聊天插件正在初始化...");
 
     const aiService = getService(ctx, Services.AI);
-    const configService = getService(ctx, Services.Config);
-    const screenshotService = getService(ctx, Services.Screenshot);
     const audioService = ctx.services.audio as AudioServiceApi | undefined;
-    let warnedMarkdownScreenshotUnavailable = false;
     if (!audioService) {
       ctx.logger.warn("聊天插件检测到 audio 服务未安装 语音消息将不会发出");
     }
 
-    if (configService) {
-      await configService.registerConfig("chat", "base", BASE_CONFIG);
-      await configService.registerConfig("chat", "settings", SETTINGS_CONFIG);
-      await configService.registerConfig(
-        "chat",
-        "personalization",
-        PERSONALIZATION_CONFIG,
-      );
-      await configService.registerConfig(
-        "chat",
-        "groups",
-        DEFAULT_GROUPS_CONFIG,
-      );
-    }
-
-    let cachedBaseConfig: ChatConfig | null = null;
-    let cachedGroupsConfig: ChatGroupsFile | null = null;
-    let roleModels = {
-      main: "",
-      working: "",
-      vision: "",
-    };
-    let roleIsMultimodal = true;
-
-    const buildGlobalConfig = async (): Promise<ChatConfig> => {
-      if (!configService) {
-        return mergeChatConfig(
-          mergeChatConfig(
-            mergeChatConfig({} as ChatConfig, BASE_CONFIG),
-            SETTINGS_CONFIG,
-          ),
-          PERSONALIZATION_CONFIG,
-        );
-      }
-      const base = (await configService.getConfig("chat", "base")) ?? {};
-      const settings =
-        (await configService.getConfig("chat", "settings")) ?? {};
-      const personalization =
-        (await configService.getConfig("chat", "personalization")) ?? {};
-      const mergedDefaults = mergeChatConfig(
-        mergeChatConfig(
-          mergeChatConfig({} as ChatConfig, BASE_CONFIG),
-          SETTINGS_CONFIG,
-        ),
-        PERSONALIZATION_CONFIG,
-      );
-      const merged = mergeChatConfig(
-        mergeChatConfig(
-          mergeChatConfig(mergedDefaults, settings),
-          personalization,
-        ),
-        base,
-      ) as ChatConfig;
-
-      if (typeof merged.stream !== "boolean") merged.stream = true;
-      if (typeof merged.enableMarkdownScreenshot !== "boolean") {
-        merged.enableMarkdownScreenshot = true;
-      }
-      if (!screenshotService && merged.enableMarkdownScreenshot) {
-        merged.enableMarkdownScreenshot = false;
-        if (!warnedMarkdownScreenshotUnavailable) {
-          ctx.logger.warn(
-            "聊天插件未加载 screenshot 服务，Markdown 截图渲染已自动关闭",
-          );
-          warnedMarkdownScreenshotUnavailable = true;
-        }
-      }
-      merged.whitelistGroups = normalizeIdList(merged.whitelistGroups);
-      merged.blacklistGroups = normalizeIdList(merged.blacklistGroups);
-      merged.mediaAnalysisBlacklistUsers = normalizeMediaAnalysisBlacklist(
-        merged as Record<string, any>,
-      );
-      delete (merged as any).imageAnalysisBlacklistUsers;
-
-      merged.model = roleModels.main || merged.model || "";
-      merged.workingModel =
-        roleModels.working || merged.workingModel || merged.model;
-      merged.multimodalWorkingModel =
-        roleModels.vision ||
-        merged.multimodalWorkingModel ||
-        merged.workingModel;
-      merged.isMultimodal = roleIsMultimodal;
-      if (!roleIsMultimodal) merged.enableMediaRecognition = false;
-      if (!merged.apiKey) merged.apiKey = "__ai_service__";
-
-      return merged;
-    };
-
-    const refreshGroupsCache = async (): Promise<void> => {
-      if (!configService) {
-        cachedGroupsConfig = DEFAULT_GROUPS_CONFIG;
-        return;
-      }
-      const raw = await configService.getConfig("chat", "groups");
-      cachedGroupsConfig =
-        raw &&
-        typeof raw === "object" &&
-        raw.groups &&
-        typeof raw.groups === "object"
-          ? (raw as ChatGroupsFile)
-          : DEFAULT_GROUPS_CONFIG;
-    };
-
-    const refreshBaseCache = async (): Promise<void> => {
-      cachedBaseConfig = await buildGlobalConfig();
-    };
-
-    await refreshBaseCache();
-    await refreshGroupsCache();
-
-    if (configService) {
-      configService.onConfigChange("chat", "base", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/base 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "settings", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/settings 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "personalization", () => {
-        refreshBaseCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/personalization 缓存失败: ${err}`),
-        );
-      });
-      configService.onConfigChange("chat", "groups", () => {
-        refreshGroupsCache().catch((err) =>
-          ctx.logger.error(`刷新 chat/groups 缓存失败: ${err}`),
-        );
-      });
-    }
-
-    const configProvider: ChatConfigProvider = (groupId?: string) => {
-      const base = cachedBaseConfig;
-      if (!base) return PERSONALIZATION_CONFIG as unknown as ChatConfig;
-      if (groupId === undefined) return base;
-      const overrides = cachedGroupsConfig?.groups?.[String(groupId)];
-      return mergeGroupOverrides(base, overrides);
-    };
-
-    const getConfig = async (groupId?: string): Promise<ChatConfig> => {
-      if (!cachedBaseConfig) await refreshBaseCache();
-      return configProvider(groupId);
-    };
+    const configStore = await createChatConfigStore(ctx);
+    const { provider: configProvider } = configStore;
 
     if (!aiService) {
       ctx.logger.error("聊天插件需要 AI 服务，但 AI 服务不可用");
-      return;
+      return () => configStore.dispose();
     }
 
     let resolved = resolveRoleInstances(aiService);
-
-    if (!resolved) {
-      const earlyConfig = configProvider();
-      const legacyApiUrl = String((earlyConfig as any).apiUrl || "").trim();
-      const legacyApiKey = String((earlyConfig as any).apiKey || "").trim();
-      const legacyModel = String((earlyConfig as any).model || "").trim();
-      if (legacyApiUrl && legacyApiKey && legacyApiKey !== "__ai_service__") {
-        ctx.logger.warn(
-          "未检测到 AI 角色绑定，回退到 chat/base 遗留 apiUrl/apiKey 创建实例",
-        );
-        await aiService.create({
-          name: "main",
-          apiUrl: legacyApiUrl,
-          apiKey: legacyApiKey,
-          modelType: "multimodal",
-          model: legacyModel || "default",
-        });
-        await aiService.create({
-          name: "work",
-          apiUrl: legacyApiUrl,
-          apiKey: legacyApiKey,
-          modelType: "text",
-          model: String(
-            (earlyConfig as any).workingModel || legacyModel || "default",
-          ),
-        });
-        await aiService.create({
-          name: "vision",
-          apiUrl: legacyApiUrl,
-          apiKey: legacyApiKey,
-          modelType: "multimodal",
-          model: String(
-            (earlyConfig as any).multimodalWorkingModel ||
-              legacyModel ||
-              "default",
-          ),
-        });
-        aiService.setDefault("main");
-        aiService.setRoleBinding?.(
-          "main",
-          `runtime-main/${legacyModel || "default"}`,
-        );
-        aiService.setRoleBinding?.(
-          "working",
-          `runtime-work/${String((earlyConfig as any).workingModel || legacyModel || "default")}`,
-        );
-        aiService.setRoleBinding?.(
-          "vision",
-          `runtime-vision/${String((earlyConfig as any).multimodalWorkingModel || legacyModel || "default")}`,
-        );
-        resolved = resolveRoleInstances(aiService);
-      }
+    if (!resolved && (await createLegacyRoleInstances(aiService, configProvider()))) {
+      ctx.logger.warn(
+        "未检测到 AI 角色绑定，回退到 chat/base 遗留 apiUrl/apiKey 创建实例",
+      );
+      resolved = resolveRoleInstances(aiService);
     }
-
     if (!resolved) {
       ctx.logger.error(
         "未配置 AI 提供商/主模型，请在 WebUI AI 设置中配置提供商并绑定主模型",
       );
-      return;
+      return () => configStore.dispose();
     }
 
-    roleModels = resolved.models;
-    roleIsMultimodal = resolved.isMultimodal;
+    const { models: roleModels, isMultimodal } = resolved;
     if (resolved.visionFromMain) {
       ctx.logger.warn(
-        `vision 角色绑定的模型不能看图，媒体识别改用主模型 ${resolved.models.main}`,
+        `vision 角色绑定的模型不能看图，媒体识别改用主模型 ${roleModels.main}`,
       );
-    } else if (!resolved.isMultimodal) {
+    } else if (!isMultimodal) {
       ctx.logger.warn(
         "没有绑定能看图的模型，群聊媒体识别已关闭（请在 AI 设置里给 vision 角色绑定一个支持视觉的模型）",
       );
     }
-    await refreshBaseCache();
+    await configStore.applyRoleModels(roleModels, isMultimodal);
 
-    const mainAIInstance = resolved.main;
-    const workAIInstance = resolved.work;
-    const visionAIInstance = resolved.vision;
-    if (!aiService.getDefault()) {
-      aiService.setDefault("main");
-    }
+    const { main: mainAI, work: workAI, vision: visionAI } = resolved;
+    if (!aiService.getDefault()) aiService.setDefault("main");
 
     const registerPersona = (persona: string) => {
-      mainAIInstance.registerPrompt("persona", persona);
-      workAIInstance.registerPrompt("persona", persona);
+      mainAI.registerPrompt("persona", persona);
+      workAI.registerPrompt("persona", persona);
     };
     registerPersona(String(configProvider().persona ?? ""));
-    if (configService) {
-      configService.onConfigChange("chat", "personalization", async () => {
-        try {
-          const p = await configService.getConfig("chat", "personalization");
-          registerPersona(String(p?.persona ?? ""));
-        } catch (err) {
-          ctx.logger.error(`更新 persona 提示词失败: ${err}`);
-        }
-      });
-    }
+    configStore.watch("personalization", async () => {
+      const raw = await configStore.readRaw("personalization");
+      registerPersona(String(readField(raw, "persona") ?? ""));
+    });
 
     const db = await initDatabase();
     const sessionManager = new SessionManager(db, configProvider().maxSessions);
@@ -428,105 +119,67 @@ export default definePlugin({
       groupCooldownMs: 1_000,
     });
     rateLimiter.setConfigProvider(configProvider);
-    const skillManager = new SkillSessionManager();
-
     rateLimiter.setQueueLengthGetter((groupId: string) =>
       queueManager.getQueueLength(`group:${groupId}`),
     );
 
-    const humanize = new HumanizeEngine(workAIInstance, db, configProvider);
+    const humanize = new HumanizeEngine(workAI, db, configProvider);
     await humanize.init();
 
     const pokeCooldowns = new Map<string, number>();
     const processingSet = new Set<string>();
+    const skillManager = new SkillSessionManager();
     const sessionTurnScheduler = new SessionTurnScheduler();
-    const groupStructuredHistory = new GroupStructuredHistoryManager();
     const rateLimitGuard = new RateLimitGuard(rateLimiter, ctx.logger);
-    const runWithRateLimitGuard = rateLimitGuard.run.bind(rateLimitGuard);
 
     const getAIInstance = (
       role: AIModelRole = "main",
     ): AIInstance | undefined => {
       if (role === "working") {
-        return aiService.getInstanceByRole?.("working") ?? workAIInstance;
+        return aiService.getInstanceByRole?.("working") ?? workAI;
       }
       if (role === "vision") {
-        return aiService.getInstanceByRole?.("vision") ?? visionAIInstance;
+        return aiService.getInstanceByRole?.("vision") ?? visionAI;
       }
-      return aiService.getInstanceByRole?.("main") ?? mainAIInstance;
+      return aiService.getInstanceByRole?.("main") ?? mainAI;
     };
 
-    const pluginCtx = {
+    const pluginCtx: ChatPluginContext = {
       ctx,
-      defaultConfig: configProvider(),
       configProvider,
-      getConfig,
+      getConfig: configStore.get,
       db,
-      aiInstance: mainAIInstance,
-      workAIInstance,
-      visionAIInstance,
-      getAIInstance,
       aiService,
+      aiInstance: mainAI,
+      visionAIInstance: visionAI,
+      getAIInstance,
       humanize,
+      audioService,
       sessionManager,
       skillManager,
       rateLimiter,
       queueManager,
-      groupStructuredHistory,
-      cooldownManager: undefined as unknown as CooldownManager,
-      groupEvents: undefined as unknown as GroupEventPerception,
-      queueProcessor: undefined as unknown as QueueProcessor,
+      groupStructuredHistory: new GroupStructuredHistoryManager(),
+      groupEvents: new GroupEventPerception(db),
+      cooldownManager: new CooldownManager({
+        scheduler: sessionTurnScheduler,
+        configProvider,
+        logger: ctx.logger,
+        onExpire: (batch) => runCooldownReview(pluginCtx, batch),
+      }),
+      queueProcessor: new QueueProcessor({
+        scheduler: sessionTurnScheduler,
+        rateLimiter,
+        logger: ctx.logger,
+        onDynamicDelay: (batch) => runDynamicDelayBatch(pluginCtx, batch),
+        onQueued: (sessionId, selfId) =>
+          runQueuedMessages(pluginCtx, sessionId, selfId),
+      }),
       sessionTurnScheduler,
-      runWithRateLimitGuard,
-      buildHistoryMediaOptions,
-      getGroupHistoryMessages,
-      getGroupInfoData,
-      getHumanizeContexts,
-      isQuotingBot,
-      sendAIResponse,
-      sendMessage,
-      saveBotMessages,
-      sendEmoji,
-      buildToolContext,
-      buildStructuredUserInputFromTarget,
-      runChat,
-      audioService,
-      startCooldownTimer: (
-        groupSessionId: string,
-        groupId: string,
-        selfId: string,
-      ) => cooldownManager.startCooldownTimer(groupSessionId, groupId, selfId),
-      async recordGroupMessageForLearning(
-        userMsg: ChatMessage,
-        groupSessionId: string,
-      ) {
-        db.saveMessage(userMsg);
-        await Promise.all([humanize.topicTracker.onMessage(groupSessionId)]);
-        if (userMsg.groupId) {
-          const ttlMs = configProvider(
-            userMsg.groupId,
-          ).groupStructuredHistoryTtlMs;
-          groupStructuredHistory.append(
-            groupSessionId,
-            buildStructuredUserMessages([
-              buildStructuredUserInputFromTarget(
-                userMsg as unknown as TargetMessage,
-              ),
-            ]),
-            ttlMs,
-          );
-        }
-      },
-    } as ChatPluginContext;
+      runWithRateLimitGuard: rateLimitGuard.run.bind(rateLimitGuard),
+    };
 
-    const groupEvents = new GroupEventPerception(db);
-    pluginCtx.groupEvents = groupEvents;
-    const cooldownManager = new CooldownManager(pluginCtx);
-    pluginCtx.cooldownManager = cooldownManager;
-    const queueProcessor = new QueueProcessor(pluginCtx);
-    pluginCtx.queueProcessor = queueProcessor;
-
-    const cleanupInterval = setInterval(
+    const skillCleanupTimer = setInterval(
       () => skillManager.cleanup(),
       10 * 60_000,
     );
@@ -537,105 +190,35 @@ export default definePlugin({
     dbCleanup.start();
 
     const handlerState: ChatHandlerState = {
-      getConfig,
+      getConfig: configStore.get,
       runtimeState: {
         isRateLimitBlocked: () => rateLimitGuard.isBlocked(),
         processingSet,
       },
-      matchMessageCommands: (
-        getPluginRuntimeState("core") as
-          | {
-              matchMessageCommands?: (
-                text: string,
-              ) => Array<{ plugin: string; command: string }>;
-            }
-          | undefined
-      )?.matchMessageCommands,
+      matchMessageCommands: coreCommandMatcher(),
       pokeCooldowns,
     };
 
-    const runtime = createChatRuntime(pluginCtx, getConfig);
-    aiService.registerChatRuntime(runtime);
-
-    ctx.command({
-      name: "重置会话",
-      prefixes: ["/", "."],
-      match: /^重置会话$/,
-      description: "重置自己的AI聊天记录",
-      usage: ".重置会话",
-      handler: async ({ event }) => {
-        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
-        const groupId =
-          event.message_type === "group"
-            ? String(event.group_id ?? "").trim() || undefined
-            : undefined;
-        if (groupId) {
-          pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
-          pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
-          await event.reply("已清除本群会话中 AI 发送的消息~");
-        } else {
-          const userId = String(
-            event.user_id ?? event.sender?.user_id ?? "",
-          ).trim();
-          pluginCtx.sessionManager.resetBotMessages(`personal:${userId}`);
-          pluginCtx.groupStructuredHistory.clear(`personal:${userId}`);
-          await event.reply("已清除你的个人会话中 AI 发送的消息~");
-        }
-      },
-    });
-    ctx.command({
-      name: "重置群会话",
-      prefixes: ["/", "."],
-      match: /^重置群会话$/,
-      permission: "admin",
-      description: "重置当前群的AI聊天记录",
-      usage: ".重置群会话",
-      handler: async ({ event }) => {
-        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
-        const groupId =
-          event.message_type === "group"
-            ? String(event.group_id ?? "").trim() || undefined
-            : undefined;
-        if (!groupId) {
-          await event.reply("在群里使用试试看吧~", true);
-          return;
-        }
-        pluginCtx.sessionManager.resetBotMessages(`group:${groupId}`);
-        pluginCtx.groupStructuredHistory.clear(`group:${groupId}`);
-        await event.reply("已清除本群会话中 AI 发送的消息~");
-      },
-    });
-    ctx.command({
-      name: "tts",
-      prefixes: ["/", "."],
-      match: /^tts\s*(.*)$/,
-      description: "TTS 推理",
-      usage: ".tts <文本>",
-      handler: async ({ event, match }) => {
-        if (String(event.user_id ?? "") === String(event.self_id ?? "")) return;
-        await handleTtsCommand(
-          pluginCtx,
-          event,
-          String(match?.[1] ?? "").trim(),
-        );
-      },
-    });
+    aiService.registerChatRuntime(createChatRuntime(pluginCtx));
+    registerChatCommands(pluginCtx);
 
     ctx.handle("message", createMessageHandler(pluginCtx, handlerState));
     ctx.handle("notice", createGroupEventHandler(pluginCtx));
     ctx.handle("notice.group.poke", createPokeHandler(pluginCtx, handlerState));
 
     ctx.logger.info(
-      `聊天插件加载成功 (main=${roleModels.main || "?"}${mainModelSupportsVision(aiService, roleModels.main) ? "" : " 无视觉，图片交给视觉模型描述"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"}${roleIsMultimodal ? "" : "（不能看图，媒体识别已关闭）"})`,
+      `聊天插件加载成功 (main=${roleModels.main || "?"}${mainModelSupportsVision(aiService, roleModels.main) ? "" : " 无视觉，图片交给视觉模型描述"}, work=${roleModels.working || "?"}, vision=${roleModels.vision || "?"}${isMultimodal ? "" : "（不能看图，媒体识别已关闭）"})`,
     );
 
     return () => {
-      groupEvents.dispose();
-      cooldownManager.dispose();
-      queueProcessor.dispose();
+      configStore.dispose();
+      aiService.removeChatRuntime();
+      pluginCtx.groupEvents.dispose();
+      pluginCtx.cooldownManager.dispose();
+      pluginCtx.queueProcessor.dispose();
       sessionTurnScheduler.dispose();
       queueManager.dispose();
-      clearInterval(cleanupInterval);
+      clearInterval(skillCleanupTimer);
       dbCleanup.stop();
       rateLimiter.dispose();
       processingSet.clear();

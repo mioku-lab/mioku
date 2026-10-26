@@ -1,4 +1,8 @@
-import type { AIRequestLimitConfig, ChatConfig, DynamicDelayConfig } from "../types";
+import type {
+  AIRequestLimitConfig,
+  ChatConfigProvider,
+  DynamicDelayConfig,
+} from "../types";
 
 const DEFAULT_DYNAMIC_DELAY: DynamicDelayConfig = {
   enabled: true,
@@ -12,8 +16,6 @@ const DEFAULT_AI_REQUEST_LIMITS: AIRequestLimitConfig = {
   groupRpm: 6,
   windowMs: 60_000,
 };
-
-export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 export class RateLimiter {
   private userTriggers: Map<string, number[]> = new Map();
@@ -29,7 +31,7 @@ export class RateLimiter {
   private readonly dedupWindowMs: number;
   private readonly groupCooldownMs: number;
   private readonly cleanupTimer: ReturnType<typeof setInterval>;
-  private getConfig: ChatConfigProvider;
+  private getConfig: ChatConfigProvider | null = null;
   private getQueueLengthFn: ((groupId: string) => number) | null = null;
 
   setConfigProvider(provider: ChatConfigProvider): void {
@@ -50,20 +52,18 @@ export class RateLimiter {
     this.windowMs = options?.windowMs ?? 60_000;
     this.dedupWindowMs = options?.dedupWindowMs ?? 30_000;
     this.groupCooldownMs = options?.groupCooldownMs ?? 1_000;
-    this.getConfig = () => ({
-      dynamicDelay: DEFAULT_DYNAMIC_DELAY,
-      aiRequestLimits: DEFAULT_AI_REQUEST_LIMITS,
-    }) as unknown as ChatConfig;
 
     this.cleanupTimer = setInterval(() => this.cleanup(), 300_000);
   }
 
   private getDynamicDelay(groupId?: string): DynamicDelayConfig {
-    return this.getConfig(groupId)?.dynamicDelay ?? DEFAULT_DYNAMIC_DELAY;
+    return this.getConfig?.(groupId)?.dynamicDelay ?? DEFAULT_DYNAMIC_DELAY;
   }
 
   private getAiRequestLimits(groupId?: string): AIRequestLimitConfig {
-    return this.getConfig(groupId)?.aiRequestLimits ?? DEFAULT_AI_REQUEST_LIMITS;
+    return (
+      this.getConfig?.(groupId)?.aiRequestLimits ?? DEFAULT_AI_REQUEST_LIMITS
+    );
   }
 
   canProcess(
@@ -133,7 +133,7 @@ export class RateLimiter {
     const now = Date.now();
     const { userRpm, groupRpm, windowMs } = this.getAiRequestLimits(groupId);
 
-    if (typeof userId === "number") {
+    if (userId) {
       const userRequests = (this.userAiRequests.get(userId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -142,7 +142,7 @@ export class RateLimiter {
       }
     }
 
-    if (typeof groupId === "number") {
+    if (groupId) {
       const groupRequests = (this.groupAiRequests.get(groupId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -158,7 +158,7 @@ export class RateLimiter {
     const now = Date.now();
     const { windowMs } = this.getAiRequestLimits(groupId);
 
-    if (typeof userId === "number") {
+    if (userId) {
       const userRequests = (this.userAiRequests.get(userId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -166,7 +166,7 @@ export class RateLimiter {
       this.userAiRequests.set(userId, userRequests);
     }
 
-    if (typeof groupId === "number") {
+    if (groupId) {
       const groupRequests = (this.groupAiRequests.get(groupId) ?? []).filter(
         (timestamp) => now - timestamp < windowMs,
       );
@@ -272,6 +272,26 @@ export class RateLimiter {
       }
       if (!hasActiveUser) {
         this.groupInteractions.delete(groupId);
+      }
+    }
+
+    const userWindowMs = this.getAiRequestLimits().windowMs;
+    for (const [userId, timestamps] of this.userAiRequests) {
+      const valid = timestamps.filter((t) => now - t < userWindowMs);
+      if (valid.length === 0) {
+        this.userAiRequests.delete(userId);
+      } else {
+        this.userAiRequests.set(userId, valid);
+      }
+    }
+
+    for (const [groupId, timestamps] of this.groupAiRequests) {
+      const { windowMs } = this.getAiRequestLimits(groupId);
+      const valid = timestamps.filter((t) => now - t < windowMs);
+      if (valid.length === 0) {
+        this.groupAiRequests.delete(groupId);
+      } else {
+        this.groupAiRequests.set(groupId, valid);
       }
     }
   }

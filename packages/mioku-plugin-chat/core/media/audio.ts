@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
-import type { MiokuContext } from "mioku";
+import type { MessageEvent, MiokuContext } from "mioku";
 import type { AudioServiceApi, SupportedLang } from "mioku-service-audio";
 
-function detectAudioLanguage(text: string): SupportedLang {
+export function detectAudioLanguage(text: string): SupportedLang {
   if (/[\u3040-\u30ff]/.test(text)) return "ja";
   if (/[\u4e00-\u9fff]/.test(text)) return "zh";
   if (/[\uac00-\ud7af]/.test(text)) return "ko";
@@ -34,7 +34,7 @@ export async function synthesizeAudioSource(
 
 export async function sendVoice(
   ctx: MiokuContext,
-  e: any,
+  e: Pick<MessageEvent, "reply">,
   filePath: string,
   logTag = "[audio]",
 ): Promise<void> {
@@ -44,8 +44,8 @@ export async function sendVoice(
   try {
     await e.reply([ctx.segment.raw("record", { file: fileUrl })]);
     return;
-  } catch (err: any) {
-    const msg = String(err?.message ?? err);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     if (
       !/File URL path must be absolute|ENOENT|cannot access|No such file/i.test(
         msg,

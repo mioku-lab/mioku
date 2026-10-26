@@ -5,11 +5,15 @@ import * as os from "os";
 import * as path from "path";
 import { promisify } from "util";
 import { Bot, ForwardNode, logger } from "mioku";
-import type { AIInstance } from "mioku";
+import type { AIInstance, Logger } from "mioku";
 import type { MediaSummaryKind, MediaSummaryRecord } from "../../types";
+import { isRecord, readField } from "../../utils/record";
+import { segData, segTop } from "../../utils/segment";
+import { imagePart, textPart, type ModelContentPart } from "../model-content";
 
 const execFileAsync = promisify(execFile);
 const VIDEO_FRAME_COUNT = 5;
+const VIDEO_FETCH_TIMEOUT_MS = 60_000;
 const VIDEO_FRAME_EXTRACTION_FALLBACK =
   "用户发送了一个视频，但未能提取画面内容";
 // 体积阈值：超过此大小（10MB）的视频不再整体上传给多模态工作模型，改用抽帧。
@@ -19,33 +23,17 @@ interface SummaryResult {
   summary: string;
 }
 
-export interface MediaMessageSegment {
-  type?: string;
-  file?: string;
-  path?: string;
-  url?: string;
-  id?: string;
-  data?: {
-    file?: string;
-    path?: string;
-    url?: string;
-    id?: string;
-    data?: string;
-    xml?: string;
-  };
-}
+const SOURCE_KEYS = ["file", "path", "url"] as const;
 
-export function getSegmentSourceCandidates(seg: MediaMessageSegment): string[] {
+/** 媒体段可用的来源（文件/路径/URL），平铺字段优先 */
+export function getSegmentSourceCandidates(seg: unknown): string[] {
+  const candidates: unknown[] = [];
+  for (const key of SOURCE_KEYS) {
+    candidates.push(segTop(seg, key), segData(seg, key));
+  }
   return Array.from(
     new Set(
-      [
-        seg?.file,
-        seg?.data?.file,
-        seg?.path,
-        seg?.data?.path,
-        seg?.url,
-        seg?.data?.url,
-      ]
+      candidates
         .map((v) => (typeof v === "string" ? v.trim() : ""))
         .filter(Boolean),
     ),
@@ -64,23 +52,10 @@ export interface HistoryMediaProcessingOptions {
   workingModel?: string;
   multimodalWorkingModel?: string;
   db?: MediaSummaryStore;
-  logger?: {
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
-  };
+  logger?: Pick<Logger, "info" | "warn" | "error">;
   bot?: Bot;
   groupId?: string;
   runAIRequest?<T>(request: () => Promise<T>): Promise<T | null>;
-}
-
-export interface GroupNoticeHistorySummary {
-  userId: string;
-  userName: string;
-  userRole: string;
-  content: string;
-  timestamp: number;
-  messageId: string;
 }
 
 function runHistoryMediaAIRequest<T>(
@@ -144,11 +119,10 @@ async function summarizeVideoByFullVideo(
   const buffer = await fs.readFile(videoPath);
   const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
 
-  const content: any[] = [
-    {
-      type: "text",
-      text: "This is a video sent by someone in a chat. Summarize the video's content in Chinese for later use as chat history context: describe the visible people/objects/actions/scenes/on-screen text, and briefly explain what the video is about. Stay factual and concise; state uncertainty honestly when unclear.",
-    },
+  const content: ModelContentPart[] = [
+    textPart(
+      "This is a video sent by someone in a chat. Summarize the video's content in Chinese for later use as chat history context: describe the visible people/objects/actions/scenes/on-screen text, and briefly explain what the video is about. Stay factual and concise; state uncertainty honestly when unclear.",
+    ),
     {
       type: "video_url",
       video_url: { url: dataUrl },
@@ -192,15 +166,11 @@ async function summarizeVideoByFrames(
     return VIDEO_FRAME_EXTRACTION_FALLBACK;
   }
 
-  const content: any[] = [
-    {
-      type: "text",
-      text: `These ${frames.length} frames were sampled evenly from a video sent in a chat. Summarize the video's likely content in Chinese for later use as chat history context: note the visible people/objects/actions/on-screen text, and infer what the video is about. Stay factual and concise; if the frames are ambiguous or insufficient, say so honestly.`,
-    },
-    ...frames.map((frame) => ({
-      type: "image_url",
-      image_url: { url: frame, detail: "auto" },
-    })),
+  const content: ModelContentPart[] = [
+    textPart(
+      `These ${frames.length} frames were sampled evenly from a video sent in a chat. Summarize the video's likely content in Chinese for later use as chat history context: note the visible people/objects/actions/on-screen text, and infer what the video is about. Stay factual and concise; if the frames are ambiguous or insufficient, say so honestly.`,
+    ),
+    ...frames.map((frame) => imagePart(frame, "auto")),
   ];
 
   const response = await runHistoryMediaAIRequest(options, () =>
@@ -353,48 +323,6 @@ export function getCachedHistoryCardTag(
     options,
   );
   return summary ? `[card:${summary}]` : "[card]";
-}
-
-export async function summarizeGroupNotice(
-  notice: any,
-  options: HistoryMediaProcessingOptions,
-): Promise<GroupNoticeHistorySummary | null> {
-  if (!options.groupId || !options.ai || !options.workingModel) {
-    return null;
-  }
-
-  const text = extractNoticeText(notice);
-  if (!text) return null;
-  const source = `group:${options.groupId}:notice:${text}`;
-  const summary = (
-    await getOrCreateSummary(
-      "notice",
-      source,
-      hashSource(normalizeContentForHash(text)),
-      options,
-      () =>
-        summarizeTextContent(
-          "群公告",
-          text,
-          options.ai!,
-          options.workingModel!,
-          options,
-        ),
-    )
-  ).summary;
-  const sender = extractNoticeSender(notice);
-  const content = `发布了一条群公告：[group_notice:${summary}]`;
-  logger.info(
-    `[history-media] group_notice: ${sender.userName}(${sender.userId}) ${content}`,
-  );
-  return {
-    userId: sender.userId,
-    userName: sender.userName,
-    userRole: "member",
-    content,
-    timestamp: normalizeNoticeTimestamp(notice),
-    messageId: String((notice as { message_id?: unknown }).message_id ?? ""),
-  };
 }
 
 async function getOrCreateSummary(
@@ -658,16 +586,18 @@ function extractForwardText(result: ForwardNode[]): string {
   return lines.join("\n");
 }
 
-function extractMessageSegmentsText(message: any): string {
+function extractMessageSegmentsText(message: unknown): string {
   if (typeof message === "string") return message.trim();
   if (!Array.isArray(message)) return "";
 
   const parts: string[] = [];
   for (const seg of message) {
-    const type = seg?.type;
-    const data = seg?.data || seg;
+    const type = readField(seg, "type");
+    const data = isRecord(seg) && isRecord(seg.data) ? seg.data : seg;
     if (type === "text") {
-      parts.push(String(data.text || seg.text || "").trim());
+      parts.push(
+        String(readField(data, "text") || readField(seg, "text") || "").trim(),
+      );
     } else if (type === "image") {
       parts.push("[image]");
     } else if (type === "video") {
@@ -675,68 +605,18 @@ function extractMessageSegmentsText(message: any): string {
     } else if (type === "forward") {
       parts.push("[forward]");
     } else if (type === "json" || type === "xml" || type === "ark") {
-      parts.push(String(data.data || data.xml || seg.data || "").trim());
+      parts.push(
+        String(
+          readField(data, "data") ||
+            readField(data, "xml") ||
+            readField(seg, "data") ||
+            "",
+        ).trim(),
+      );
     }
   }
 
   return parts.filter(Boolean).join(" ");
-}
-
-function extractNoticeText(notice: any): string {
-  const values = [
-    notice?.message,
-    notice?.text,
-    notice?.content,
-    notice?.title,
-    notice?.notice?.message,
-    notice?.notice?.content,
-    notice?.msg,
-    notice?.raw_message,
-    extractMessageSegmentsText(notice?.message),
-  ];
-  return values
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean)
-    .join("\n");
-}
-
-function extractNoticeSender(notice: any): {
-  userId: string;
-  userName: string;
-} {
-  const userId = String(
-    notice?.user_id ??
-      notice?.sender_id ??
-      notice?.operator_id ??
-      notice?.poster_id ??
-      notice?.publisher_id ??
-      notice?.sender?.user_id ??
-      "",
-  ).trim();
-  const userName =
-    notice?.sender?.card ||
-    notice?.sender?.nickname ||
-    notice?.sender_name ||
-    notice?.nickname ||
-    notice?.publisher_name ||
-    notice?.operator_name ||
-    (userId ? String(userId) : "unknown");
-  return {
-    userId,
-    userName: String(userName),
-  };
-}
-
-function normalizeNoticeTimestamp(notice: any): number {
-  const raw =
-    notice?.publish_time ||
-    notice?.time ||
-    notice?.created_at ||
-    notice?.create_time ||
-    Date.now();
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return Date.now();
-  return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
 }
 
 function normalizeSummary(value: string | null | undefined): string {
@@ -799,6 +679,7 @@ async function readVideoSource(source: string): Promise<Buffer> {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         Referer: "https://qq.com/",
       },
+      signal: AbortSignal.timeout(VIDEO_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw new Error(
@@ -840,13 +721,13 @@ function normalizeContentForHash(value: string): string {
 function extractCardPrompt(source: string): string | null {
   const parsed = tryParseJson(source);
   if (!parsed.parsed) return null;
-  const prompt = parsed.value?.prompt;
+  const prompt = readField(parsed.value, "prompt");
   return typeof prompt === "string" && prompt.trim() ? prompt.trim() : null;
 }
 
 function tryParseJson(
   value: string,
-): { parsed: true; value: any } | { parsed: false } {
+): { parsed: true; value: unknown } | { parsed: false } {
   try {
     return { parsed: true, value: JSON.parse(value) };
   } catch {
@@ -854,13 +735,12 @@ function tryParseJson(
   }
 }
 
-function stableStringify(value: any): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-
+function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (!isRecord(value)) {
+    return JSON.stringify(value);
   }
 
   const entries = Object.keys(value)

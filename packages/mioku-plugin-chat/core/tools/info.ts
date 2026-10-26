@@ -3,12 +3,20 @@ import type { AITool } from "mioku";
 import { TOOL_RESULT_FOLLOWUP_KEY } from "mioku";
 import type { ToolContext } from "../../types";
 import { mainModelSupportsVision } from "../../utils/model";
+import { readField } from "../../utils/record";
+
+type ToolResult = Record<string, unknown>;
+
+/** 模型给的工具参数，按原样转成字符串 */
+function argText(args: unknown, key: string): string {
+  return String(readField(args, key));
+}
 
 async function createImageFollowupResult(
   imageUrl: string,
   text: string,
   note: string,
-): Promise<Record<string, any>> {
+): Promise<ToolResult> {
   let imageUrls = [imageUrl];
   let gifFrameNote = "";
 
@@ -45,7 +53,7 @@ function createVideoFollowupResult(
   videoUrl: string,
   text: string,
   note: string,
-): Record<string, any> {
+): ToolResult {
   return {
     success: true,
     video_attached: true,
@@ -76,11 +84,11 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
         },
         required: ["user_id"],
       },
-      handler: async (args) => {
+      handler: async (args: unknown) => {
         try {
           const bot = toolCtx.event?.bot;
           if (!bot) return { error: `Failed to get member info: bot not found` };
-          const info = await bot.getMemberInfo(toolCtx.groupId!, args.user_id);
+          const info = await bot.getMemberInfo(toolCtx.groupId!, argText(args, "user_id"));
           if (!info) return { error: `Failed to get member info: member not found` };
           return {
             nickname: info.nickname,
@@ -111,17 +119,17 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
         },
         required: [],
       },
-      handler: async (args) => {
+      handler: async (args: unknown) => {
         try {
           const bot = toolCtx.event?.bot;
           if (!bot) return { error: `Failed to get member list: bot not found` };
           const list = await bot.getGroupMembers(toolCtx.groupId!);
-          const members = (list as any[]).map((m) => ({
+          const members = list.map((m) => ({
             user_id: m.user_id,
             nickname: m.card || m.nickname,
             role: m.role,
           }));
-          const limitRaw = Math.floor(Number(args?.limit));
+          const limitRaw = Math.floor(Number(readField(args, "limit")));
           const limit =
             Number.isFinite(limitRaw) && limitRaw > 0
               ? Math.min(limitRaw, 50)
@@ -149,10 +157,11 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
       },
       required: ["message_id"],
     },
-    handler: async (args) => {
+    handler: async (args: unknown) => {
+      const messageId = argText(args, "message_id");
       try {
         const { getMediaByMessageId, describeImage } = await import("../multimodal");
-        const media = await getMediaByMessageId(toolCtx.ctx, args.message_id, toolCtx.event);
+        const media = await getMediaByMessageId(toolCtx.ctx, messageId, toolCtx.event);
 
         if (!media) {
           return { error: "Image or video not found in the specified message" };
@@ -162,7 +171,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
           if (mainModelSupportsVision(toolCtx.aiService, toolCtx.config.model)) {
             return await createImageFollowupResult(
               media.url,
-              `The image from message #${args.message_id} is attached. Inspect it directly and answer the user's question from the visual content.`,
+              `The image from message #${messageId} is attached. Inspect it directly and answer the user's question from the visual content.`,
               "The image has been attached to the next main model request. Inspect it directly instead of relying on a worker-model description.",
             );
           }
@@ -216,7 +225,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
             const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
             return createVideoFollowupResult(
               dataUrl,
-              `The video from message #${args.message_id} is attached. Inspect it directly and answer the user's question from the visual content.`,
+              `The video from message #${messageId} is attached. Inspect it directly and answer the user's question from the visual content.`,
               "The video has been attached to the next main model request. Inspect it directly instead of relying on a worker-model description.",
             );
           }
@@ -263,15 +272,16 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
       },
       required: ["user_id"],
     },
-    handler: async (args) => {
+    handler: async (args: unknown) => {
+      const userId = argText(args, "user_id");
       try {
-        const avatarUrl = `https://q1.qlogo.cn/g?b=qq&nk=${args.user_id}&s=640`;
+        const avatarUrl = `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=640`;
         logger.info(`[view_member_avatar] Analyzing avatar: ${avatarUrl}`);
 
         if (mainModelSupportsVision(toolCtx.aiService, toolCtx.config.model)) {
           return await createImageFollowupResult(
             avatarUrl,
-            `User ${args.user_id}'s QQ avatar is attached. Inspect it directly and answer the user's question from the visual content.`,
+            `User ${userId}'s QQ avatar is attached. Inspect it directly and answer the user's question from the visual content.`,
             "The avatar has been attached to the next main model request. Inspect it directly instead of relying on a worker-model description.",
           );
         }
@@ -284,7 +294,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
           visionAI,
           avatarUrl,
           toolCtx.config.multimodalWorkingModel,
-          `User ${args.user_id}'s QQ avatar`,
+          `User ${userId}'s QQ avatar`,
         );
 
         if (!result.success) {

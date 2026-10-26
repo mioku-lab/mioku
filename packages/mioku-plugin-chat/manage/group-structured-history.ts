@@ -1,6 +1,11 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import type { MultimodalContentItem } from "mioku";
-import type { TargetMessage } from "../types";
+import type { ChatTurnEvent } from "../types";
+import {
+  contentText,
+  imagePart,
+  textPart,
+  type ChatCompletionMessageParam,
+} from "../core/model-content";
+import { senderTitle } from "../utils/sender";
 
 export interface StructuredUserInput {
   userName: string;
@@ -18,6 +23,15 @@ interface GroupStructuredHistoryState {
 }
 
 const DEFAULT_GROUP_STRUCTURED_HISTORY_TTL_MS = 10 * 60_000;
+const MAX_GROUP_STRUCTURED_HISTORY_MESSAGES = 80;
+
+function trimStructuredHistory(messages: ChatCompletionMessageParam[]): void {
+  if (messages.length <= MAX_GROUP_STRUCTURED_HISTORY_MESSAGES) return;
+  let start = messages.length - MAX_GROUP_STRUCTURED_HISTORY_MESSAGES;
+  // 避免拆开工具调用
+  while (start < messages.length && messages[start].role !== "user") start++;
+  messages.splice(0, start);
+}
 
 export class GroupStructuredHistoryManager {
   private readonly states = new Map<string, GroupStructuredHistoryState>();
@@ -53,16 +67,11 @@ export class GroupStructuredHistoryManager {
     now: number = Date.now(),
   ): void {
     this.clearExpired(sessionId, ttlMs, now);
-    const state = this.states.get(sessionId) ?? {
-      lastBotDirectedAt: now,
-      messages: [],
-    };
+    const state = this.states.get(sessionId);
+    if (!state || messages.length === 0) return;
 
-    state.lastBotDirectedAt = now;
-    if (messages.length > 0) {
-      state.messages.push(...messages);
-    }
-    this.states.set(sessionId, state);
+    state.messages.push(...messages);
+    trimStructuredHistory(state.messages);
   }
 
   clear(sessionId: string): void {
@@ -96,36 +105,40 @@ export function buildStructuredUserMessages(
 }
 
 export function buildStructuredUserInputFromEvent(
-  event: any,
+  event: ChatTurnEvent,
   content: string,
   fallbackTimestamp: number = Date.now(),
 ): StructuredUserInput {
+  const userId = String(event.user_id || event.sender?.user_id || "");
   return {
-    userName:
-      event?.sender?.card ||
-      event?.sender?.nickname ||
-      String(event?.user_id || event?.sender?.user_id || 0),
-    userId: event?.user_id || event?.sender?.user_id || 0,
-    userRole: event?.sender?.role || "member",
-    userTitle: event?.sender?.title,
+    userName: event.sender?.card || event.sender?.nickname || userId || "0",
+    userId,
+    userRole: event.sender?.role || "member",
+    userTitle: senderTitle(event.sender),
     content,
-    messageId: event?.message_id,
-    timestamp:
-      typeof event?.time === "number" ? event.time * 1000 : fallbackTimestamp,
+    messageId: event.message_id,
+    timestamp: typeof event.time === "number" ? event.time : fallbackTimestamp,
   };
 }
 
-export function buildStructuredUserInputFromTarget(
-  targetMessage: TargetMessage,
-): StructuredUserInput {
+/** 目标消息或入库消息转成结构化输入 */
+export function structuredInputOf(msg: {
+  userName?: string;
+  userId?: string;
+  userRole?: string;
+  userTitle?: string;
+  content: string;
+  messageId?: string;
+  timestamp: number;
+}): StructuredUserInput {
   return {
-    userName: targetMessage.userName,
-    userId: targetMessage.userId,
-    userRole: targetMessage.userRole,
-    userTitle: targetMessage.userTitle,
-    content: targetMessage.content,
-    messageId: targetMessage.messageId,
-    timestamp: targetMessage.timestamp,
+    userName: msg.userName ?? "",
+    userId: msg.userId ?? "",
+    userRole: msg.userRole,
+    userTitle: msg.userTitle,
+    content: msg.content,
+    messageId: msg.messageId,
+    timestamp: msg.timestamp,
   };
 }
 
@@ -152,40 +165,17 @@ export function attachImagesToCurrentUserMessages(
   const textContent =
     typeof lastMessage.content === "string"
       ? lastMessage.content
-      : extractTextFromContent(lastMessage.content);
-  const content: MultimodalContentItem[] = [
-    { type: "text", text: textContent || "[No text content]" },
-    ...pendingImageUrls.map((url) => ({
-      type: "image_url" as const,
-      image_url: { url },
-    })),
-  ];
+      : contentText(lastMessage.content);
 
   nextMessages[lastIndex] = {
     role: "user",
-    content,
-  } as ChatCompletionMessageParam;
+    content: [
+      textPart(textContent || "[No text content]"),
+      ...pendingImageUrls.map((url) => imagePart(url)),
+    ],
+  };
 
   return nextMessages;
-}
-
-function extractTextFromContent(
-  content: ChatCompletionMessageParam["content"] | null | undefined,
-): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-
-  return content
-    .map((part) => {
-      if (!part || part.type !== "text") return "";
-      return part.text;
-    })
-    .filter(Boolean)
-    .join("\n");
 }
 
 function formatStructuredUserContent(input: StructuredUserInput): string {

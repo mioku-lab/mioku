@@ -1,40 +1,55 @@
+import type { NoticeEvent } from "mioku";
 import type { ChatPluginContext } from "../context";
+import { readField } from "../utils/record";
+import { segData, segTop } from "../utils/segment";
+
+/** 依次取第一个非 null 字段，统一转成去空白的字符串 */
+function firstId(...values: unknown[]): string {
+  return String(values.find((v) => v != null) ?? "").trim();
+}
 
 export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
   const { ctx } = pluginCtx;
 
-  const resolveName = (userId: unknown, fallback?: unknown): string => {
-    const id = String(userId ?? "").trim();
-    if (!id) return String(fallback ?? "").trim() || "某人";
-    const known = pluginCtx.db.getMessagesByUser(id, undefined, 1);
-    const name = known?.[0]?.userName?.trim();
-    if (name && name !== id) return name;
+  const resolveName = (userId: string, fallback?: unknown): string => {
     const fallbackText = String(fallback ?? "").trim();
-    return fallbackText || id;
+    if (!userId) return fallbackText || "某人";
+    const known = pluginCtx.db.getMessagesByUser(userId, undefined, 1);
+    const name = known[0]?.userName?.trim();
+    if (name && name !== userId) return name;
+    return fallbackText || userId;
   };
 
-  return async (e: any): Promise<void> => {
+  return async (e: NoticeEvent): Promise<void> => {
     try {
-      const raw = e?.raw ?? e ?? {};
-      const postType = String(raw.post_type ?? e?.post_type ?? "");
-      const noticeType = String(
-        raw.notice_type ?? raw.sub_type ?? e?.sub_type ?? "",
+      const raw = e.raw ?? e;
+      const field = (key: string) => readField(raw, key);
+      const noticeType = String(e.notice_type ?? field("notice_type") ?? "");
+      const subType = String(e.sub_type ?? field("sub_type") ?? "");
+      // 适配器已归一化
+      const kind =
+        noticeType === "group" || noticeType === "notify"
+          ? subType
+          : noticeType.replace(/^group_/, "");
+      const groupId = firstId(
+        e.group_id,
+        field("group_id"),
+        readField(field("group"), "group_id"),
       );
-      const groupId = String(
-        e?.group_id ?? raw.group_id ?? raw.group?.group_id ?? "",
-      ).trim();
       if (!groupId) return;
 
-      const selfId = String(e?.self_id ?? raw.self_id ?? "").trim();
+      const selfId = firstId(e.self_id, field("self_id"));
+      const eventTime = field("time") ?? e.time;
 
-      // ---------- 撤回 ----------
-      if (noticeType === "group_recall" || noticeType === "recall") {
-        const messageId = String(
-          raw.message_id ?? raw.msg_id ?? e?.message_id ?? "",
-        ).trim();
+      if (kind === "recall") {
+        const messageId = firstId(
+          field("message_id"),
+          field("msg_id"),
+          readField(e, "message_id"),
+        );
         if (!messageId) return;
-        const operatorId = String(raw.operator_id ?? raw.user_id ?? "").trim();
-        const authorId = String(raw.user_id ?? raw.author_id ?? "").trim();
+        const operatorId = firstId(field("operator_id"), field("user_id"));
+        const authorId = firstId(field("user_id"), field("author_id"));
         const cached = pluginCtx.groupEvents.lookupMessageContent(messageId);
 
         const recorded = pluginCtx.groupEvents.recordRecall({
@@ -55,43 +70,40 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
         return;
       }
 
-      // ---------- 进退群 ----------
-      if (
-        noticeType === "group_increase" ||
-        noticeType === "group_decrease" ||
-        noticeType === "group_admin"
-      ) {
-        if (noticeType === "group_admin") return;
-        const userId = String(raw.user_id ?? e?.user_id ?? "").trim();
+      if (kind === "increase" || kind === "decrease") {
+        const userId = firstId(field("user_id"), e.user_id);
         if (!userId) return;
-        const kind =
-          noticeType === "group_increase"
-            ? "member_increase"
-            : "member_decrease";
+        const eventKind =
+          kind === "increase" ? "member_increase" : "member_decrease";
         const recorded = pluginCtx.groupEvents.record({
           groupId,
-          kind,
+          kind: eventKind,
           userId,
-          userName: resolveName(userId, raw.nickname),
-          eventKey: `${kind}:${groupId}:${userId}:${String(raw.time ?? e?.time ?? Date.now())}`,
+          userName: resolveName(userId, field("nickname")),
+          eventKey: `${eventKind}:${groupId}:${userId}:${String(eventTime ?? Date.now())}`,
         });
         if (recorded) {
-          ctx.logger.debug(`[group-events] 记录${kind} group=${groupId}`);
+          ctx.logger.debug(`[group-events] 记录${eventKind} group=${groupId}`);
         }
         return;
       }
-      const pokeSegment = Array.isArray(e?.message)
-        ? e.message.find((seg: any) => seg?.type === "poke")
+
+      const message = readField(e, "message");
+      const pokeSegment = Array.isArray(message)
+        ? message.find((seg) => segTop(seg, "type") === "poke")
         : undefined;
-      if (noticeType === "poke" || pokeSegment) {
-        const who = String(
-          raw.user_id ?? e?.user_id ?? e?.sender?.user_id ?? "",
-        ).trim();
+      if (kind === "poke" || pokeSegment) {
+        const sender = readField(e, "sender");
+        const who = firstId(
+          field("user_id"),
+          e.user_id,
+          readField(sender, "user_id"),
+        );
         const target = String(
-          raw.target_id ??
-            pokeSegment?.data?.id ??
-            pokeSegment?.data?.user_id ??
-            pokeSegment?.id ??
+          field("target_id") ??
+            segData(pokeSegment, "id") ??
+            segData(pokeSegment, "user_id") ??
+            segTop(pokeSegment, "id") ??
             "",
         ).trim();
         if (!who && !target) return;
@@ -100,11 +112,14 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
           groupId,
           kind: "poke",
           userId: who,
-          userName: resolveName(who, raw.nickname ?? e?.sender?.nickname),
+          userName: resolveName(
+            who,
+            field("nickname") ?? readField(sender, "nickname"),
+          ),
           targetId: target,
           targetName: resolveName(target),
           eventKey: `poke:${groupId}:${who}:${target}:${Math.floor(
-            Number(raw.time ?? e?.time ?? Date.now() / 1000) || 0,
+            Number(eventTime ?? Date.now() / 1000) || 0,
           )}`,
         });
         if (recorded) {
@@ -114,7 +129,6 @@ export function createGroupEventHandler(pluginCtx: ChatPluginContext) {
             }`,
           );
         }
-        return;
       }
     } catch (err) {
       ctx.logger.warn(`[group-events] 采集失败: ${err}`);

@@ -1,6 +1,65 @@
-import type { MiokuContext } from "mioku";
-import type { AITool, AIService, SkillPermissionRole } from "mioku";
-import type { ChatDatabase } from "./db";
+import type {
+  AITool,
+  AIService,
+  Bot,
+  Message,
+  MessageInput,
+  MiokuContext,
+  ReplyOptions,
+  SenderInfo,
+  SentMessage,
+  SkillPermissionRole,
+  ToolCallRecord,
+} from "mioku";
+
+export type BotRole = "owner" | "admin" | "member";
+
+export type ConstraintStrength = "low" | "medium" | "high";
+
+/** 回复场景，决定提示词里的回复指引 */
+export type ReplyContextType = "reply" | "comment" | "idle" | "review" | "poked";
+
+/** 合并回复的多条消息 */
+export interface ReviewMessages {
+  contents: string[];
+  userNames: string[];
+  messageIds: string[];
+}
+
+export interface ChatSender extends SenderInfo {
+  readonly title?: string;
+}
+
+/**
+ * 触发本轮对话的事件。
+ * 真实消息/通知事件都满足它；运行时按目标发起时只合成身份字段。
+ */
+export interface ChatTurnEvent {
+  readonly self_id?: string;
+  readonly message_type?: string;
+  readonly group_id?: string;
+  readonly user_id?: string;
+  readonly group_name?: string;
+  readonly message_id?: string;
+  readonly raw_message?: string;
+  readonly time?: number;
+  readonly sender?: ChatSender;
+  readonly bot?: Bot;
+  readonly message?: Message;
+  reply?(
+    message: MessageInput,
+    options?: boolean | ReplyOptions,
+  ): Promise<SentMessage>;
+}
+
+/** 一轮对话面向的会话 */
+export interface ChatTarget {
+  readonly selfId: string;
+  readonly groupId?: string;
+  readonly userId: string;
+  /** "group:{groupId}" 或 "personal:{userId}" */
+  readonly sessionId: string;
+}
 
 export interface EmotionEntryConfig {
   examples: string[];
@@ -175,11 +234,11 @@ export interface ChatConfig {
   typingDelayMaxTotalMs: number;
   enableMarkdownScreenshot: boolean;
   debug: boolean;
-  outputLengthConstraintStrength: "low" | "medium" | "high";
-  toolCallConstraintStrength: "low" | "medium" | "high";
-  emojiUsageConstraintStrength: "low" | "medium" | "high";
-  audioUsageConstraintStrength: "low" | "medium" | "high";
-  markdownUsageConstraintStrength: "low" | "medium" | "high";
+  outputLengthConstraintStrength: ConstraintStrength;
+  toolCallConstraintStrength: ConstraintStrength;
+  emojiUsageConstraintStrength: ConstraintStrength;
+  audioUsageConstraintStrength: ConstraintStrength;
+  markdownUsageConstraintStrength: ConstraintStrength;
   groupStructuredHistoryTtlMs: number;
   cooldownAfterReplyMs: number;
   aiRequestLimits: AIRequestLimitConfig;
@@ -213,6 +272,9 @@ export interface ChatGroupOverrides {
 export type ChatGroupsFile = {
   groups: Record<string, ChatGroupOverrides>;
 };
+
+/** 同步取配置；传 groupId 时合并该群覆盖 */
+export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 /**
  * 会话类型
@@ -286,31 +348,22 @@ export interface SkillSession {
  */
 export interface ToolContext {
   ctx: MiokuContext;
-  event: any;
+  event?: ChatTurnEvent;
   sessionId: string;
   groupId?: string;
   userId: string;
   triggerSkillRole: SkillPermissionRole;
   config: ChatConfig;
   aiService: AIService;
-  db: ChatDatabase;
-  botRole: "owner" | "admin" | "member";
-  /**
-   * 当 AI 返回文本内容时立即调用
-   * 回调接收文本内容、消息索引、总消息数
-   */
+  /** AI 每产出一条文本就立即发送（流式） */
   onTextContent?: (
     text: string,
     messageIndex: number,
     totalMessages: number,
   ) => void | Promise<void>;
-  /**
-   * 已通过 onTextContent 回调发送的消息索引集合
-   */
+  /** 已经由 onTextContent 发出的消息下标 */
   sentMessageIndices?: Set<number>;
-  /**
-   * 待附加到下一轮 AI 请求的图片 URL
-   */
+  /** 附到本轮主模型请求的图片 */
   pendingImageUrls?: string[];
 }
 
@@ -319,12 +372,9 @@ export interface ToolContext {
  */
 export interface ChatResult {
   messages: string[];
-  pendingAt: number[];
-  pendingPoke: number[];
-  pendingQuote?: string;
-  toolCalls: { name: string; args: any; result: any }[];
-  emojiPath?: string | null;
-  protocolMessages?: unknown[];
+  toolCalls: ToolCallRecord[];
+  emojiPath: string | null;
+  protocolMessages: unknown[];
 }
 
 /**

@@ -1,15 +1,8 @@
 import { logger } from "mioku";
 import type { ChatDatabase } from "../db";
+import type { RetentionConfig } from "../types";
 
-export interface CleanupConfig {
-  enabled: boolean;
-  messageRetentionMs: number;
-  topicRetentionMs: number;
-  mediaSummaryRetentionMs: number;
-  imageRetentionMs: number;
-  eventRetentionMs: number;
-  cleanupIntervalMs: number;
-}
+export type CleanupConfig = RetentionConfig;
 
 export const DEFAULT_CLEANUP_CONFIG: CleanupConfig = {
   enabled: true,
