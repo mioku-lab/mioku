@@ -7,22 +7,22 @@ description: Mioku 事件总线的分发流程、匹配规则、优先级与过�
 
 `ctx.handle()` 背后是 `EventBus`，它是框架内部唯一的事件分发器。插件一般不会直接使用它，`ctx.buses` 可以拿到，但很少需要。理解它的匹配规则之后，就能解释很多关于 handler 为什么收到事件的问题。
 
-通过 `ctx.command()` 注册的消息命令会在事件进入总线之前由命令管理器优先匹配。命中的命令会消费该消息，未命中的消息与非消息事件才进入总线。
-
 ## 分发流程
 
 一个事件被 `bus.dispatch(event)` 派发后，总线执行三件事。
 
-1. **过滤**：命令管理器先判断这个事件是否已被命令消费。`setFilter` 钩子按注册源决定是否让监听器看到该事件。
+1. **过滤**：`setFilter` 钩子按注册源决定是否让监听器看到该事件。
 2. **匹配**：遍历所有已注册的监听器，找出路由与事件匹配的部分。
-3. **分组与执行**：按优先级分组，数值小的先执行。同组内按注册顺序，使用 `Promise.allSettled` 并发执行，单个监听器抛错不会影响其他监听器。
+3. **分组与顺序执行**：按优先级分组，数值小的先执行；组内按注册顺序逐个执行。handler 返回 `true` 即认领并结束派发，返回 `undefined` / `false` 则继续下一个。`dispatch` 返回是否有人认领。
 
 ```typescript
 const matched = this.#matching(event);
-const priorityGroups = groupByPriority(matched);
-for (const [priority, regs] of sorted(priorityGroups)) {
-  await Promise.allSettled(regs.map((reg) => reg.handler(event)));
+for (const [priority, regs] of sortedByPriority(matched)) {
+  for (const reg of byOrder(regs)) {
+    if ((await reg.handler(event)) === true) return true; // 认领，截止
+  }
 }
+return false; // 无人认领
 ```
 
 ## 匹配规则
@@ -49,7 +49,15 @@ for (const [priority, regs] of sorted(priorityGroups)) {
 - **priority**：可以在 `ctx.handle` 的 options 中传入，插件默认使用 `definePlugin` 的 `priority`，默认值是 100。core 插件是 `-Infinity`，因此总是最先执行。数值小的先执行。
 - **order**：注册序号，同优先级内按注册先后排列。
 
-命令的 `priority` 使用同样的升序规则，但命令会在进入事件总线之前独立选择首个匹配项。命中的命令会消费该消息，监听器收不到它。命令和监听器的优先级互不影响。
+监听器逐个执行，handler 的返回值决定要不要继续。
+
+| 返回值         | 含义                          |
+|-------------|-----------------------------|
+| `undefined` | 不认领，继续下一个                   |
+| `false`     | 不认领，与 `undefined` 同义，用于显式表达 |
+| `true`      | 认领，结束整个派发                   |
+
+命令阶段总是先于总线，命令 `priority` 与监听器 `priority` 互不影响。命令 handler 返回 `false` 表示不认领，消息会继续流向总线。
 
 ## 注册源过滤
 

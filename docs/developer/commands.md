@@ -7,7 +7,7 @@ description: 用 ctx.command 注册消息命令，包含字段、匹配、优先
 
 Mioku 的命令管理器负责命令的注册、匹配、前缀、优先级、角色权限、访问控制和帮助目录。插件通过 `ctx.command()` 注册消息命令，通过 `ctx.handle()` 监听戳一戳、入群申请和媒体消息等不属于命令的事件。
 
-命令管理器在事件总线之前工作。命中的命令会消费消息，剩余事件才交给 `handle`。因此同一个触发文本不要同时注册命令和 `handle`，否则会被其中一个抢先处理。
+命令管理器在事件总线之前工作。命中的命令会消费消息，剩余事件才交给 `handle`。handler 可以通过返回值把消息让给后面的处理者，见[让位与认领](#让位与认领)。
 
 ## 最小命令
 
@@ -44,7 +44,7 @@ export default definePlugin({
 | `priority` | 升序优先级，数值越小越先匹配，默认 0 |
 | `description` | 帮助与 WebUI 中展示的说明 |
 | `usage` | 用法示例，例如 `"weather <城市>"` |
-| `handler` | 命令处理函数 |
+| `handler` | 命令处理函数，返回 `false` 表示把消息让给后续处理者 |
 
 `aliases` 只对字符串匹配生效，不会出现在帮助和 WebUI 中，也不参与 `id` 计算。
 
@@ -148,7 +148,7 @@ ctx.command(/^echo\s+(.+)$/, ({ event, match }) => event.reply(match![1]), {
 
 ## 优先级与冲突
 
-命令按 `priority` 升序选择，数值越小越先匹配，同优先级按注册顺序。首个匹配的命令会消费消息。把通用命令放在较低优先级、专用命令放在较高优先级，就能控制派发顺序。
+命令按 `priority` 升序尝试，数值越小越先尝试，同优先级按注册顺序。把通用命令放在较低优先级、专用命令放在较高优先级，就能控制尝试顺序。
 
 ```typescript
 ctx.command({
@@ -161,8 +161,34 @@ ctx.command({
 ctx.command({
   name: "roll-d6",
   match: /^roll\s+d6$/i,
-  priority: 1, // 比 roll-d20 小，先匹配
+  priority: 1, // 比 roll-d20 小，先尝试
   description: "投六面骰",
+});
+```
+
+## 让位与认领
+
+handler 的返回值决定这条消息是否归它。
+
+| 返回值                    | 含义                                        |
+|------------------------|-------------------------------------------|
+| `true`                 | 认领。派发到此结束，后续命令和 `handle` 都不会收到            |
+| `undefined`（不写 return） | 认领，与 `true` 等价，保持既有行为                     |
+| `false`                | 让位。继续尝试后续命令；全部让位则消息流向事件总线，交给 `ctx.handle` |
+
+典型场景是同名文本在不同语境下含义不同。
+
+```typescript
+ctx.command({
+  name: "退群",
+  match: /^退群(?![\u4e00-\u9fa5A-Za-z0-9_])/,
+  prefixes: ["", ".", "/"],
+  permission: "master",
+  handler: async ({ event, body }) => {
+    // 引用通知的回复交给通知处理器，不在这里消费
+    if (event.quote_id && event.message_type === "private") return false;
+    // ...正常执行退群
+  },
 });
 ```
 

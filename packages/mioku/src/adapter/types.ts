@@ -1,7 +1,7 @@
 import type { Capability } from "./capability";
 import type { CapabilityRegistry } from "./registry";
 import type { Driver } from "../driver";
-import type { Event } from "./event";
+import type { Event, EventHandlerResult } from "./event";
 
 /** 能力的作用目标：按适配器 / bot / 具体资源定位能力实现 */
 export interface CapabilityTarget {
@@ -40,7 +40,8 @@ export interface AdapterContext {
   getCapabilityRegistry(): CapabilityRegistry;
   registerGateway(gateway: AdapterGateway): () => void;
   registerResource(resource: AdapterResource): () => void;
-  dispatch(event: Event): Promise<void>;
+  /** 派发一个事件，返回是否被某个处理者认领 */
+  dispatch(event: Event): Promise<boolean>;
   emitLifecycle(event: BotLifecycleEvent): Promise<void>;
   /**
    * 订阅框架事件总线上的事件
@@ -48,7 +49,7 @@ export interface AdapterContext {
    */
   listen(
     route: string,
-    handler: (event: Event) => void | Promise<void>,
+    handler: (event: Event) => EventHandlerResult | Promise<EventHandlerResult>,
   ): () => void;
 }
 

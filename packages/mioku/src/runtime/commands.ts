@@ -20,9 +20,11 @@ export interface CommandExecutionContext {
   readonly match?: RegExpMatchArray;
 }
 
+export type CommandResult = boolean | void;
+
 export type CommandHandler = (
   context: CommandExecutionContext,
-) => void | Promise<void>;
+) => CommandResult | Promise<CommandResult>;
 
 export interface CommandDefinition {
   readonly id?: string;
@@ -453,11 +455,22 @@ export class CommandManager {
   async dispatch(event: MessageEvent): Promise<boolean> {
     const text = String(event.message?.text?.() ?? "").trim();
     if (!text) return false;
-    const match = this.#find(text);
-    if (!match) return false;
-    if (!this.#canUse(match.command, event)) return true;
+    const matches = this.#findAll(text);
+    for (const match of matches) {
+      if (!this.#canUse(match.command, event)) return true;
+      if (await this.#run(match, event, text)) return true;
+    }
+    return false;
+  }
+
+  /** 执行单个命令，返回它是否认领这条消息 */
+  async #run(
+    match: CommandMatch,
+    event: MessageEvent,
+    text: string,
+  ): Promise<boolean> {
     try {
-      await match.command.handler({
+      const result = await match.command.handler({
         ctx: match.command.context,
         event,
         command: match.command,
@@ -466,13 +479,14 @@ export class CommandManager {
         args: match.args,
         match: match.match,
       });
+      return result !== false;
     } catch (error) {
       this.#logger?.error(
         `Command "${match.command.plugin}:${match.command.id}" failed`,
         error,
       );
+      return true;
     }
-    return true;
   }
 
   shouldDispatch(source: string, event: Event): boolean {
@@ -493,7 +507,8 @@ export class CommandManager {
     );
   }
 
-  #find(text: string): CommandMatch | undefined {
+  #findAll(text: string): CommandMatch[] {
+    const matches: CommandMatch[] = [];
     for (const command of this.#orderedCommands()) {
       const prefixes = parsePrefixes(
         command.prefixes ?? this.#getDefaultPrefix(),
@@ -505,7 +520,10 @@ export class CommandManager {
         const candidates = [command.matcher, command.name, ...command.aliases];
         for (const candidate of candidates) {
           const result = stringMatch(body, candidate);
-          if (result) return { command, body, args: result.args };
+          if (result) {
+            matches.push({ command, body, args: result.args });
+            break;
+          }
         }
         continue;
       }
@@ -516,9 +534,9 @@ export class CommandManager {
         matched.length > 1
           ? matched.slice(1).filter((item): item is string => item != null)
           : body.slice(matched[0].length).trim().split(/\s+/).filter(Boolean);
-      return { command, body, args, match: matched };
+      matches.push({ command, body, args, match: matched });
     }
-    return undefined;
+    return matches;
   }
 
   #resolveRegistered(plugin: string, ref: string): StoredCommand | undefined {

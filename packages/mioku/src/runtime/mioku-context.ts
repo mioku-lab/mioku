@@ -36,7 +36,7 @@ import type { Event, MessageEvent, MetaEvent, NoticeEvent, RequestEvent } from '
 import type { BotLifecycleEvent } from '../adapter'
 import type { Logger } from '../logger'
 import type { MiokuConfig } from '../config'
-import type { EventBus } from './bus'
+import type { EventBus, EventHandlerResult } from './bus'
 import type { CronHandler, PluginCleanup, ScheduledTask } from '../plugin'
 import type { TaskContext } from 'node-cron'
 import type { CapabilityRegistry } from '../adapter'
@@ -305,10 +305,13 @@ export class MiokuContext {
   /**
    * 注册事件监听。route 支持层级路由，如 `message`、`message.group`、
    * `onebotv11:message`；返回取消监听函数。
+   *
+   * handler 返回 `true` 表示认领该事件，总线不再交给后续监听器；
+   * 返回 `undefined` / `false` 则继续下传。
    */
   handle<R extends string | readonly string[]>(
     route: R,
-    handler: (event: RouteEvent<R>) => void | Promise<void>,
+    handler: (event: RouteEvent<R>) => EventHandlerResult | Promise<EventHandlerResult>,
   ): () => void {
     const inputRoutes = Array.isArray(route) ? route : [route]
     const bypassDedup = inputRoutes.some((item) => item.startsWith('!'))
@@ -316,11 +319,12 @@ export class MiokuContext {
     const source = `plugin:${this.#options.pluginId}`
     const handledEvents = new WeakSet<Event>()
     const correlator = bypassDedup ? undefined : this.#options.correlator
-    const wrappedHandler = async (event: Event): Promise<void> => {
-      if (handledEvents.has(event)) return
-      if (correlator?.isDuplicate(event)) return
+    // 返回 true 表示本监听器认领了事件，总线据此结束派发
+    const wrappedHandler = async (event: Event): Promise<EventHandlerResult> => {
+      if (handledEvents.has(event)) return false
+      if (correlator?.isDuplicate(event)) return false
       handledEvents.add(event)
-      await handler(event as RouteEvent<R>)
+      return (await handler(event as RouteEvent<R>)) === true
     }
     const disposers = routes.map((r) =>
       this.#options.bus.register(r, wrappedHandler, { source, priority: this.#options.priority }),

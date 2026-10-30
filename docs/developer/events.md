@@ -186,15 +186,32 @@ ctx.handle("message", async (event) => {
 });
 ```
 
-## 优先级
+## 优先级与认领
 
-`definePlugin` 的 `priority` 会影响 `handle` 注册的监听顺序，数值小的插件先收到事件，同优先级按注册顺序。内置 core 插件的优先级是 `-Infinity`，总是最先处理。
+`definePlugin` 的 `priority` 决定 `handle` 监听器的执行顺序，数值小的插件先收到事件，同优先级按注册顺序。内置 core 插件的优先级是 `-Infinity`，总是最先执行。
 
-命令的优先级独立于插件。命令管理器在事件总线之前选择首个匹配项，详见[命令管理器](/developer/commands)。
+监听器按顺序逐个执行，handler 的返回值决定要不要继续往下传。
+
+| 返回值                    | 含义                                 |
+|------------------------|------------------------------------|
+| `undefined`（不写 return） | 不认领，继续交给后续监听器。这是默认行为               |
+| `false`                | 不认领，与 `undefined` 同义，用于显式表达「这条不归我」 |
+| `true`                 | 认领。派发到此结束，后续监听器不会收到                |
+
+多个插件同时响应一条消息是正常用法，所以不写 return 不会截断别人。只有确实要独占这条消息时才 `return true`：
+
+```typescript
+ctx.handle("message.group", async (event) => {
+  const match = ctx.text(event).match(/^打卡$/);
+  if (!match) return false;       // 不归我，后面的人继续看
+  await event.reply("打卡成功");
+  return true;                    // 已处理，不必再传
+});
+```
 
 ## 事件总线
 
-路由匹配和分发由 `EventBus` 实现，支持 `*` 通配符和按优先级分组，单个监听器出错不会影响其他监听器。命令管理器在事件进入总线之前先消费已匹配的命令，因此 `handle` 不会重复处理已被命令处理过的消息。
+路由匹配和分发由 `EventBus` 实现，支持 `*` 通配符和按优先级分组，单个监听器出错只记日志、不影响后续监听器。命令管理器先于总线尝试匹配，认领的消息不再进入总线。
 
 插件一般不需要直接使用 `EventBus`。想了解事件如何走到 handler，见[事件总线](/advanced/event-bus)。
 

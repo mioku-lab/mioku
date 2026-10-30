@@ -43,6 +43,7 @@ export * from "./builtin";
 export * from "./builtin/core/status";
 export * from "./builtin/core/adapters";
 export * from "./compat";
+export * from "./skills";
 
 export { default as serviceManager } from "./services/manager";
 export { registerPluginArtifacts } from "./runtime/plugin-artifacts";

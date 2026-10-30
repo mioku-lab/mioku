@@ -1,6 +1,10 @@
-import type { Event } from '../adapter'
+import type { Event, EventHandlerResult } from '../adapter'
 
-export type EventHandler<E extends Event = Event> = (event: E) => void | Promise<void>
+export type { EventHandlerResult }
+
+export type EventHandler<E extends Event = Event> = (
+  event: E,
+) => EventHandlerResult | Promise<EventHandlerResult>
 
 export interface Registration {
   readonly id: number
@@ -119,10 +123,16 @@ export class EventBus {
     return matched
   }
 
-  /** 派发一个事件给所有匹配的监听器，单个监听器出错不影响其他监听器 */
-  async dispatch(event: Event): Promise<void> {
+  /**
+   * 按优先级顺序把事件交给监听器，返回是否有人认领。
+   *
+   * 每个优先级组内按注册顺序逐个执行。handler 返回 `true` 即结束派发；
+   * 返回 `undefined` / `false` 则继续交给后续监听器，全部不认领时静默结束。
+   * 单个监听器出错只记日志，不影响后续监听器。
+   */
+  async dispatch(event: Event): Promise<boolean> {
     const matched = this.#matching(event)
-    if (matched.length === 0) return
+    if (matched.length === 0) return false
     this.#dispatched++
 
     const priorityGroups = new Map<number, Registration[]>()
@@ -135,19 +145,26 @@ export class EventBus {
 
     for (const [, regs] of sortedPriorities) {
       regs.sort((a, b) => a.order - b.order)
-      await Promise.allSettled(
-        regs.map((reg) =>
-          Promise.resolve()
-            .then(() => reg.handler(event))
-            .catch((err) => {
-              this.#logger?.(
-                'error',
-                `Event handler "${reg.source}" for route "${reg.route}" failed`,
-                err,
-              )
-            }),
-        ),
+      for (const reg of regs) {
+        if (reg.disposed) continue
+        const claimed = await this.#invoke(reg, event)
+        if (claimed) return true
+      }
+    }
+    return false
+  }
+
+  /** 执行单个监听器；返回它是否认领了这条事件，抛错按未认领处理 */
+  async #invoke(reg: Registration, event: Event): Promise<boolean> {
+    try {
+      return (await reg.handler(event)) === true
+    } catch (err) {
+      this.#logger?.(
+        'error',
+        `Event handler "${reg.source}" for route "${reg.route}" failed`,
+        err,
       )
+      return false
     }
   }
 
