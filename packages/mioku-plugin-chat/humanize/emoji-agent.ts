@@ -6,6 +6,7 @@ import { logger } from "mioku";
 import type { ChatConfig, ChatMessage, TargetMessage } from "../types";
 import { extractGroupIdFromSession } from "../utils/group-config";
 import { extractJsonObject } from "../utils/json";
+import { WORKING_MAX_TOKENS } from "../utils/model";
 import { readField } from "../utils/record";
 import type { ChatConfigProvider } from "./index";
 
@@ -249,6 +250,7 @@ Choose the most contextually appropriate sticker label for ${context.botNickname
           { role: "user", content: userPrompt },
         ],
         temperature: 0.2,
+        max_tokens: WORKING_MAX_TOKENS,
       });
       const result = extractJsonObject(response.content || "");
       const selectedIndex = readField(result, "selectedIndex");

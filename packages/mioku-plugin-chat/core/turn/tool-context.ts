@@ -44,10 +44,13 @@ function resolveTriggerSkillRole(
 }
 
 export function buildToolContext(
-  pluginCtx: Pick<ChatPluginContext, "ctx" | "aiService" | "audioService">,
+  pluginCtx: Pick<
+    ChatPluginContext,
+    "ctx" | "aiService" | "audioService" | "memory"
+  >,
   input: ToolContextInput,
 ): ToolContext {
-  const { ctx, aiService, audioService } = pluginCtx;
+  const { ctx, aiService, audioService, memory } = pluginCtx;
   const { target, cfg, event } = input;
 
   return {
@@ -59,6 +62,7 @@ export function buildToolContext(
     triggerSkillRole: resolveTriggerSkillRole(ctx, input.authEvents),
     config: cfg,
     aiService,
+    ...(memory ? { memory } : {}),
     pendingImageUrls: input.pendingImageUrls,
     onTextContent: input.stream
       ? async (text) => {

@@ -1,3 +1,4 @@
+import { WORKING_MAX_TOKENS } from "../../utils/model";
 import { logger } from "mioku";
 import puppeteer from "puppeteer";
 import type { AIInstance } from "mioku";
@@ -679,6 +680,7 @@ async function summarizePage(
         },
       ],
       temperature: 0.2,
+      max_tokens: WORKING_MAX_TOKENS,
     });
 
     if (!response.content) {

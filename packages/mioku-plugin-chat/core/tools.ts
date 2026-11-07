@@ -6,6 +6,10 @@ import { filterAllowedExternalSkills } from "./external-skills";
 import { createInfoTools } from "./tools/info";
 import { createLoadSkillTool } from "./tools/load-skill";
 import { createWebSearchTool, createWebReadPageTool } from "./tools/web";
+import {
+  createMemoryToolBudget,
+  createMemoryTools,
+} from "./tools/memory";
 
 export function createTools(
   toolCtx: ToolContext,
@@ -14,6 +18,12 @@ export function createTools(
   const tools: AITool[] = [];
 
   tools.push(...createInfoTools(toolCtx));
+  tools.push(
+    ...createMemoryTools(
+      toolCtx,
+      createMemoryToolBudget(toolCtx.config.memory.recallToolBudget),
+    ),
+  );
 
   if (toolCtx.config.enableExternalSkills) {
     const allSkills = toolCtx.aiService.getAllSkills?.();

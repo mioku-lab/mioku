@@ -264,6 +264,14 @@ function recordForLearning(
 
   const record = async () => {
     db.saveMessage(msg);
+    pluginCtx.memory?.observeMessage({
+      groupId,
+      userId: msg.userId ?? "",
+      userName: msg.userName ?? "",
+      content: msg.content,
+      messageId: msg.messageId,
+      timestamp: msg.timestamp,
+    });
     await humanize.topicTracker.onMessage(sessionId);
     pluginCtx.groupStructuredHistory.append(
       sessionId,

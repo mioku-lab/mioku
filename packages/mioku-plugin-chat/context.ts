@@ -18,6 +18,7 @@ import type { CooldownManager } from "./manage/cooldown";
 import type { GroupEventPerception } from "./manage/group-events";
 import type { QueueProcessor } from "./manage/queue-processor";
 import type { SessionTurnScheduler } from "./manage/session-turn-scheduler";
+import type { MemoryEngine } from "./memory";
 
 export type RunRateLimitGuard = RateLimitGuard["run"];
 
@@ -34,6 +35,8 @@ export interface ChatPluginContext {
   getAIInstance: (role?: AIModelRole) => AIInstance | undefined;
   humanize: HumanizeEngine;
   audioService?: AudioServiceApi;
+  /** 群聊记忆；未安装向量服务时仍可用轮廓与原文检索 */
+  memory?: MemoryEngine;
 
   sessionManager: SessionManager;
   skillManager: SkillSessionManager;

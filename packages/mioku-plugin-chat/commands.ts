@@ -1,6 +1,7 @@
 import type { MessageEvent } from "mioku";
 import type { ChatPluginContext } from "./context";
 import { handleTtsCommand } from "./handlers/tts-command";
+import { handleMemoryCommand } from "./handlers/memory-command";
 import { toOptionalId } from "./utils/record";
 import { eventUserId } from "./utils/sender";
 
@@ -55,6 +56,30 @@ export function registerChatCommands(pluginCtx: ChatPluginContext): void {
       }
       resetSession(pluginCtx, `group:${groupId}`);
       await event.reply("已清除本群会话中 AI 发送的消息~");
+    },
+  });
+
+  ctx.command({
+    name: "记忆",
+    prefixes: ["/", "."],
+    match: /^记忆(?:\s+([\s\S]*))?$/,
+    description: "查看/检索/清理群聊记忆",
+    usage: [
+      ".记忆                查看记忆状态",
+      ".记忆 搜索 <关键词>  只搜本群的记忆条目",
+      ".记忆 轮廓 <群员>    查看某个群员的画像",
+      ".记忆 抽取          立即抽取本群记忆（需已攒够消息）",
+      ".记忆 忘掉 <id>      删除一条记忆",
+      ".记忆 清空          清空本群记忆",
+      ".记忆 重建          重建向量索引（换模型后用）",
+    ].join("\n"),
+    handler: async ({ event, match }) => {
+      if (isFromSelf(event)) return;
+      await handleMemoryCommand(
+        pluginCtx,
+        event,
+        String(match?.[1] ?? "").trim(),
+      );
     },
   });
 

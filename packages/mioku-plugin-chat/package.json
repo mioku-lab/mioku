@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-chat",
-  "version": "3.3.1",
+  "version": "3.4.0",
   "description": "AI 智能聊天插件",
   "main": "index.ts",
   "type": "module",
@@ -16,7 +16,8 @@
       "ai",
       "config",
       "help",
-      "screenshot"
+      "screenshot",
+      "vector"
     ]
   },
   "dependencies": {
@@ -27,7 +28,8 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "mioku": "workspace:*",
-    "mioku-service-audio": "workspace:*"
+    "mioku-service-audio": "workspace:*",
+    "mioku-service-vector": "workspace:*"
   },
   "peerDependencies": {
     "mioku": "^1.0.0"

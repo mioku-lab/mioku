@@ -185,6 +185,19 @@ export interface ChatDatabase {
     startTimestamp: number,
     endTimestamp: number,
   ): ChatMessage[];
+  /** 最近活跃的群，供记忆工具列群用 */
+  listGroups(limit?: number): Array<{
+    groupId: string;
+    groupName?: string;
+    lastAt: number;
+  }>;
+  /** 按关键词在群历史里做最朴素的 LIKE 检索，供记忆脚本查原文用 */
+  searchMessages(
+    groupId: string,
+    keywords: string[],
+    since: number,
+    limit?: number,
+  ): ChatMessage[];
   updateCompressedContext(sessionId: string, context: string): void;
   deleteSessionMessages(sessionId: string): void;
   // 删除 bot 发送的消息
@@ -632,6 +645,60 @@ export async function initDatabase(): Promise<ChatDatabase> {
           $endTimestamp: endTimestamp,
         })
         .map(toChatMessage);
+    },
+
+    listGroups(limit: number = 30): Array<{
+      groupId: string;
+      groupName?: string;
+      lastAt: number;
+    }> {
+      const rows = db
+        .prepare<
+          { group_id: SqlId; group_name: string | null; last_at: number },
+          [number]
+        >(
+          `SELECT group_id, MAX(timestamp) AS last_at,
+                  (SELECT group_name FROM messages m2
+                    WHERE m2.group_id = messages.group_id AND m2.group_name IS NOT NULL
+                    ORDER BY timestamp DESC LIMIT 1) AS group_name
+           FROM messages
+           WHERE group_id IS NOT NULL
+           GROUP BY group_id
+           ORDER BY last_at DESC
+           LIMIT ?`,
+        )
+        .all(Math.max(1, Math.min(limit, 200)));
+      return rows.map((row) => ({
+        groupId: String(row.group_id ?? ""),
+        groupName: row.group_name ?? undefined,
+        lastAt: Number(row.last_at ?? 0),
+      }));
+    },
+
+    searchMessages(
+      groupId: string,
+      keywords: string[],
+      since: number,
+      limit: number = 200,
+    ): ChatMessage[] {
+      const cleaned = Array.from(
+        new Set(
+          keywords
+            .map((keyword) => keyword.trim())
+            .filter((keyword) => keyword.length > 0),
+        ),
+      ).slice(0, 6);
+      if (cleaned.length === 0) return [];
+      const clause = cleaned.map(() => "content LIKE ?").join(" OR ");
+      const rows = db
+        .prepare<MessageRow, Array<string | number>>(
+          `SELECT * FROM messages
+           WHERE group_id = ? AND role = 'user' AND timestamp >= ? AND (${clause})
+           ORDER BY timestamp DESC, id DESC
+           LIMIT ?`,
+        )
+        .all(groupId, since, ...cleaned.map((keyword) => `%${keyword}%`), limit);
+      return rows.map(toChatMessage).reverse();
     },
 
     updateCompressedContext(sessionId: string, context: string): void {

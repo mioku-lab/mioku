@@ -22,7 +22,6 @@ import { filterAllowedExternalSkills } from "./external-skills";
  *
  * TODO(主动消息)
  *
- * TODO(群员轮廓 + 向量记忆库)
  */
 
 export interface StaticPromptContext {
@@ -40,6 +39,8 @@ export interface TurnPrompt {
   groupName?: string;
   memberCount?: number;
   topicContext?: string;
+  /** 长期记忆注入块，来自 MemoryEngine.buildContext */
+  memoryContext?: string;
   styleSamples?: string;
   eventContext?: string;
   recallMarks?: Map<string, string>;
@@ -355,6 +356,8 @@ export function buildDynamicUserContext(ctx: DynamicPromptContext): string {
   if (ctx.activeSkillsInfo) sections.push(ctx.activeSkillsInfo);
 
   if (ctx.eventContext) sections.push(ctx.eventContext);
+
+  if (ctx.memoryContext) sections.push(ctx.memoryContext);
 
   if (ctx.styleSamples) {
     logger.info(

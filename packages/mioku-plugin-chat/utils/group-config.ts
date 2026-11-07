@@ -2,6 +2,7 @@ import type { ChatConfig, ChatGroupOverrides } from "../types";
 
 const OVERRIDABLE_SUB_OBJECTS = [
   "emoji",
+  "memory",
   "expression",
   "retention",
   "topic",

@@ -1,6 +1,7 @@
 import type { AIInstance } from "mioku";
 import { logger } from "mioku";
 import { extractJsonObject } from "../utils/json";
+import { WORKING_MAX_TOKENS } from "../utils/model";
 import { readField } from "../utils/record";
 import type { ChatDatabase } from "../db";
 import type { ChatMessage } from "../types";
@@ -127,7 +128,7 @@ Output strictly in JSON format:
         messages: [],
         model: cfg.workingModel || cfg.model,
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: WORKING_MAX_TOKENS,
       });
 
       const parsed = extractJsonObject(content);

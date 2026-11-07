@@ -1,6 +1,7 @@
 import type { AIInstance, Logger } from "mioku";
 import type { ChatConfig, ChatMessage } from "../types";
 import { extractJsonObject } from "../utils/json";
+import { WORKING_MAX_TOKENS } from "../utils/model";
 import { readField } from "../utils/record";
 
 /** 判断只需要最近的几轮上下文，比正式回复的历史短得多 */
@@ -46,7 +47,7 @@ export async function decideReplyGate(
       messages: [],
       model: req.cfg.workingModel || req.cfg.model,
       temperature: 0.2,
-      max_tokens: 200,
+      max_tokens: WORKING_MAX_TOKENS,
     });
   } catch (err) {
     log.warn(`[ReplyGate] 判断失败，按需要回复处理: ${err}`);

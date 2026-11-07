@@ -1,8 +1,4 @@
-import type {
-  AITool,
-  ChatRuntimePromptInjection,
-  MiokuContext,
-} from "mioku";
+import type { AITool, ChatRuntimePromptInjection, MiokuContext } from "mioku";
 import type { ChatPluginContext } from "../../context";
 import type {
   ChatConfig,
@@ -140,6 +136,13 @@ export async function runChatTurn(
       : { groupName: event?.group_name, memberCount: undefined },
   ]);
   const targetMessage = await req.targetMessage;
+  const memoryContext = await buildMemoryContext(pluginCtx, {
+    groupId,
+    sessionId,
+    userId,
+    userName: targetMessage.userName,
+    query: memoryQueryOf(targetMessage, history),
+  });
 
   const prompt: TurnPrompt = {
     botNickname: resolveBotNickname(ctx, cfg, selfId, event),
@@ -155,6 +158,7 @@ export async function runChatTurn(
       history,
     ),
     ...buildEventContexts(pluginCtx, target, history),
+    ...(memoryContext ? { memoryContext } : {}),
     replyType: policy.replyType,
     reviewMessages: req.reviewMessages,
     promptInjections: req.promptInjections,
@@ -211,6 +215,37 @@ export async function runChatTurn(
   return result;
 }
 
+function memoryQueryOf(target: TargetMessage, history: ChatMessage[]): string {
+  const recent = history
+    .slice(-2)
+    .map((message) => `${message.userName || ""}: ${message.content}`)
+    .join("\n");
+  return [recent, `${target.userName}: ${target.content}`]
+    .filter((line) => line.trim())
+    .join("\n")
+    .slice(-400);
+}
+
+/** 记忆注入永远不抛错：拿不到就当没有 */
+async function buildMemoryContext(
+  pluginCtx: ChatPluginContext,
+  input: {
+    groupId?: string;
+    sessionId: string;
+    userId: string;
+    userName: string;
+    query: string;
+  },
+): Promise<string> {
+  if (!pluginCtx.memory || !input.groupId) return "";
+  try {
+    return await pluginCtx.memory.buildContext(input);
+  } catch (error) {
+    pluginCtx.ctx.logger.warn(`[memory] 组装记忆块失败：${error}`);
+    return "";
+  }
+}
+
 function resolveBotNickname(
   ctx: MiokuContext,
   cfg: ChatConfig,
@@ -245,7 +280,11 @@ function getHumanizeContexts(
   );
   const styleSamples =
     scope === "full" && userId
-      ? humanize.expressionSampler.buildStyleSamples(userId, userName, sessionId)
+      ? humanize.expressionSampler.buildStyleSamples(
+          userId,
+          userName,
+          sessionId,
+        )
       : "";
 
   ctx.logger.info(

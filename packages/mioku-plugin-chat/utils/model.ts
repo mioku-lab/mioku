@@ -1,5 +1,7 @@
 import type { AIModelDescriptor, AIService } from "mioku";
 
+export const WORKING_MAX_TOKENS = 40_960;
+
 const supportsVision = (model?: AIModelDescriptor): boolean =>
   Boolean(model?.capabilities?.includes("vision"));
 

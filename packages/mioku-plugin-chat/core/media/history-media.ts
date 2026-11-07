@@ -8,6 +8,7 @@ import { Bot, ForwardNode, logger } from "mioku";
 import type { AIInstance, Logger } from "mioku";
 import type { MediaSummaryKind, MediaSummaryRecord } from "../../types";
 import { isRecord, readField } from "../../utils/record";
+import { WORKING_MAX_TOKENS } from "../../utils/model";
 import { segData, segTop } from "../../utils/segment";
 import { imagePart, textPart, type ModelContentPart } from "../model-content";
 
@@ -144,6 +145,7 @@ async function summarizeVideoByFullVideo(
         },
       ],
       temperature: 0.3,
+      max_tokens: WORKING_MAX_TOKENS,
     }),
   );
   if (!response) return "";
@@ -188,6 +190,7 @@ async function summarizeVideoByFrames(
         },
       ],
       temperature: 0.3,
+      max_tokens: WORKING_MAX_TOKENS,
     }),
   );
   if (!response) return "";
@@ -445,6 +448,7 @@ async function summarizeTextContent(
         },
       ],
       temperature: 0.3,
+      max_tokens: WORKING_MAX_TOKENS,
     }),
   );
   if (!response) return "";

@@ -1,8 +1,16 @@
-import { definePlugin, type MiokuContext } from "mioku";
-import type { AIInstance, AIModelRole } from "mioku";
+import { definePlugin, ensureDataDir, type MiokuContext } from "mioku";
+import type { AIInstance, AIModelRole, AIService } from "mioku";
 import type { AudioServiceApi } from "mioku-service-audio";
-import { getPluginRuntimeState, getService, Services } from "mioku";
-import { initDatabase } from "./db";
+import {
+  getPluginRuntimeState,
+  getService,
+  resetPluginRuntimeState,
+  Services,
+  setPluginRuntimeState,
+} from "mioku";
+import { VectorService } from "mioku-service-vector";
+import { MemoryEngine, type MemoryModel } from "./memory";
+import { initDatabase, type ChatDatabase } from "./db";
 import { HumanizeEngine } from "./humanize";
 import { SessionManager } from "./manage/session";
 import { RateLimiter } from "./manage/rate-limiter";
@@ -20,7 +28,10 @@ import {
   runDynamicDelayBatch,
   runQueuedMessages,
 } from "./core/turn/batch-turns";
-import { createChatConfigStore } from "./runtime/config-store";
+import {
+  createChatConfigStore,
+  type ChatConfigStore,
+} from "./runtime/config-store";
 import {
   createLegacyRoleInstances,
   resolveRoleInstances,
@@ -36,7 +47,54 @@ import { readField } from "./utils/record";
 
 export { resolveRoleInstances };
 
-type MatchMessageCommands = NonNullable<ChatHandlerState["matchMessageCommands"]>;
+type MatchMessageCommands = NonNullable<
+  ChatHandlerState["matchMessageCommands"]
+>;
+
+function createMemoryEngine(
+  ctx: MiokuContext,
+  configStore: ChatConfigStore,
+  db: ChatDatabase,
+  getAIInstance: (role?: AIModelRole) => AIInstance | undefined,
+  aiService: AIService,
+): MemoryEngine | undefined {
+  const vectors = getService(ctx, VectorService);
+  if (!vectors) {
+    ctx.logger.warn(
+      "未检测到 vector 服务，群聊记忆将退化为「轮廓 + 关键词」（没有语义检索）",
+    );
+  }
+
+  const getModel = (role: "working" | "main"): MemoryModel | undefined => {
+    const cfg = configStore.provider();
+    const instance =
+      role === "working"
+        ? (aiService.getInstanceByRole?.("working") ?? getAIInstance("working"))
+        : getAIInstance("main");
+    if (!instance) return undefined;
+    const model =
+      role === "working" ? cfg.workingModel || cfg.model : cfg.model;
+    return { instance, model };
+  };
+
+  try {
+    const engine = new MemoryEngine({
+      db,
+      dataDir: ensureDataDir("chat"),
+      getConfig: (groupId) => configStore.provider(groupId),
+      getModel,
+      getVectors: () => vectors,
+      logger: ctx.logger,
+    });
+    void engine.init().catch((err) => {
+      ctx.logger.warn(`群聊记忆初始化失败，本轮按无记忆运行：${err}`);
+    });
+    return engine;
+  } catch (err) {
+    ctx.logger.warn(`群聊记忆不可用：${err}`);
+    return undefined;
+  }
+}
 
 /** core 插件暴露的命令匹配器，用来跳过命令消息 */
 function coreCommandMatcher(): MatchMessageCommands | undefined {
@@ -71,7 +129,10 @@ export default definePlugin({
     }
 
     let resolved = resolveRoleInstances(aiService);
-    if (!resolved && (await createLegacyRoleInstances(aiService, configProvider()))) {
+    if (
+      !resolved &&
+      (await createLegacyRoleInstances(aiService, configProvider()))
+    ) {
       ctx.logger.warn(
         "未检测到 AI 角色绑定，回退到 chat/base 遗留 apiUrl/apiKey 创建实例",
       );
@@ -144,6 +205,14 @@ export default definePlugin({
       return aiService.getInstanceByRole?.("main") ?? mainAI;
     };
 
+    const memory = createMemoryEngine(
+      ctx,
+      configStore,
+      db,
+      getAIInstance,
+      aiService,
+    );
+
     const pluginCtx: ChatPluginContext = {
       ctx,
       configProvider,
@@ -155,6 +224,7 @@ export default definePlugin({
       getAIInstance,
       humanize,
       audioService,
+      memory,
       sessionManager,
       skillManager,
       rateLimiter,
@@ -199,6 +269,9 @@ export default definePlugin({
       pokeCooldowns,
     };
 
+    // 暴露给其它插件（agent 的群资料查找走这里，避免直接读 chat.db）
+    setPluginRuntimeState("chat", { memory: memory?.api });
+
     aiService.registerChatRuntime(createChatRuntime(pluginCtx));
     registerChatCommands(pluginCtx);
 
@@ -220,6 +293,8 @@ export default definePlugin({
       queueManager.dispose();
       clearInterval(skillCleanupTimer);
       dbCleanup.stop();
+      memory?.dispose();
+      resetPluginRuntimeState("chat");
       rateLimiter.dispose();
       processingSet.clear();
       pokeCooldowns.clear();

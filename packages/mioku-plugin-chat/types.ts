@@ -1,3 +1,5 @@
+import type { MemoryConfig } from "./memory/types";
+import type { MemoryEngine } from "./memory";
 import type {
   AITool,
   AIService,
@@ -249,6 +251,8 @@ export interface ChatConfig {
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
+  /** 群聊长期记忆与资料查找 */
+  memory: MemoryConfig;
 }
 
 /**
@@ -257,6 +261,8 @@ export interface ChatConfig {
  */
 export interface ChatGroupOverrides {
   emoji?: { enabled?: boolean };
+  /** 记忆只给必要的开关：敏感群可以整群关掉 */
+  memory?: { enabled?: boolean; recallToolsEnabled?: boolean; indexMessages?: boolean };
   expression?: { enabled?: boolean };
   retention?: { enabled?: boolean };
   topic?: { enabled?: boolean };
@@ -365,6 +371,8 @@ export interface ToolContext {
   sentMessageIndices?: Set<number>;
   /** 附到本轮主模型请求的图片 */
   pendingImageUrls?: string[];
+  /** 群聊记忆；群聊轮次才有 */
+  memory?: MemoryEngine;
 }
 
 /**

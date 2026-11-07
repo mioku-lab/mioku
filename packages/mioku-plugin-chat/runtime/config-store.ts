@@ -7,6 +7,8 @@ import type {
 import { BASE_CONFIG } from "../configs/base";
 import { SETTINGS_CONFIG } from "../configs/settings";
 import { PERSONALIZATION_CONFIG } from "../configs/personalization";
+import { MEMORY_CONFIG } from "../configs/memory";
+import { normalizeMemoryConfig } from "../memory/config";
 import { DEFAULT_GROUPS_CONFIG } from "../configs/groups";
 import { mergeGroupOverrides } from "../utils/group-config";
 import {
@@ -17,17 +19,65 @@ import {
 import { isRecord } from "../utils/record";
 import { LEGACY_API_KEY_SENTINEL, type RoleModels } from "./ai-roles";
 
-const CONFIG_FILES = ["base", "settings", "personalization"] as const;
+const CONFIG_FILES = ["base", "settings", "personalization", "memory"] as const;
 type ConfigFileName = (typeof CONFIG_FILES)[number] | "groups";
 
 /** 默认配置各文件合起来才是完整的 ChatConfig */
 const EMPTY_CONFIG = {} as ChatConfig;
 
 function defaultChatConfig(): ChatConfig {
-  return mergeChatConfig(
-    mergeChatConfig(mergeChatConfig(EMPTY_CONFIG, BASE_CONFIG), SETTINGS_CONFIG),
-    PERSONALIZATION_CONFIG,
+  const merged = mergeChatConfig(
+    mergeChatConfig(
+      mergeChatConfig(
+        mergeChatConfig(EMPTY_CONFIG, BASE_CONFIG),
+        SETTINGS_CONFIG,
+      ),
+      stripLegacyPersonalization(PERSONALIZATION_CONFIG),
+    ),
+    // 记忆是一整块独立配置，必须挂在 memory 下，不能平铺到 ChatConfig 顶層
+    { memory: MEMORY_CONFIG },
   );
+  merged.memory = normalizeMemoryConfig(merged.memory);
+  return merged;
+}
+
+/**
+ * 老的 personalization.json 里有一个同名的 memory 段（groupHistoryLimit 之类，
+ * 早已没有任何代码读取）。不剥掉的话，它会在深合并时和新记忆配置抢 memory 这个键。
+ */
+function stripLegacyPersonalization(raw: unknown): Record<string, unknown> {
+  if (!isRecord(raw)) return {};
+  const next: Record<string, unknown> = { ...raw };
+  delete next.memory;
+  delete next.planner;
+  return next;
+}
+
+/**
+ * 合并各配置文件 → 完整 ChatConfig。
+ *
+ * base / settings 平铺在顶层；personalization 先剥掉遗留键；
+ * memory 文件对应 ChatConfig.memory 这一块，必须包一层再合并。
+ * 抽成纯函数是为了能脱离框架直接验证（见 scripts/memory-smoke.ts）。
+ */
+export function mergeChatConfigFiles(input: {
+  base?: unknown;
+  settings?: unknown;
+  personalization?: unknown;
+  memory?: unknown;
+}): ChatConfig {
+  const merged = mergeChatConfig(
+    mergeChatConfig(
+      mergeChatConfig(
+        mergeChatConfig(defaultChatConfig(), input.settings ?? {}),
+        stripLegacyPersonalization(input.personalization ?? {}),
+      ),
+      { memory: normalizeMemoryConfig(input.memory) },
+    ),
+    input.base ?? {},
+  );
+  merged.memory = normalizeMemoryConfig(merged.memory);
+  return merged;
 }
 
 function isGroupsFile(value: unknown): value is ChatGroupsFile {
@@ -65,6 +115,7 @@ export async function createChatConfigStore(
       PERSONALIZATION_CONFIG,
     );
     await configService.registerConfig("chat", "groups", DEFAULT_GROUPS_CONFIG);
+    await configService.registerConfig("chat", "memory", MEMORY_CONFIG);
   }
 
   const readRaw = async (name: ConfigFileName): Promise<unknown> =>
@@ -74,13 +125,16 @@ export async function createChatConfigStore(
     const defaults = defaultChatConfig();
     if (!configService) return defaults;
 
-    const [base, settings, personalization] = await Promise.all(
+    const [base, settings, personalization, memory] = await Promise.all(
       CONFIG_FILES.map(async (name) => (await readRaw(name)) ?? {}),
     );
-    const merged = mergeChatConfig(
-      mergeChatConfig(mergeChatConfig(defaults, settings), personalization),
+    // 从默认值出发再合并磁盘配置，缺字段时仍有默认值
+    const merged = mergeChatConfigFiles({
       base,
-    );
+      settings,
+      personalization,
+      memory,
+    });
 
     if (typeof merged.stream !== "boolean") merged.stream = true;
     if (typeof merged.enableMarkdownScreenshot !== "boolean") {
@@ -100,6 +154,7 @@ export async function createChatConfigStore(
     merged.mediaAnalysisBlacklistUsers = normalizeMediaAnalysisBlacklist(merged);
     Reflect.deleteProperty(merged, "imageAnalysisBlacklistUsers");
 
+    merged.memory = normalizeMemoryConfig(merged.memory);
     merged.model = roleModels.main || merged.model || "";
     merged.workingModel =
       roleModels.working || merged.workingModel || merged.model;
