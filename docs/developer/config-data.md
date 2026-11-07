@@ -111,6 +111,22 @@ export default definePlugin({
 
 `registerConfig` 的合并规则需要留意。默认值只负责补缺，文件中已经存在的键以文件为准，即使用户把数组改短也是文件生效。把某个顶层键整个删掉后，下次启动默认值会把它补回来。嵌套对象是整体替换，不做深层合并，修改嵌套结构时需要整个键一起提供。
 
+### 配置默认值
+
+`registerConfig` 会把传入的默认值登记到 `mioku` 的默认值表里。
+
+服务配置同理：`registerServiceConfig` 会登记默认值，并在启动时把缺的字段补进文件；`getServiceConfig` / `getServiceConfigs` 读出来的结果都带默认值。
+
+```ts
+import { getConfigDefaults, withConfigDefaults } from "mioku";
+
+const stored = JSON.parse(await Bun.file(path).text());
+const config = withConfigDefaults(
+  stored,
+  getConfigDefaults("plugin", "greeting", "base"),
+);
+```
+
 ### API 一览
 
 | 方法 | 说明 |

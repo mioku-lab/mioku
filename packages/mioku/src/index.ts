@@ -37,6 +37,7 @@ export * from "./services/define";
 export * from "./services/builtin";
 export * from "./services/manager";
 export * from "./services/config";
+export * from "./services/config-defaults";
 export * from "./config";
 export * from "./start";
 export * from "./builtin";
