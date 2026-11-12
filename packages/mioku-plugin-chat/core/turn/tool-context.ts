@@ -67,8 +67,8 @@ export function buildToolContext(
     onTextContent: input.stream
       ? async (text) => {
           const content = text.trim();
-          if (!content) return;
-          await sendTextMessage(ctx, target, content, {
+          if (!content) return undefined;
+          return sendTextMessage(ctx, target, content, {
             config: cfg,
             audioService,
           });

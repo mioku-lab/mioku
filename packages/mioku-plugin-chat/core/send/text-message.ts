@@ -18,21 +18,26 @@ import {
 
 const INLINE_AT = /\[at: ?(\d+)\]/g;
 
-/** 发送一条回复文本（流式逐条发送、私聊回复都走这里） */
+/** 发送一条回复文本（流式逐条发送、私聊回复都走这里），返回首条消息 id */
 export async function sendTextMessage(
   ctx: MiokuContext,
   target: SendTarget,
   text: string,
   opts: SendOptions,
-): Promise<void> {
+): Promise<string | undefined> {
   const typing = createTypingDelay(opts.config);
+  const sentIds: string[] = [];
+  const recordSent = (id?: string) => {
+    if (id) sentIds.push(id);
+  };
+
   try {
     const bot = ctx.pickBot(target.selfId);
     if (!bot) {
       ctx.logger.error(
         `[sendTextMessage] bot ${String(target.selfId)} not found, skip sending`,
       );
-      return;
+      return undefined;
     }
 
     const lines = expandOutgoingLines(text);
@@ -67,7 +72,9 @@ export async function sendTextMessage(
             pendingReply = undefined;
           }
           prefix.push(...atSegments(ctx, atUsers, target.selfId));
-          await sendMarkdownImage(ctx, bot, target, imagePath, prefix);
+          recordSent(
+            await sendMarkdownImage(ctx, bot, target, imagePath, prefix),
+          );
           lastBasis = summarizeMarkdown(markdownContent);
           await typing.pause(lastBasis || line, hasMore);
           continue;
@@ -103,7 +110,8 @@ export async function sendTextMessage(
         }
         // 带 @ 的消息只在群里有意义
         if (segments.length > 0 && target.groupId) {
-          await sendToGroup(bot, target.groupId, segments);
+          const sent = await sendToGroup(bot, target.groupId, segments);
+          recordSent(sent?.message_id);
           lastBasis = sendableText || fallbackText || audioText || line;
         }
       } else {
@@ -114,7 +122,8 @@ export async function sendTextMessage(
         }
         if (audioSource) segments.push(recordSegment(ctx, audioSource));
         if (segments.length > 0) {
-          await sendByTarget(bot, target, segments);
+          const sent = await sendByTarget(bot, target, segments);
+          recordSent(sent?.message_id);
           lastBasis = sendableText || fallbackText || audioText || line;
         }
       }
@@ -124,6 +133,8 @@ export async function sendTextMessage(
   } catch (err) {
     ctx.logger.error("[sendTextMessage] error:", err);
   }
+
+  return sentIds[0];
 }
 
 function sendToGroup(bot: Bot, groupId: string, segments: MessageSegment[]) {

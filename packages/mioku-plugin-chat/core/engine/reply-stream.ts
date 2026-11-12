@@ -22,6 +22,14 @@ export function createReplyStream(
   let buffer = "";
   let unitIndex = 0;
   let pendingQuoteMarkers: string[] = [];
+  // 增量可能并发到达，串行化以免重复记录下标和乱序发送
+  let queue: Promise<void> = Promise.resolve();
+
+  const enqueue = (task: () => Promise<void>): Promise<void> => {
+    const next = queue.then(task);
+    queue = next.catch(() => undefined);
+    return next;
+  };
 
   const emitUnit = async (unit: string): Promise<void> => {
     const index = unitIndex++;
@@ -58,13 +66,17 @@ export function createReplyStream(
 
   return {
     sent,
-    async push(delta) {
-      buffer += thinkFilter.push(delta, false);
-      await flush(false);
+    push(delta) {
+      return enqueue(async () => {
+        buffer += thinkFilter.push(delta, false);
+        await flush(false);
+      });
     },
-    async end() {
-      buffer += thinkFilter.push("", true);
-      await flush(true);
+    end() {
+      return enqueue(async () => {
+        buffer += thinkFilter.push("", true);
+        await flush(true);
+      });
     },
   };
 }

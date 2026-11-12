@@ -16,7 +16,7 @@ export interface FinalizeTurnInput {
   cfg: ChatConfig;
   event?: ChatTurnEvent;
   result: Pick<ChatResult, "messages" | "emojiPath">;
-  toolCtx: Pick<ToolContext, "sentMessageIndices">;
+  toolCtx: Pick<ToolContext, "sentMessageIndices" | "sentMessageIds">;
   send: boolean;
   /** 由真实消息触发（私聊贴纸可以直接 reply） */
   live: boolean;
@@ -47,6 +47,7 @@ export async function finalizeChatTurn(
       sentIndices: toolCtx.sentMessageIndices,
       audioService,
     });
+    mergeStreamedIds(sentMessageIds, toolCtx.sentMessageIds);
     await sendGroupEmoji(ctx, actingBot, groupId, result.emojiPath);
     saveBotMessages(pluginCtx, {
       target,
@@ -70,6 +71,17 @@ export async function finalizeChatTurn(
     }
   }
   sessionManager.touch(sessionId);
+}
+
+/** 流式阶段已经发出的消息 id 合并进本轮结果 */
+function mergeStreamedIds(
+  target: Array<string | undefined>,
+  streamed: Map<number, string> | undefined,
+): void {
+  if (!streamed) return;
+  for (const [index, id] of streamed) {
+    target[index] ??= id;
+  }
 }
 
 async function sendPrivateEmoji(

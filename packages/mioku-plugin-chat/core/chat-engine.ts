@@ -153,9 +153,15 @@ export async function runChat(
   const onTextContent = toolCtx.onTextContent;
   const stream =
     config.stream && onTextContent
-      ? createReplyStream(async (text, unitIndex, sentIndex) => {
-          await onTextContent(text, unitIndex, unitIndex + 1);
+      ? createReplyStream(async (text, _unitIndex, sentIndex) => {
+          const messageId = await onTextContent(text, sentIndex);
           (toolCtx.sentMessageIndices ??= new Set<number>()).add(sentIndex);
+          if (messageId) {
+            (toolCtx.sentMessageIds ??= new Map<number, string>()).set(
+              sentIndex,
+              messageId,
+            );
+          }
         })
       : undefined;
   const webBudget = createWebToolBudget(config.searxng.maxSearchCount);

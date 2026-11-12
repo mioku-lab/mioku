@@ -53,7 +53,7 @@ export interface HistoryMediaProcessingOptions {
   workingModel?: string;
   multimodalWorkingModel?: string;
   db?: MediaSummaryStore;
-  logger?: Pick<Logger, "info" | "warn" | "error">;
+  logger?: Pick<Logger, "info" | "warn" | "error" | "debug">;
   bot?: Bot;
   groupId?: string;
   runAIRequest?<T>(request: () => Promise<T>): Promise<T | null>;
@@ -666,7 +666,7 @@ export async function downloadVideoForAnalysis(
     } catch (err) {
       lastError = err;
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      getHistoryMediaLogger(options).warn(
+      getHistoryMediaLogger(options).debug(
         `[history-media] Failed to read video source ${source}: ${err}`,
       );
     }

@@ -361,14 +361,15 @@ export interface ToolContext {
   triggerSkillRole: SkillPermissionRole;
   config: ChatConfig;
   aiService: AIService;
-  /** AI 每产出一条文本就立即发送（流式） */
+  /** AI 每产出一条文本就立即发送（流式），返回首条消息 id */
   onTextContent?: (
     text: string,
     messageIndex: number,
-    totalMessages: number,
-  ) => void | Promise<void>;
+  ) => string | undefined | Promise<string | undefined>;
   /** 已经由 onTextContent 发出的消息下标 */
   sentMessageIndices?: Set<number>;
+  /** 流式阶段发出的消息 id，按消息下标 */
+  sentMessageIds?: Map<number, string>;
   /** 附到本轮主模型请求的图片 */
   pendingImageUrls?: string[];
   /** 群聊记忆；群聊轮次才有 */

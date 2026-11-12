@@ -210,6 +210,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
             info: (m) => logger.info(m),
             warn: (m) => logger.warn(m),
             error: (m) => logger.error(m),
+            debug: (m) => logger.debug(m),
           },
         });
 
@@ -240,6 +241,7 @@ export function createInfoTools(toolCtx: ToolContext): AITool[] {
               info: (m) => logger.info(m),
               warn: (m) => logger.warn(m),
               error: (m) => logger.error(m),
+              debug: (m) => logger.debug(m),
             },
           });
 
