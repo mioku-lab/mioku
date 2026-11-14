@@ -10,7 +10,9 @@
     "mioku-adapter-stdin": "workspace:*",
     "mioku-plugin-60s": "workspace:*",
     "mioku-plugin-admin": "workspace:*",
+    "mioku-plugin-agent": "workspace:*",
     "mioku-plugin-chat": "workspace:*",
+    "mioku-plugin-crystelf": "workspace:*",
     "mioku-plugin-deerpipe": "workspace:*",
     "mioku-plugin-help": "workspace:*",
     "mioku-plugin-impact": "workspace:*",
@@ -26,13 +28,12 @@
     "mioku-service-audio": "workspace:*",
     "mioku-service-config": "workspace:*",
     "mioku-service-help": "workspace:*",
+    "mioku-service-mcp": "workspace:*",
+    "mioku-service-ncmdump": "workspace:*",
     "mioku-service-netease": "workspace:*",
     "mioku-service-packet": "workspace:*",
     "mioku-service-screenshot": "workspace:*",
-    "mioku-service-webui": "workspace:*",
-    "mioku-plugin-agent": "workspace:*",
-    "mioku-service-ncmdump": "workspace:*",
-    "mioku-plugin-crystelf": "workspace:*"
+    "mioku-service-webui": "workspace:*"
   },
   "scripts": {
     "start": "bun run app.ts"

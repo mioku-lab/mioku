@@ -5,11 +5,11 @@ import type { SkillSessionManager } from "../manage/skill-session";
 import { filterAllowedExternalSkills } from "./external-skills";
 import { createInfoTools } from "./tools/info";
 import { createLoadSkillTool } from "./tools/load-skill";
+import { createWebSearchTool, createWebReadPageTool } from "./tools/web";
 import {
-  createWebSearchTool,
-  createWebReadPageTool,
-  createRecallMemoryTool,
-} from "./tools/web";
+  createMemoryToolBudget,
+  createMemoryTools,
+} from "./tools/memory";
 
 export function createTools(
   toolCtx: ToolContext,
@@ -18,6 +18,12 @@ export function createTools(
   const tools: AITool[] = [];
 
   tools.push(...createInfoTools(toolCtx));
+  tools.push(
+    ...createMemoryTools(
+      toolCtx,
+      createMemoryToolBudget(toolCtx.config.memory.recallToolBudget),
+    ),
+  );
 
   if (toolCtx.config.enableExternalSkills) {
     const allSkills = toolCtx.aiService.getAllSkills?.();
@@ -40,9 +46,6 @@ export function createTools(
   }
   if (activeFeatureTools.includes("web_read_page")) {
     tools.push(createWebReadPageTool(toolCtx));
-  }
-  if (activeFeatureTools.includes("recall_memory")) {
-    tools.push(createRecallMemoryTool(toolCtx));
   }
 
   return { tools };

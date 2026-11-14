@@ -9,7 +9,14 @@ import { getPluginDataDir } from "../../../internal/data-paths";
 import type { MiokuContext } from "../../../runtime/mioku-context";
 
 const isInPm2: boolean = Boolean(
-  typeof process !== "undefined" && (process.env.PM2_HOME || process.env.PM2 || process.env.pm_id),
+  typeof process !== "undefined" &&
+  (process.env.PM2_HOME || process.env.PM2 || process.env.pm_id),
+);
+
+const isSupervised: boolean = ["1", "true", "yes"].includes(
+  String(process.env.MIOKU_SUPERVISED ?? "")
+    .trim()
+    .toLowerCase(),
 );
 
 const RESTART_MARKER_PATH = path.join(getPluginDataDir("core"), "restart.json");
@@ -115,6 +122,12 @@ export function triggerRestart(marker: RestartMarker): void {
     return;
   }
 
+  if (isSupervised) {
+    logger.info("[core] 检测到受管运行环境，退出进程后由守护方自动重启");
+    setTimeout(() => process.exit(0), 300);
+    return;
+  }
+
   const scriptPath = writeRestartScript();
   try {
     const child = spawn(
@@ -172,9 +185,15 @@ export async function notifyRestartComplete(
   try {
     const payload = segment ? [segment.text(message)] : [];
     if (marker.groupId) {
-      await bot.sendMessage({ type: "group", group_id: marker.groupId}, payload);
+      await bot.sendMessage(
+        { type: "group", group_id: marker.groupId },
+        payload,
+      );
     } else if (marker.userId) {
-      await bot.sendMessage({ type: "private", user_id: marker.userId}, payload);
+      await bot.sendMessage(
+        { type: "private", user_id: marker.userId },
+        payload,
+      );
     }
   } catch (error) {
     ctx?.logger?.error?.(`[core] 发送重启完成通知失败: ${error}`);

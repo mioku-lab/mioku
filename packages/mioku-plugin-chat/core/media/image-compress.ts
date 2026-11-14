@@ -18,6 +18,8 @@ export const QQ_IMAGE_FETCH_HEADERS = {
   Referer: "https://qq.com/",
 };
 
+export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
 const FETCH_HEADERS = QQ_IMAGE_FETCH_HEADERS;
 
 export async function prepareImageUrlForModel(url: string): Promise<string> {
@@ -63,7 +65,10 @@ export async function prepareImageUrlsForModel(
 async function downloadImage(
   url: string,
 ): Promise<{ buffer: Buffer; mimeType: string }> {
-  const response = await fetch(url, { headers: FETCH_HEADERS });
+  const response = await fetch(url, {
+    headers: FETCH_HEADERS,
+    signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(
       `download failed: ${response.status} ${response.statusText}`,

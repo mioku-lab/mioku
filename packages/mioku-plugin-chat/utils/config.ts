@@ -1,16 +1,11 @@
-function isConfigObject(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+import { isRecord, type UnknownRecord } from "./record";
 
-export function mergeChatConfig<T extends Record<string, any>>(
-  defaults: T,
-  overrides: Record<string, any>,
-): T {
-  const result: Record<string, any> = {};
+function mergeRecords(defaults: object, overrides: unknown): UnknownRecord {
+  const result: UnknownRecord = {};
 
   for (const [key, value] of Object.entries(defaults)) {
-    if (isConfigObject(value)) {
-      result[key] = mergeChatConfig(value, {});
+    if (isRecord(value)) {
+      result[key] = mergeRecords(value, {});
     } else if (Array.isArray(value)) {
       result[key] = [...value];
     } else {
@@ -18,11 +13,12 @@ export function mergeChatConfig<T extends Record<string, any>>(
     }
   }
 
+  if (!isRecord(overrides)) return result;
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined || value === null) continue;
-    if (isConfigObject(value)) {
-      const baseValue = isConfigObject(result[key]) ? result[key] : {};
-      result[key] = mergeChatConfig(baseValue, value);
+    if (isRecord(value)) {
+      const baseValue = result[key];
+      result[key] = mergeRecords(isRecord(baseValue) ? baseValue : {}, value);
     } else if (Array.isArray(value)) {
       result[key] = [...value];
     } else {
@@ -30,7 +26,16 @@ export function mergeChatConfig<T extends Record<string, any>>(
     }
   }
 
-  return result as T;
+  return result;
+}
+
+/** 深合并：对象递归，数组整体替换，null/undefined 不覆盖 */
+export function mergeChatConfig<T extends object>(
+  defaults: T,
+  overrides: unknown,
+): T {
+  // 覆盖值来自配置文件，结构以默认值为准
+  return mergeRecords(defaults, overrides) as T;
 }
 
 export function normalizeIdList(input: unknown): string[] {
@@ -44,11 +49,14 @@ export function normalizeIdList(input: unknown): string[] {
   );
 }
 
-export function normalizeMediaAnalysisBlacklist(
-  config: Record<string, any>,
-): string[] {
-  const current = config.mediaAnalysisBlacklistUsers;
-  const legacy = config.imageAnalysisBlacklistUsers;
+/** 兼容旧字段 imageAnalysisBlacklistUsers */
+export function normalizeMediaAnalysisBlacklist(config: object): string[] {
+  const current = isRecord(config)
+    ? config.mediaAnalysisBlacklistUsers
+    : undefined;
+  const legacy = isRecord(config)
+    ? config.imageAnalysisBlacklistUsers
+    : undefined;
   const source =
     legacy !== undefined && Array.isArray(current) && current.length === 0
       ? legacy

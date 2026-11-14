@@ -2,6 +2,11 @@ import type { AITool } from "mioku";
 import type { SkillSession } from "../types";
 import type { FeatureName } from "../core/feature-prompts";
 
+export interface SkillToolEntry {
+  skillName: string;
+  tool: AITool;
+}
+
 /**
  * 技能会话管理器
  * 管理每个 session 的技能加载和工具注册
@@ -11,8 +16,8 @@ export class SkillSessionManager {
   private features: Map<string, Map<string, FeatureSession>> = new Map();
   private EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
-  getTools(sessionId: string): Map<string, AITool> {
-    const result = new Map<string, AITool>();
+  getTools(sessionId: string): Map<string, SkillToolEntry> {
+    const result = new Map<string, SkillToolEntry>();
     const sessionSkills = this.sessions.get(sessionId);
     if (!sessionSkills) return result;
 
@@ -23,7 +28,7 @@ export class SkillSessionManager {
         continue;
       }
       for (const [toolName, tool] of session.tools) {
-        result.set(toolName, tool);
+        result.set(toolName, { skillName, tool });
       }
     }
     return result;
@@ -151,13 +156,12 @@ export class SkillSessionManager {
   }
 
   getActiveFeatureTools(sessionId: string): FeatureName[] {
-    // Only return features that have tools (web_search, web_read_page, recall_memory)
+    // 只返回带工具的 feature（web_search、web_read_page）
     const all = this.getActiveFeatureNames(sessionId);
     return all.filter((name) => {
       switch (name) {
         case "web_search":
         case "web_read_page":
-        case "recall_memory":
           return true;
         default:
           return false;

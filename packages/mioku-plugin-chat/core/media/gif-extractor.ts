@@ -1,6 +1,9 @@
 import { logger } from "mioku";
 import sharp from "sharp";
-import { QQ_IMAGE_FETCH_HEADERS } from "./image-compress";
+import {
+  IMAGE_FETCH_TIMEOUT_MS,
+  QQ_IMAGE_FETCH_HEADERS,
+} from "./image-compress";
 
 /**
  * GIF 帧提取结果
@@ -20,7 +23,10 @@ export async function extractGifFrames(
 ): Promise<GifFramesResult | null> {
   try {
     // 下载 GIF
-    const response = await fetch(gifUrl, { headers: QQ_IMAGE_FETCH_HEADERS });
+    const response = await fetch(gifUrl, {
+      headers: QQ_IMAGE_FETCH_HEADERS,
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    });
     if (!response.ok) {
       logger.error(
         `[gif-extractor] Failed to fetch GIF: ${response.statusText}`,
@@ -104,6 +110,7 @@ export async function isGifUrl(url: string): Promise<boolean> {
     const response = await fetch(url, {
       method: "GET",
       headers: QQ_IMAGE_FETCH_HEADERS,
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
     });
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("image/gif")) {

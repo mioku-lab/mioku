@@ -2,10 +2,7 @@ export type SessionTurnSource =
   | "message"
   | "queued-message"
   | "cooldown"
-  | "cooldown-planner"
   | "dynamic-delay"
-  | "idle-check"
-  | "idle-debug"
   | "poke"
   | "chat-runtime";
 

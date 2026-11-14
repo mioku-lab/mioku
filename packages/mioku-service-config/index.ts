@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import _ from "lodash";
-import { logger } from "mioku";
+import { logger, registerConfigDefaults } from "mioku";
 import type { MiokuService, ConfigService } from "mioku";
 
 /**
@@ -14,8 +14,12 @@ import type { MiokuService, ConfigService } from "mioku";
  *   - User replacing a nested object → replacement is total, not deep-merged
  *     with defaults. The caller is expected to provide the full nested value.
  */
-function shallowMerge(defaults: Record<string, any>, overrides: Record<string, any>): Record<string, any> {
-  if (!defaults || typeof defaults !== "object") return { ...(overrides || {}) };
+function shallowMerge(
+  defaults: Record<string, any>,
+  overrides: Record<string, any>,
+): Record<string, any> {
+  if (!defaults || typeof defaults !== "object")
+    return { ...(overrides || {}) };
   if (!overrides || typeof overrides !== "object") return { ...defaults };
   const result: Record<string, any> = { ...defaults };
   for (const key of Object.keys(overrides)) {
@@ -139,6 +143,10 @@ class ConfigManager implements ConfigService {
         }
       } else {
         config = initialConfig;
+      }
+
+      if (typeof initialConfig !== "string") {
+        registerConfigDefaults("plugin", pluginName, configName, config);
       }
 
       if (fs.existsSync(configPath)) {

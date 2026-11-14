@@ -1,6 +1,8 @@
 {
   "hidden": {
-    "plugins": ["boot"],
+    "plugins": [
+      "boot"
+    ],
     "services": [],
     "adapters": []
   },
@@ -51,36 +53,39 @@
     "60s": {
       "npm": "mioku-service-60s"
     },
-    "webui": {
-      "npm": "mioku-service-webui"
-    },
-    "applemusic": {
-      "npm": "mioku-service-applemusic"
-    },
-    "netease": {
-      "npm": "mioku-service-netease"
-    },
-    "ncmdump": {
-      "npm": "mioku-service-ncmdump"
-    },
     "ai": {
       "npm": "mioku-service-ai",
       "builtin": true
     },
+    "applemusic": {
+      "npm": "mioku-service-applemusic"
+    },
+    "audio": {
+      "npm": "mioku-service-audio"
+    },
     "config": {
       "npm": "mioku-service-config",
-      "builtin": true
-    },
-    "screenshot": {
-      "npm": "mioku-service-screenshot",
       "builtin": true
     },
     "help": {
       "npm": "mioku-service-help",
       "builtin": true
     },
-    "audio": {
-      "npm": "mioku-service-audio"
+    "mcp": {
+      "npm": "mioku-service-mcp"
+    },
+    "ncmdump": {
+      "npm": "mioku-service-ncmdump"
+    },
+    "netease": {
+      "npm": "mioku-service-netease"
+    },
+    "screenshot": {
+      "npm": "mioku-service-screenshot",
+      "builtin": true
+    },
+    "webui": {
+      "npm": "mioku-service-webui"
     }
   },
   "adapters": {

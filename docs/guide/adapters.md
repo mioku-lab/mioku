@@ -1,20 +1,20 @@
 ---
 title: 适配器
-description: Mioku 适配器（Adapter）负责对接具体平台
+description: Mioku 适配器负责对接具体平台，接收事件并调用平台接口。
 ---
 
 # 适配器
 
-适配器（Adapter）是机器人与平台之间的桥梁。它负责两件事：
+适配器 Adapter 是机器人与平台之间的桥梁，负责两件事。
 
-- **收**：把平台的原始消息转换成 Mioku 的统一事件，交给插件处理
-- **发**：把插件的操作翻译回平台能懂的指令
+- **接收事件**：把驱动器收到的消息转换成 Mioku 定义的事件模型，交给插件处理。
+- **调用平台接口**：把插件要调用的接口数据转换成平台指定的格式，交给驱动器发送，并接收返回数据。
 
-对插件来说，适配器是透明的——它只调用能力方法（`sendGroupMsg`、`banMember`……），不关心背后是哪个平台。这也意味着同一个插件可以不加修改地跑在 QQ、终端、甚至未来的任何平台上。
+对插件来说适配器是透明的。插件只调用能力，不关心背后是哪个平台。同一个插件可以不加修改地运行在 QQ、终端以及其他平台上。
 
 ## 安装与启用
 
-适配器就是普通的 npm 包，装进项目的 `dependencies` 后在 `mioku.adapters` 里启用。创建项目时用 `npx mioku` 选择即可，也可以事后手动装：
+适配器是普通的 npm 包。安装到项目的 `dependencies` 后，在 `mioku.adapters` 中启用。创建项目时用 `npx mioku` 选择即可，也可以手动安装。
 
 ```bash
 bun add mioku-adapter-onebotv11
@@ -32,16 +32,22 @@ bun add mioku-adapter-onebotv11
 }
 ```
 
-框架启动时会在项目直接依赖里按 `mioku-adapter-` 前缀找适配器包，然后读取 `mioku.adapters` 中对应的配置启动。**适配器必须装进 `dependencies`（不能只放 `devDependencies`）**，否则发现不到。
+框架启动时在项目的直接依赖中查找 `mioku-adapter-` 前缀的包，然后按 `mioku.adapters` 中的配置逐个启动。适配器必须安装在 `dependencies` 中。放在 `devDependencies` 中不会被发现。
 
 ## 配置向导
 
-每个适配器可以带一个 CLI 配置向导，在项目目录下运行 `mioku-adapter-<名称>`（或 `bunx mioku-adapter-<名称>`）就会启动交互式向导，帮你生成 `mioku.adapters` 里的配置。创建项目时选择了适配器，向导会自动运行。
+适配器可以自带 CLI 配置向导。在项目目录执行 `mioku-adapter-<名称>` 或 `bunx mioku-adapter-<名称>`，会启动交互式向导，生成 `mioku.adapters` 中的配置。创建项目时选择了适配器，向导会自动运行。
 
 ## 多账号
 
-所有适配器都支持多实例。启动后每个实例是一个 bot，插件里用 `ctx.bots` 拿到全部、`ctx.pickBot(id)` 按 bot_id 取单个，或者用 `ctx.bot` 直接取第一个。详见[操作 Bot](/developer/bot)。
+所有适配器都支持多实例。每个实例对应一个 bot。插件可以取得全部 bot，也可以按 bot_id 取单个，详见[操作 Bot](/developer/bot)。
 
-## 开发自己的适配器
+## 开发适配器
 
-适配器接口是开放的，`defineAdapter` 定义一个适配器只要实现创建函数和启动/停止逻辑，再注册一批能力。想给某个平台写适配器，看[开发适配器](/developer/adapter-dev)。
+适配器接口是开放的。适配器只需实现创建函数和启动停止逻辑，再注册一批能力。想为某个平台编写适配器，见[开发适配器](/developer/adapter-dev)。
+
+## 下一步
+
+- [配置文件](/guide/configuration)：`mioku.adapters` 的写法
+- [操作 Bot](/developer/bot)：用插件调用机器人
+- [开发适配器](/developer/adapter-dev)：为新平台编写适配器

@@ -1,5 +1,6 @@
 ---
 layout: home
+description: Mioku 是一个 AI 优先的插件式机器人框架，使用 TypeScript 与 bun，支持多平台接入。
 
 hero:
   name: Mioku
@@ -22,10 +23,10 @@ hero:
 features:
   - title: 开箱即用
     details: 一条命令创建项目，自带终端调试与 WebUI 管理面板。
-  - title: 轻量·高性能
-    details: 现代 TypeScript 编写，空载占用不过 100M，bun 一把梭。
+  - title: 轻量高性能
+    details: 使用现代 TypeScript 编写，空载内存占用低于 100M，依赖由 bun 管理。
   - title: Agent 优先
-    details: 围绕 AI 设计，机器人能自然地用 QQ 完成任务，甚至使用自己的插件。
+    details: 围绕 AI 设计，机器人可以用 QQ 完成任务，也可以调用自己的插件。
 ---
 
 <div class="mioku-home">
@@ -42,7 +43,7 @@ features:
       </a>
       <a class="mioku-home__entry" href="/developer/first-plugin">
         <h3>插件入门</h3>
-        <p>从最小的插件开始，一步步深入开发技巧</p>
+        <p>从最小的插件开始，逐步熟悉开发流程</p>
       </a>
     </div>
   </section>

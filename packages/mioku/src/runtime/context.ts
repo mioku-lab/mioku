@@ -10,7 +10,7 @@ import type {
 import type { Driver } from "../driver";
 import type { Event } from "../adapter";
 import type { CapabilityRegistry } from "../adapter";
-import type { EventBus } from "./bus";
+import type { EventBus, EventHandlerResult } from "./bus";
 import type { Logger } from "../logger";
 import type { BotRegistry } from "./bots";
 import type { Adapter } from "../adapter";
@@ -170,7 +170,7 @@ export class AdapterContextImpl implements AdapterContext {
     };
   }
 
-  async dispatch(event: Event): Promise<void> {
+  async dispatch(event: Event): Promise<boolean> {
     this.#correlator?.observe(event);
     if (event.kind === "message") {
       const senderId = event.user_id;
@@ -180,24 +180,25 @@ export class AdapterContextImpl implements AdapterContext {
           this.#logger.debug(
             `拦截来自其他已连接 bot 的消息: sender=${senderId} self=${event.self_id}`,
           );
-          return;
+          return false;
         }
       }
     }
     if (event.kind === "message") {
-      const duplicate = this.#correlator?.observationOf(event)?.duplicate ?? false;
+      const duplicate =
+        this.#correlator?.observationOf(event)?.duplicate ?? false;
       if (!duplicate) {
         if (await this.#commands.dispatch(event)) {
-          return;
+          return true;
         }
       }
     }
-    await this.#bus.dispatch(event);
+    return this.#bus.dispatch(event);
   }
 
   listen(
     route: string,
-    handler: (event: Event) => void | Promise<void>,
+    handler: (event: Event) => EventHandlerResult | Promise<EventHandlerResult>,
   ): () => void {
     return this.#bus.register(route, handler, {
       source: `adapter:${this.adapterName}`,

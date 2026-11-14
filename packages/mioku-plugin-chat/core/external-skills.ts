@@ -34,7 +34,7 @@ const SKILL_PERMISSION_RANK: Record<SkillPermissionRole, number> = {
   member: 0,
   admin: 1,
   owner: 2,
-  master: 2,
+  master: 3,
 };
 
 export function getSkillRequiredPermissionRole(

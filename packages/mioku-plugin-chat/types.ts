@@ -1,6 +1,67 @@
-import type { MiokuContext } from "mioku";
-import type { AITool, AIService, SkillPermissionRole } from "mioku";
-import type { ChatDatabase } from "./db";
+import type { MemoryConfig } from "./memory/types";
+import type { MemoryEngine } from "./memory";
+import type {
+  AITool,
+  AIService,
+  Bot,
+  Message,
+  MessageInput,
+  MiokuContext,
+  ReplyOptions,
+  SenderInfo,
+  SentMessage,
+  SkillPermissionRole,
+  ToolCallRecord,
+} from "mioku";
+
+export type BotRole = "owner" | "admin" | "member";
+
+export type ConstraintStrength = "low" | "medium" | "high";
+
+/** 回复场景，决定提示词里的回复指引 */
+export type ReplyContextType = "reply" | "comment" | "idle" | "review" | "poked";
+
+/** 合并回复的多条消息 */
+export interface ReviewMessages {
+  contents: string[];
+  userNames: string[];
+  messageIds: string[];
+}
+
+export interface ChatSender extends SenderInfo {
+  readonly title?: string;
+}
+
+/**
+ * 触发本轮对话的事件。
+ * 真实消息/通知事件都满足它；运行时按目标发起时只合成身份字段。
+ */
+export interface ChatTurnEvent {
+  readonly self_id?: string;
+  readonly message_type?: string;
+  readonly group_id?: string;
+  readonly user_id?: string;
+  readonly group_name?: string;
+  readonly message_id?: string;
+  readonly raw_message?: string;
+  readonly time?: number;
+  readonly sender?: ChatSender;
+  readonly bot?: Bot;
+  readonly message?: Message;
+  reply?(
+    message: MessageInput,
+    options?: boolean | ReplyOptions,
+  ): Promise<SentMessage>;
+}
+
+/** 一轮对话面向的会话 */
+export interface ChatTarget {
+  readonly selfId: string;
+  readonly groupId?: string;
+  readonly userId: string;
+  /** "group:{groupId}" 或 "personal:{userId}" */
+  readonly sessionId: string;
+}
 
 export interface EmotionEntryConfig {
   examples: string[];
@@ -10,6 +71,15 @@ export interface EmotionConfig {
   defaultEmotion: string;
   updateIntervalMs: number;
   emotions: Record<string, EmotionEntryConfig>;
+}
+
+/**
+ * 伪人模式配置
+ *
+ * 开启后停用情绪系统，并把人类模仿指南注入每一轮提示词。
+ */
+export interface PseudoHumanConfig {
+  enabled: boolean;
 }
 
 /**
@@ -25,17 +95,6 @@ export interface ReplyStyleConfig {
 }
 
 /**
- * 记忆检索配置
- */
-export interface MemoryConfig {
-  enabled: boolean;
-  // 回忆时拉取的群聊历史条数（通过 message_id 分页）
-  groupHistoryLimit: number;
-  // 回忆时每个用户历史的默认条数
-  userHistoryLimit: number;
-}
-
-/**
  * 话题跟踪配置
  */
 export interface TopicConfig {
@@ -44,19 +103,6 @@ export interface TopicConfig {
   windowHours: number;
   // 在提示词中回填多少个历史窗口
   historyWindowCount: number;
-}
-
-/**
- * 动作规划器配置
- */
-export interface PlannerConfig {
-  enabled: boolean;
-  // 群聊空闲时间阈值（毫秒）
-  idleThresholdMs: number;
-  // 群聊记录保底消息数量
-  idleMessageCount: number;
-  // 空闲检查的 bot ID 列表
-  idleCheckBotIds: string[];
 }
 
 /**
@@ -69,13 +115,17 @@ export interface EmojiConfig {
 }
 
 /**
- * 表达学习配置
+ * 表达习惯配置
+ *
+ * 不再用工作模型总结、也不落库：主对话被触发时直接拉目标用户最近的发言，
+ * 从中抽若干条当风格样本注入。sampleSize 同时是拉取条数的上限依据。
+ * 详见 humanize/style-samples.ts。
  */
 export interface ExpressionConfig {
   enabled: boolean;
-  // 单个用户累积多少条消息后触发表达学习
-  learnAfterMessages: number;
-  // 单个用户最多保留/注入的表达习惯条数
+  // 从该用户最近多少条发言里挑样本
+  lookbackMessages: number;
+  // 最多挑几条当样本注入
   sampleSize: number;
 }
 
@@ -92,8 +142,8 @@ export interface RetentionConfig {
   mediaSummaryRetentionMs: number;
   // 图片描述记录保留时长
   imageRetentionMs: number;
-  // 单个用户表达学习结果保留的最大条数
-  expressionKeepPerUser: number;
+  // 群事件保留时长
+  eventRetentionMs: number;
   // 清理任务执行间隔
   cleanupIntervalMs: number;
 }
@@ -177,8 +227,11 @@ export interface ChatConfig {
   ignorePrivateChat: boolean;
   nicknames: string[];
   persona: string;
+  /** 选中的回复风格主题包 id；空串表示使用内联 persona / replyStyle */
+  replyStyleTheme: string;
+  /** 伪人模式：停用情绪系统并注入人类模仿指南 */
+  pseudoHuman: PseudoHumanConfig;
   maxContextTokens: number;
-  temperature: number;
   searxng: SearxngConfig;
   webReader: WebReaderConfig;
   audio: AudioConfig;
@@ -187,7 +240,6 @@ export interface ChatConfig {
   whitelistGroups: string[];
   mediaAnalysisBlacklistUsers: string[];
   maxSessions: number;
-  maxIterations: number;
   enableExternalSkills: boolean;
   allowedExternalSkills: string[];
   stream: boolean;
@@ -195,23 +247,25 @@ export interface ChatConfig {
   typingDelayMaxTotalMs: number;
   enableMarkdownScreenshot: boolean;
   debug: boolean;
-  outputLengthConstraintStrength: "low" | "medium" | "high";
-  toolCallConstraintStrength: "low" | "medium" | "high";
-  emojiUsageConstraintStrength: "low" | "medium" | "high";
-  audioUsageConstraintStrength: "low" | "medium" | "high";
-  markdownUsageConstraintStrength: "low" | "medium" | "high";
+  outputLengthConstraintStrength: ConstraintStrength;
+  toolCallConstraintStrength: ConstraintStrength;
+  emojiUsageConstraintStrength: ConstraintStrength;
+  audioUsageConstraintStrength: ConstraintStrength;
+  markdownUsageConstraintStrength: ConstraintStrength;
   groupStructuredHistoryTtlMs: number;
   cooldownAfterReplyMs: number;
   aiRequestLimits: AIRequestLimitConfig;
   dynamicDelay: DynamicDelayConfig;
   emotion: EmotionConfig;
+  /** 选中的情绪主题包 id；空串表示使用内联 emotion */
+  emotionTheme: string;
   replyStyle: ReplyStyleConfig;
-  memory: MemoryConfig;
   topic: TopicConfig;
-  planner: PlannerConfig;
   emoji: EmojiConfig;
   expression: ExpressionConfig;
   retention: RetentionConfig;
+  /** 群聊长期记忆与资料查找 */
+  memory: MemoryConfig;
 }
 
 /**
@@ -220,11 +274,11 @@ export interface ChatConfig {
  */
 export interface ChatGroupOverrides {
   emoji?: { enabled?: boolean };
+  /** 记忆只给必要的开关：敏感群可以整群关掉 */
+  memory?: { enabled?: boolean; recallToolsEnabled?: boolean; indexMessages?: boolean };
   expression?: { enabled?: boolean };
   retention?: { enabled?: boolean };
-  memory?: { enabled?: boolean };
   topic?: { enabled?: boolean };
-  planner?: { enabled?: boolean };
   audio?: { enabled?: boolean };
   searxng?: { enabled?: boolean };
   webReader?: { enabled?: boolean };
@@ -237,6 +291,9 @@ export interface ChatGroupOverrides {
 export type ChatGroupsFile = {
   groups: Record<string, ChatGroupOverrides>;
 };
+
+/** 同步取配置；传 groupId 时合并该群覆盖 */
+export type ChatConfigProvider = (groupId?: string) => ChatConfig;
 
 /**
  * 会话类型
@@ -284,6 +341,15 @@ export interface TargetMessage {
   content: string;
   messageId?: string;
   timestamp: number;
+  quote?: QuoteInfo;
+}
+
+export interface QuoteInfo {
+  messageId: string;
+  senderName?: string;
+  senderId?: string;
+  content?: string;
+  fromBot: boolean;
 }
 
 /**
@@ -301,32 +367,26 @@ export interface SkillSession {
  */
 export interface ToolContext {
   ctx: MiokuContext;
-  event: any;
+  event?: ChatTurnEvent;
   sessionId: string;
   groupId?: string;
   userId: string;
   triggerSkillRole: SkillPermissionRole;
   config: ChatConfig;
   aiService: AIService;
-  db: ChatDatabase;
-  botRole: "owner" | "admin" | "member";
-  /**
-   * 当 AI 返回文本内容时立即调用
-   * 回调接收文本内容、消息索引、总消息数
-   */
+  /** AI 每产出一条文本就立即发送（流式），返回首条消息 id */
   onTextContent?: (
     text: string,
     messageIndex: number,
-    totalMessages: number,
-  ) => void | Promise<void>;
-  /**
-   * 已通过 onTextContent 回调发送的消息索引集合
-   */
+  ) => string | undefined | Promise<string | undefined>;
+  /** 已经由 onTextContent 发出的消息下标 */
   sentMessageIndices?: Set<number>;
-  /**
-   * 待附加到下一轮 AI 请求的图片 URL
-   */
+  /** 流式阶段发出的消息 id，按消息下标 */
+  sentMessageIds?: Map<number, string>;
+  /** 附到本轮主模型请求的图片 */
   pendingImageUrls?: string[];
+  /** 群聊记忆；群聊轮次才有 */
+  memory?: MemoryEngine;
 }
 
 /**
@@ -334,12 +394,9 @@ export interface ToolContext {
  */
 export interface ChatResult {
   messages: string[];
-  pendingAt: number[];
-  pendingPoke: number[];
-  pendingQuote?: string;
-  toolCalls: { name: string; args: any; result: any }[];
-  emojiPath?: string | null;
-  protocolMessages?: unknown[];
+  toolCalls: ToolCallRecord[];
+  emojiPath: string | null;
+  protocolMessages: unknown[];
 }
 
 /**
@@ -359,17 +416,39 @@ export interface TopicRecord {
 }
 
 /**
- * 表达习惯记录
+ * 群事件记录（撤回 / 进退群 / 拍一拍）
  */
-export interface ExpressionRecord {
+export type GroupEventKind =
+  | "recall"
+  | "member_increase"
+  | "member_decrease"
+  | "poke";
+
+export interface GroupEventRecord {
   id?: number;
-  sessionId: string;
-  userId: string;
-  userName: string;
-  situation: string; // 使用场景
-  style: string; // 表达风格
-  example: string; // 原始示例
-  createdAt: number;
+  groupId: string;
+  kind: GroupEventKind;
+  /** 事件主体 */
+  userId?: string;
+  userName?: string;
+  /** 事件客体 */
+  targetId?: string;
+  targetName?: string;
+  /** 撤回事件里被撤回的消息 id：用来把标记贴回聊天记录 */
+  messageId?: string;
+  /** 事件正文 */
+  content?: string;
+  /** 平台事件 id，用于去重 */
+  eventKey?: string;
+  timestamp: number;
+}
+
+/** 注入用的事件感知结果，由 manage/group-events.ts 渲染 */
+export interface GroupEventContexts {
+  /** 进退群、拍一拍等动作，直接写进 prompt */
+  eventContext?: string;
+  /** messageId -> 撤回标记，渲染聊天记录时贴在对应消息后面 */
+  recallMarks?: Map<string, string>;
 }
 
 /**
@@ -393,15 +472,4 @@ export interface MediaSummaryRecord {
   source: string;
   summary: string;
   createdAt: number;
-}
-
-/**
- * 动作规划结果
- */
-export type PlannerAction = "reply" | "wait" | "complete";
-
-export interface PlannerResult {
-  action: PlannerAction;
-  reason: string;
-  waitMs?: number; // action=wait 时的等待时间
 }

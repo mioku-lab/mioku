@@ -2,6 +2,11 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { existsSync, mkdirSync } from "fs";
 import { rootLogger as logger } from "../logger";
+import {
+  getConfigDefaults,
+  registerConfigDefaults,
+  withConfigDefaults,
+} from "./config-defaults";
 
 const SERVICE_CONFIG_ROOT = "service";
 
@@ -19,16 +24,31 @@ function ensureDir(serviceName: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
-/** 注册服务配置：文件不存在时把 defaults 写入磁盘 */
+/**
+ * 注册服务配
+ */
 export async function registerServiceConfig(
   serviceName: string,
   configName: string,
   defaults: Record<string, unknown>,
 ): Promise<void> {
   ensureDir(serviceName);
+  registerConfigDefaults("service", serviceName, configName, defaults);
   const configPath = resolveConfigPath(serviceName, configName);
   if (!existsSync(configPath)) {
     await fs.writeFile(configPath, JSON.stringify(defaults, null, 2), "utf-8");
+    return;
+  }
+  try {
+    const existing = JSON.parse(await fs.readFile(configPath, "utf-8"));
+    const merged = withConfigDefaults(existing, defaults);
+    if (JSON.stringify(merged) !== JSON.stringify(existing)) {
+      await fs.writeFile(configPath, JSON.stringify(merged, null, 2), "utf-8");
+    }
+  } catch (error) {
+    logger.warn(
+      `[service-config] 补全 ${serviceName}/${configName} 失败: ${error}`,
+    );
   }
 }
 
@@ -38,12 +58,18 @@ export async function getServiceConfig(
   configName: string,
 ): Promise<Record<string, unknown>> {
   const configPath = resolveConfigPath(serviceName, configName);
+  const fallback = getConfigDefaults("service", serviceName, configName);
   try {
-    return JSON.parse(await fs.readFile(configPath, "utf-8"));
+    return withConfigDefaults(
+      JSON.parse(await fs.readFile(configPath, "utf-8")),
+      fallback,
+    );
   } catch (error) {
-    if (!existsSync(configPath)) return {};
-    logger.warn(`[service-config] 读取 ${serviceName}/${configName} 失败: ${error}`);
-    return {};
+    if (!existsSync(configPath)) return fallback ?? {};
+    logger.warn(
+      `[service-config] 读取 ${serviceName}/${configName} 失败: ${error}`,
+    );
+    return fallback ?? {};
   }
 }
 
@@ -69,14 +95,20 @@ export async function getServiceConfigs(
   if (!existsSync(dir)) return {};
 
   const result: Record<string, Record<string, unknown>> = {};
-  const files = (await fs.readdir(dir)).filter((name) => name.endsWith(".json"));
+  const files = (await fs.readdir(dir)).filter((name) =>
+    name.endsWith(".json"),
+  );
   for (const file of files) {
+    const configName = path.basename(file, ".json");
     try {
-      result[path.basename(file, ".json")] = JSON.parse(
-        await fs.readFile(path.join(dir, file), "utf-8"),
+      result[configName] = withConfigDefaults(
+        JSON.parse(await fs.readFile(path.join(dir, file), "utf-8")),
+        getConfigDefaults("service", serviceName, configName),
       );
     } catch (error) {
-      logger.warn(`[service-config] 读取 ${serviceName}/${file} 失败: ${error}`);
+      logger.warn(
+        `[service-config] 读取 ${serviceName}/${file} 失败: ${error}`,
+      );
     }
   }
   return result;

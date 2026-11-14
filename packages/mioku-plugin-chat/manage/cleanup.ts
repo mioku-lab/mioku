@@ -1,15 +1,8 @@
 import { logger } from "mioku";
 import type { ChatDatabase } from "../db";
+import type { RetentionConfig } from "../types";
 
-export interface CleanupConfig {
-  enabled: boolean;
-  messageRetentionMs: number;
-  topicRetentionMs: number;
-  mediaSummaryRetentionMs: number;
-  imageRetentionMs: number;
-  expressionKeepPerUser: number;
-  cleanupIntervalMs: number;
-}
+export type CleanupConfig = RetentionConfig;
 
 export const DEFAULT_CLEANUP_CONFIG: CleanupConfig = {
   enabled: true,
@@ -17,7 +10,7 @@ export const DEFAULT_CLEANUP_CONFIG: CleanupConfig = {
   topicRetentionMs: 90 * 24 * 60 * 60 * 1000,
   mediaSummaryRetentionMs: 30 * 24 * 60 * 60 * 1000,
   imageRetentionMs: 60 * 24 * 60 * 60 * 1000,
-  expressionKeepPerUser: 6,
+  eventRetentionMs: 7 * 24 * 60 * 60 * 1000,
   cleanupIntervalMs: 60 * 60 * 1000,
 };
 
@@ -26,6 +19,7 @@ export interface CleanupResult {
   topics: number;
   mediaSummaries: number;
   images: number;
+  events: number;
 }
 
 export class ChatDatabaseCleanup {
@@ -63,10 +57,11 @@ export class ChatDatabaseCleanup {
           result.messages +
           result.topics +
           result.mediaSummaries +
-          result.images;
+          result.images +
+          result.events;
         if (total > 0) {
           logger.info(
-            `[chat-cleanup] pruned messages=${result.messages}, topics=${result.topics}, mediaSummaries=${result.mediaSummaries}, images=${result.images}`,
+            `[chat-cleanup] pruned messages=${result.messages}, topics=${result.topics}, mediaSummaries=${result.mediaSummaries}, images=${result.images}, events=${result.events}`,
           );
         }
       } catch (err: unknown) {
@@ -91,6 +86,9 @@ export class ChatDatabaseCleanup {
     const images = this.db.pruneImagesOlderThan(
       now - this.config.imageRetentionMs,
     );
-    return { messages, topics, mediaSummaries, images };
+    const events = this.db.pruneGroupEventsOlderThan(
+      now - this.config.eventRetentionMs,
+    );
+    return { messages, topics, mediaSummaries, images, events };
   }
 }

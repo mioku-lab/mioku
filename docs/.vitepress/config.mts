@@ -271,6 +271,7 @@ export default defineConfig({
             { text: "插件市场", link: "/guide/market" },
             { text: "WebUI", link: "/guide/webui" },
             { text: "部署方式", link: "/guide/deployment" },
+            { text: "Docker 部署", link: "/guide/docker" },
           ],
         },
       ],

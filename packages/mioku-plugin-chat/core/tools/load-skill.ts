@@ -1,6 +1,7 @@
 import type { AITool } from "mioku";
 import type { ToolContext } from "../../types";
 import type { SkillSessionManager } from "../../manage/skill-session";
+import { isRecord } from "../../utils/record";
 import {
   filterAllowedExternalSkills,
   getSkillRequiredPermissionRole,
@@ -16,15 +17,13 @@ import {
 import {
   buildWebSearchFeatureSection,
   buildWebReadFeatureSection,
-  buildRecallMemoryFeatureSection,
+  normalizeConstraintStrength,
 } from "../prompt";
-import { createWebSearchTool, createWebReadPageTool, createRecallMemoryTool } from "./web";
+import { createWebSearchTool, createWebReadPageTool } from "./web";
 
-type ConstraintStrength = "low" | "medium" | "high";
-
-function normalizeConstraintStrength(value: unknown): ConstraintStrength {
-  if (value === "low" || value === "high" || value === "medium") return value;
-  return "medium";
+function readSkillName(args: unknown): string {
+  const raw = isRecord(args) ? args.skill_name : undefined;
+  return String(raw || "").trim();
 }
 
 function createFeatureTools(
@@ -36,8 +35,6 @@ function createFeatureTools(
       return [createWebSearchTool(toolCtx)];
     case "web_read_page":
       return [createWebReadPageTool(toolCtx)];
-    case "recall_memory":
-      return [createRecallMemoryTool(toolCtx)];
     default:
       return [];
   }
@@ -58,8 +55,8 @@ export function createLoadSkillTool(
       },
       required: ["skill_name"],
     },
-    handler: async (args) => {
-      const skillName = String(args?.skill_name || "").trim();
+    handler: async (args: unknown) => {
+      const skillName = readSkillName(args);
 
       if (isBuiltinFeature(skillName)) {
         const feature = getFeatureMeta(skillName);
@@ -84,9 +81,6 @@ export function createLoadSkillTool(
           if (s) sections.push(s);
         } else if (skillName === "web_read_page") {
           const s = buildWebReadFeatureSection(toolCtx.config, toolStrength);
-          if (s) sections.push(s);
-        } else if (skillName === "recall_memory") {
-          const s = buildRecallMemoryFeatureSection(toolCtx.config);
           if (s) sections.push(s);
         }
         const usageHint = sections.length > 0 ? sections.join("\n") : "";

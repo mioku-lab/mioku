@@ -1,0 +1,133 @@
+name: Docker
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: 构建哪个变体
+        type: choice
+        options: [all, full, slim]
+        default: all
+      push:
+        description: 本次是否推送镜像（仍需 DOCKER_PUBLISH=true）
+        type: boolean
+        default: false
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: 构建镜像
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 脚本语法检查
+        run: |
+          set -euo pipefail
+          for file in docker/entrypoint.sh docker/build.sh; do bash -n "$file"; done
+
+      - name: 解析版本与发布开关
+        id: meta
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          SWITCH: ${{ vars.DOCKER_PUBLISH }}
+          REQUEST_PUSH: ${{ inputs.push }}
+          DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' packages/mioku/package.json | head -n 1)"
+            VERSION="${VERSION:-latest}"
+          fi
+
+          # 只有总开关打开，并且（tag 推送 或 手动勾选推送）时才真的发布
+          PUSH=false
+          if [ "$SWITCH" = "true" ] && { [ "$EVENT" = "push" ] || [ "$REQUEST_PUSH" = "true" ]; }; then
+            PUSH=true
+          fi
+
+          IMAGES="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          if [ -n "${DOCKERHUB_IMAGE:-}" ]; then
+            IMAGES="$IMAGES,docker.io/$DOCKERHUB_IMAGE"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "images=$IMAGES"
+            echo "push=$PUSH"
+          } >>"$GITHUB_OUTPUT"
+          echo "版本=$VERSION 镜像=$IMAGES 发布=$PUSH 开关=${SWITCH:-<未设置>}"
+
+      - name: 准备 QEMU（多架构模拟）
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: 准备 buildx
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 ghcr.io
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 登录 Docker Hub
+        if: steps.meta.outputs.push == 'true' && vars.DOCKERHUB_IMAGE != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 构建镜像（按开关决定是否推送）
+        env:
+          IMAGE: ${{ steps.meta.outputs.images }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          FLAVOR: ${{ inputs.flavor || 'all' }}
+        run: |
+          set -euo pipefail
+          if [ "$PUSH" = "true" ]; then
+            ./docker/build.sh "$FLAVOR" --push --platform linux/amd64,linux/arm64
+          else
+            # 关闭发布时只在本机验证单架构能构建出来
+            ./docker/build.sh "$FLAVOR"
+          fi
+
+      - name: 结果摘要
+        if: always()
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGES: ${{ steps.meta.outputs.images }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          FLAVOR: ${{ inputs.flavor || 'all' }}
+        run: |
+          {
+            echo "### Docker 镜像"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 变体 | $FLAVOR |"
+            echo "| 框架版本 | $VERSION |"
+            echo "| 发布 | $PUSH |"
+            echo "| 镜像名 | $IMAGES |"
+            echo
+            if [ "$PUSH" != "true" ]; then
+              echo "> 发布开关未打开（Settings → Variables → DOCKER_PUBLISH），本次只做了构建验证"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"

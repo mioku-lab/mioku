@@ -37,12 +37,14 @@ export * from "./services/define";
 export * from "./services/builtin";
 export * from "./services/manager";
 export * from "./services/config";
+export * from "./services/config-defaults";
 export * from "./config";
 export * from "./start";
 export * from "./builtin";
 export * from "./builtin/core/status";
 export * from "./builtin/core/adapters";
 export * from "./compat";
+export * from "./skills";
 
 export { default as serviceManager } from "./services/manager";
 export { registerPluginArtifacts } from "./runtime/plugin-artifacts";

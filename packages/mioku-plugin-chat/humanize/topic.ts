@@ -1,6 +1,8 @@
 import type { AIInstance } from "mioku";
 import { logger } from "mioku";
 import { extractJsonObject } from "../utils/json";
+import { WORKING_MAX_TOKENS } from "../utils/model";
+import { readField } from "../utils/record";
 import type { ChatDatabase } from "../db";
 import type { ChatMessage } from "../types";
 import { extractGroupIdFromSession } from "../utils/group-config";
@@ -125,18 +127,17 @@ Output strictly in JSON format:
 }`,
         messages: [],
         model: cfg.workingModel || cfg.model,
-        temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: WORKING_MAX_TOKENS,
       });
 
       const parsed = extractJsonObject(content);
       if (parsed === undefined) return;
-      const summary = String(parsed.summary || "").trim();
+      const summary = String(readField(parsed, "summary") || "").trim();
       if (!summary) return;
 
-      const keywords = this.normalizeKeywords(parsed.keywords);
+      const keywords = this.normalizeKeywords(readField(parsed, "keywords"));
       const title =
-        String(parsed.title || "").trim() ||
+        String(readField(parsed, "title") || "").trim() ||
         `${this.formatTime(windowStartAt)} 话题概览`;
 
       if (existing?.id) {
