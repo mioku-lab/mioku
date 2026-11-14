@@ -65,7 +65,8 @@ config/
 ├── chat/
 │   ├── base.json
 │   ├── settings.json
-│   └── personalization.json
+│   ├── personalization.json
+│   └── themes.json          # 用户自定义人设 / 情绪主题包
 └── help/
     ├── demo.json
     └── status.json

@@ -249,7 +249,6 @@ Choose the most contextually appropriate sticker label for ${context.botNickname
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.2,
         max_tokens: WORKING_MAX_TOKENS,
       });
       const result = extractJsonObject(response.content || "");

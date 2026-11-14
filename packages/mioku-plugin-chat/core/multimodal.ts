@@ -87,7 +87,6 @@ ${context ? `\nUser context: ${context}` : ""}`;
           content: contentParts,
         },
       ],
-      temperature: 0.3, // 使用较低的温度以获得更准确的描述
     });
 
     if (!response.content) {

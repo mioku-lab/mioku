@@ -144,7 +144,6 @@ async function summarizeVideoByFullVideo(
           content,
         },
       ],
-      temperature: 0.3,
       max_tokens: WORKING_MAX_TOKENS,
     }),
   );
@@ -189,7 +188,6 @@ async function summarizeVideoByFrames(
           content,
         },
       ],
-      temperature: 0.3,
       max_tokens: WORKING_MAX_TOKENS,
     }),
   );
@@ -447,7 +445,6 @@ async function summarizeTextContent(
           content: `${label}原始内容：\n${truncateText(text, 8000)}\n\n请概括成一句适合放进聊天历史的中文摘要。`,
         },
       ],
-      temperature: 0.3,
       max_tokens: WORKING_MAX_TOKENS,
     }),
   );

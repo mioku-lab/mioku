@@ -3,6 +3,11 @@ export { EmotionAgent } from "./emotion-agent";
 export { TopicTracker } from "./topic";
 export { ExpressionSampler } from "./style-samples";
 export { pickReplyStyle } from "./utils";
+export {
+  buildPseudoHumanSection,
+  isPseudoHumanEnabled,
+  PSEUDO_HUMAN_GUIDE,
+} from "./pseudo-human";
 
 import type { AIInstance } from "mioku";
 import type { ChatConfigProvider } from "../types";

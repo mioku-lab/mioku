@@ -66,7 +66,6 @@ ${failedSummary}
       usageContext: buildUsageContext(toolCtx, targetMessage, {
         source: "chat.tool-failure",
       }),
-      temperature: Math.max(0.2, Math.min(0.8, toolCtx.config.temperature)),
       max_tokens: 120,
     });
 

@@ -679,7 +679,6 @@ async function summarizePage(
           content: userContent,
         },
       ],
-      temperature: 0.2,
       max_tokens: WORKING_MAX_TOKENS,
     });
 

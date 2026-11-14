@@ -6,6 +6,7 @@ import type {
   ToolContext,
 } from "../types";
 import type { HumanizeEngine } from "../humanize";
+import { isPseudoHumanEnabled } from "../humanize";
 import type { SkillSessionManager } from "../manage/skill-session";
 import { buildStructuredUserMessages } from "../manage/group-structured-history";
 import { mainModelSupportsVision } from "../utils/model";
@@ -46,6 +47,9 @@ import {
 
 export type { StructuredHistoryRunContext };
 
+/** 工具循环轮次上限：固定值，不随配置变化 */
+const MAX_TOOL_ITERATIONS = 30;
+
 /** 引擎依赖的插件级单例 */
 export interface ChatEngineDeps {
   aiInstance: AIInstance;
@@ -72,6 +76,7 @@ export async function runChat(
   const { toolCtx, history, targetMessage, prompt, extraTools } = turn;
   const { config, sessionId, aiService } = toolCtx;
   const log = toolCtx.ctx.logger;
+  const pseudoHuman = isPseudoHumanEnabled(config);
 
   const { tools: chatTools } = createTools(toolCtx, skillManager);
   const activeSkillsInfo = skillManager.getActiveSkillsInfo(
@@ -96,7 +101,9 @@ export async function runChat(
     config,
     chatHistory: history,
     targetMessage,
-    currentEmotion: humanize.emotionAgent.getCurrent(sessionId).current,
+    currentEmotion: pseudoHuman
+      ? undefined
+      : humanize.emotionAgent.getCurrent(sessionId).current,
     activeSkillsInfo: activeSkillsInfo || undefined,
   });
 
@@ -194,8 +201,7 @@ export async function runChat(
           },
           webBudget,
         ),
-      temperature: config.temperature,
-      maxIterations: config.maxIterations,
+      maxIterations: MAX_TOOL_ITERATIONS,
       stream: Boolean(stream),
       onTextDelta: stream ? (delta) => stream.push(delta) : undefined,
     });
@@ -209,11 +215,13 @@ export async function runChat(
     chatHistory: history,
     targetMessage,
   };
-  humanize.emotionAgent
-    .refreshIfNeeded(humanizeInput)
-    .catch((err) =>
-      log.warn(`[chat-engine] background emotion refresh failed: ${err}`),
-    );
+  if (!pseudoHuman) {
+    humanize.emotionAgent
+      .refreshIfNeeded(humanizeInput)
+      .catch((err) =>
+        log.warn(`[chat-engine] background emotion refresh failed: ${err}`),
+      );
+  }
 
   if (stream) await stream.end();
 
@@ -258,9 +266,12 @@ export async function runChat(
   }
 
   if (cleanedText.trim()) {
-    const emotionIntent = humanize.emotionAgent.parseEmotionIntent(cleanedText);
-    if (emotionIntent) {
-      humanize.emotionAgent.setEmotion(sessionId, emotionIntent);
+    if (!pseudoHuman) {
+      const emotionIntent =
+        humanize.emotionAgent.parseEmotionIntent(cleanedText);
+      if (emotionIntent) {
+        humanize.emotionAgent.setEmotion(sessionId, emotionIntent);
+      }
     }
     cleanedText = humanize.emotionAgent.cleanEmotionMarkers(cleanedText).trim();
   }

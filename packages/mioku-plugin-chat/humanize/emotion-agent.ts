@@ -136,7 +136,6 @@ ${input.targetMessage.userName}: ${input.targetMessage.content}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.2,
       max_tokens: WORKING_MAX_TOKENS,
     });
 

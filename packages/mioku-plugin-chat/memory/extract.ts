@@ -465,7 +465,6 @@ ${lines.join("\n")}`;
     const response = await target.instance.complete({
       model: target.model,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
       max_tokens: WORKING_MAX_TOKENS,
     });
     return (response.content ?? "").trim();

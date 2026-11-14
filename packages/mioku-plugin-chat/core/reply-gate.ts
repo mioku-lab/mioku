@@ -46,7 +46,6 @@ export async function decideReplyGate(
       prompt: buildPrompt(req),
       messages: [],
       model: req.cfg.workingModel || req.cfg.model,
-      temperature: 0.2,
       max_tokens: WORKING_MAX_TOKENS,
     });
   } catch (err) {

@@ -13,7 +13,11 @@ import type {
   AIService,
   ChatRuntimePromptInjection,
 } from "mioku";
-import { pickReplyStyle } from "../humanize";
+import {
+  buildPseudoHumanSection,
+  isPseudoHumanEnabled,
+  pickReplyStyle,
+} from "../humanize";
 import type { EmojiAgent } from "../humanize";
 import { filterAllowedExternalSkills } from "./external-skills";
 
@@ -191,6 +195,9 @@ export function buildStaticSystemPrompt(ctx: StaticPromptContext): string {
   const sections: string[] = [];
 
   sections.push(buildPersonaSection(ctx.config.persona));
+  if (isPseudoHumanEnabled(ctx.config)) {
+    sections.push(buildPseudoHumanSection());
+  }
   sections.push(
     buildResponseFormatSection(ctx, toolStrength, emojiStrength, audioStrength),
   );
@@ -387,7 +394,9 @@ export function buildDynamicUserContext(ctx: DynamicPromptContext): string {
   sections.push(
     buildReplyStyleSection(ctx.config, ctx.botNickname, lengthStrength),
   );
-  sections.push(buildEmotionSection(ctx));
+  if (!isPseudoHumanEnabled(ctx.config)) {
+    sections.push(buildEmotionSection(ctx));
+  }
 
   return sections.join("\n\n");
 }

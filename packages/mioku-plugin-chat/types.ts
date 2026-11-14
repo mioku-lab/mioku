@@ -74,6 +74,15 @@ export interface EmotionConfig {
 }
 
 /**
+ * 伪人模式配置
+ *
+ * 开启后停用情绪系统，并把人类模仿指南注入每一轮提示词。
+ */
+export interface PseudoHumanConfig {
+  enabled: boolean;
+}
+
+/**
  * 回复风格配置
  */
 export interface ReplyStyleConfig {
@@ -218,8 +227,11 @@ export interface ChatConfig {
   ignorePrivateChat: boolean;
   nicknames: string[];
   persona: string;
+  /** 选中的回复风格主题包 id；空串表示使用内联 persona / replyStyle */
+  replyStyleTheme: string;
+  /** 伪人模式：停用情绪系统并注入人类模仿指南 */
+  pseudoHuman: PseudoHumanConfig;
   maxContextTokens: number;
-  temperature: number;
   searxng: SearxngConfig;
   webReader: WebReaderConfig;
   audio: AudioConfig;
@@ -228,7 +240,6 @@ export interface ChatConfig {
   whitelistGroups: string[];
   mediaAnalysisBlacklistUsers: string[];
   maxSessions: number;
-  maxIterations: number;
   enableExternalSkills: boolean;
   allowedExternalSkills: string[];
   stream: boolean;
@@ -246,6 +257,8 @@ export interface ChatConfig {
   aiRequestLimits: AIRequestLimitConfig;
   dynamicDelay: DynamicDelayConfig;
   emotion: EmotionConfig;
+  /** 选中的情绪主题包 id；空串表示使用内联 emotion */
+  emotionTheme: string;
   replyStyle: ReplyStyleConfig;
   topic: TopicConfig;
   emoji: EmojiConfig;

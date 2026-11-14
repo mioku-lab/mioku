@@ -101,7 +101,6 @@ Response format (JSON):
           { role: "system", content: systemPrompt },
           { role: "user", content },
         ],
-        temperature: 0.3,
       });
     const response = options?.runAIRequest
       ? await options.runAIRequest(request)

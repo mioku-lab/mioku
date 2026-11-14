@@ -8,6 +8,13 @@ import { BASE_CONFIG } from "../configs/base";
 import { SETTINGS_CONFIG } from "../configs/settings";
 import { PERSONALIZATION_CONFIG } from "../configs/personalization";
 import { MEMORY_CONFIG } from "../configs/memory";
+import { THEMES_CONFIG } from "../configs/themes";
+import {
+  applyPersonalizationThemes,
+  buildThemeCatalog,
+  normalizeThemeId,
+  type ThemeCatalog,
+} from "../themes";
 import { normalizeMemoryConfig } from "../memory/config";
 import { DEFAULT_GROUPS_CONFIG } from "../configs/groups";
 import { mergeGroupOverrides } from "../utils/group-config";
@@ -20,7 +27,7 @@ import { isRecord } from "../utils/record";
 import { LEGACY_API_KEY_SENTINEL, type RoleModels } from "./ai-roles";
 
 const CONFIG_FILES = ["base", "settings", "personalization", "memory"] as const;
-type ConfigFileName = (typeof CONFIG_FILES)[number] | "groups";
+type ConfigFileName = (typeof CONFIG_FILES)[number] | "groups" | "themes";
 
 /** 默认配置各文件合起来才是完整的 ChatConfig */
 const EMPTY_CONFIG = {} as ChatConfig;
@@ -105,6 +112,7 @@ export async function createChatConfigStore(
   let warnedMarkdownScreenshotUnavailable = false;
   let roleModels: RoleModels = { main: "", working: "", vision: "" };
   let roleIsMultimodal = true;
+  let themeCatalog: ThemeCatalog = buildThemeCatalog(undefined);
 
   if (configService) {
     await configService.registerConfig("chat", "base", BASE_CONFIG);
@@ -116,6 +124,7 @@ export async function createChatConfigStore(
     );
     await configService.registerConfig("chat", "groups", DEFAULT_GROUPS_CONFIG);
     await configService.registerConfig("chat", "memory", MEMORY_CONFIG);
+    await configService.registerConfig("chat", "themes", THEMES_CONFIG);
   }
 
   const readRaw = async (name: ConfigFileName): Promise<unknown> =>
@@ -164,10 +173,14 @@ export async function createChatConfigStore(
     if (!roleIsMultimodal) merged.enableMediaRecognition = false;
     if (!merged.apiKey) merged.apiKey = LEGACY_API_KEY_SENTINEL;
 
+    // 选中的主题包在内联配置之上展开；包不存在时保留内联值兜底
+    merged.replyStyleTheme = normalizeThemeId(merged.replyStyleTheme);
+    merged.emotionTheme = normalizeThemeId(merged.emotionTheme);
+    applyPersonalizationThemes(merged, themeCatalog);
+
     return merged;
   };
 
-  let baseConfig = await buildGlobalConfig();
   let groupsConfig: ChatGroupsFile = DEFAULT_GROUPS_CONFIG;
 
   const refreshBase = async () => {
@@ -177,7 +190,11 @@ export async function createChatConfigStore(
     const raw = await readRaw("groups");
     groupsConfig = isGroupsFile(raw) ? raw : DEFAULT_GROUPS_CONFIG;
   };
-  await refreshGroups();
+  const refreshThemes = async () => {
+    themeCatalog = buildThemeCatalog(await readRaw("themes"));
+  };
+  await Promise.all([refreshGroups(), refreshThemes()]);
+  let baseConfig = await buildGlobalConfig();
 
   const offs: Array<() => void> = [];
   const watch = (name: ConfigFileName, cb: () => void | Promise<void>) => {
@@ -204,6 +221,10 @@ export async function createChatConfigStore(
       ctx.logger.error(`刷新 chat/groups 缓存失败: ${err}`),
     ),
   );
+  watch("themes", async () => {
+    await refreshThemes();
+    await refreshBase();
+  });
 
   const provider: ChatConfigProvider = (groupId) => {
     if (groupId === undefined) return baseConfig;
